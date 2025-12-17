@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Set root logger to INFO to reduce noise during tests -->
+    <root level="INFO">
+        <appender-ref ref="STDOUT" />
+    </root>
+
+    <!-- Reduce Vert.x logging -->
+    <logger name="io.vertx" level="WARN" />
+    
+    <!-- Reduce TestContainers logging -->
+    <logger name="org.testcontainers" level="WARN" />
+    <logger name="com.github.dockerjava" level="WARN" />
+    <logger name="tc" level="WARN" />
+    
+    <!-- Keep Aether logging at INFO for debugging -->
+    <logger name="codes.yousef.aether" level="INFO" />
+</configuration>
