@@ -13,6 +13,10 @@ testcontainers = "1.20.4"
 mockk = "1.13.13"
 postgres = "42.7.4"
 ksp = "2.1.0-1.0.29"
+datetime = "0.6.1"
+java-jwt = "4.4.0"
+kotlinpoet = "1.18.1"
+ksp-api = "2.1.0-1.0.29"
 
 [libraries]
 # Kotlin Core
@@ -48,6 +52,17 @@ kotlin-wrappers-node = { module = "org.jetbrains.kotlin-wrappers:kotlin-node", v
 testcontainers-core = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+
+# DateTime
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "datetime" }
+
+# JWT (JVM)
+java-jwt = { module = "com.auth0:java-jwt", version.ref = "java-jwt" }
+
+# KSP
+ksp-api = { module = "com.google.devtools.ksp:symbol-processing-api", version.ref = "ksp-api" }
+kotlinpoet = { module = "com.squareup:kotlinpoet", version.ref = "kotlinpoet" }
+kotlinpoet-ksp = { module = "com.squareup:kotlinpoet-ksp", version.ref = "kotlinpoet" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

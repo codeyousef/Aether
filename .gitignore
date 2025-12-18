@@ -44,3 +44,4 @@ out/
 
 # Local configuration
 local.properties
+.github/copilot-instructions.md

@@ -195,3 +195,189 @@ fun ComposableScope.span(attributes: Map<String, String> = emptyMap(), content: 
 fun ComposableScope.title(attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
     element("title", attributes, content)
 }
+/**
+ * Create a hidden input field for CSRF token.
+ * @param token The CSRF token value
+ * @param name The field name (defaults to "_csrf")
+ */
+fun ComposableScope.csrfInput(token: String, name: String = "_csrf") {
+    input(type = "hidden", name = name, attributes = mapOf("value" to token))
+}
+
+/**
+ * Create a textarea element.
+ */
+fun ComposableScope.textarea(name: String? = null, attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    val attrs = buildMap {
+        name?.let { put("name", it) }
+        putAll(attributes)
+    }
+    element("textarea", attrs, content)
+}
+
+/**
+ * Create a label element.
+ */
+fun ComposableScope.label(forId: String? = null, attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    val attrs = buildMap {
+        forId?.let { put("for", it) }
+        putAll(attributes)
+    }
+    element("label", attrs, content)
+}
+
+/**
+ * Create a select element.
+ */
+fun ComposableScope.select(name: String? = null, attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    val attrs = buildMap {
+        name?.let { put("name", it) }
+        putAll(attributes)
+    }
+    element("select", attrs, content)
+}
+
+/**
+ * Create an option element.
+ */
+fun ComposableScope.option(value: String, selected: Boolean = false, attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    val attrs = buildMap {
+        put("value", value)
+        if (selected) put("selected", "selected")
+        putAll(attributes)
+    }
+    element("option", attrs, content)
+}
+
+/**
+ * Create a table element.
+ */
+fun ComposableScope.table(attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    element("table", attributes, content)
+}
+
+/**
+ * Create a table row.
+ */
+fun ComposableScope.tr(attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    element("tr", attributes, content)
+}
+
+/**
+ * Create a table header cell.
+ */
+fun ComposableScope.th(attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    element("th", attributes, content)
+}
+
+/**
+ * Create a table data cell.
+ */
+fun ComposableScope.td(attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    element("td", attributes, content)
+}
+
+/**
+ * Create a thead element.
+ */
+fun ComposableScope.thead(attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    element("thead", attributes, content)
+}
+
+/**
+ * Create a tbody element.
+ */
+fun ComposableScope.tbody(attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    element("tbody", attributes, content)
+}
+
+/**
+ * Create an img element.
+ */
+fun ComposableScope.img(src: String, alt: String = "", attributes: Map<String, String> = emptyMap()) {
+    val attrs = buildMap {
+        put("src", src)
+        put("alt", alt)
+        putAll(attributes)
+    }
+    element("img", attrs)
+}
+
+/**
+ * Create a link element (for stylesheets, etc.).
+ */
+fun ComposableScope.link(rel: String, href: String, attributes: Map<String, String> = emptyMap()) {
+    val attrs = buildMap {
+        put("rel", rel)
+        put("href", href)
+        putAll(attributes)
+    }
+    element("link", attrs)
+}
+
+/**
+ * Create a script element.
+ */
+fun ComposableScope.script(src: String? = null, attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    val attrs = buildMap {
+        src?.let { put("src", it) }
+        putAll(attributes)
+    }
+    element("script", attrs, content)
+}
+
+/**
+ * Create a meta element.
+ */
+fun ComposableScope.meta(attributes: Map<String, String>) {
+    element("meta", attributes)
+}
+
+/**
+ * Create a nav element.
+ */
+fun ComposableScope.nav(attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    element("nav", attributes, content)
+}
+
+/**
+ * Create a header element.
+ */
+fun ComposableScope.header(attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    element("header", attributes, content)
+}
+
+/**
+ * Create a footer element.
+ */
+fun ComposableScope.footer(attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    element("footer", attributes, content)
+}
+
+/**
+ * Create a main element.
+ */
+fun ComposableScope.main(attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    element("main", attributes, content)
+}
+
+/**
+ * Create a section element.
+ */
+fun ComposableScope.section(attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    element("section", attributes, content)
+}
+
+/**
+ * Create an article element.
+ */
+fun ComposableScope.article(attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    element("article", attributes, content)
+}
+
+/**
+ * Create an aside element.
+ */
+fun ComposableScope.aside(attributes: Map<String, String> = emptyMap(), content: ComposableScope.() -> Unit = {}) {
+    element("aside", attributes, content)
+}

@@ -25,5 +25,6 @@ include(
     ":aether-net",
     ":aether-plugin",
     ":aether-cli",
+    ":aether-ksp",
     ":example-app"
 )

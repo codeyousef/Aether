@@ -15,6 +15,12 @@ Aether is designed to be a "colorless" framework that abstracts away the differe
 - **Middleware Pipeline**: Composable middleware for request/response processing
 - **SSR + Hydration**: Server-side rendering with client-side hydration support
 - **Transport Abstraction**: Pluggable network layer allowing alternative transport implementations
+- **Session Management**: Secure, configurable session handling with multiple storage backends
+- **CSRF Protection**: Built-in cross-site request forgery protection middleware
+- **Authentication**: Pluggable authentication with Basic, Bearer, JWT, API Key, and Form providers
+- **File Uploads**: Multipart form-data parsing with validation and streaming support
+- **WebSocket Support**: Full-duplex WebSocket communication with DSL-based configuration
+- **KSP Migrations**: Kotlin Symbol Processing for automatic database schema migration generation
 
 ## Project Structure
 
@@ -25,9 +31,11 @@ aether/
 ├── aether-web/        # Routing and controllers
 ├── aether-ui/         # UI rendering (SSR + CBOR)
 ├── aether-net/        # Network transport abstraction
+├── aether-ksp/        # KSP-based migration generation
 ├── aether-plugin/     # Gradle plugin
 ├── aether-cli/        # Command-line tools
-└── example-app/       # Example application
+├── example-app/       # Example application
+└── docs/              # Documentation and deployment guides
 ```
 
 ## Quick Start
@@ -231,15 +239,190 @@ The transport layer provides a clean interface that can be implemented for diffe
 - [x] Integration tests
 - [x] TestContainers setup
 
-### Future Work
-- [ ] KSP-based migration generation
-- [ ] WebSocket support
-- [ ] File upload handling
-- [ ] Session management
-- [ ] CSRF protection
-- [ ] Authentication middleware
-- [ ] Alternative transport implementations
-- [ ] Production deployment guides
+### Phase 9: Security & Sessions ✅
+- [x] Session management (memory, database, Redis)
+- [x] CSRF protection middleware
+- [x] Authentication middleware (Basic, Bearer, JWT, API Key, Form)
+- [x] Authorization with role-based access control
+
+### Phase 10: Advanced Features ✅
+- [x] File upload handling with multipart parsing
+- [x] WebSocket support with DSL configuration
+- [x] KSP-based migration generation
+- [x] Alternative transport implementations (UDP, HTTP client)
+
+### Phase 11: Production Ready ✅
+- [x] Docker and Docker Compose configurations
+- [x] Kubernetes deployment manifests
+- [x] Nginx reverse proxy configuration
+- [x] Cloud deployment guides (AWS, GCP, Azure, DigitalOcean)
+- [x] Comprehensive E2E test suite
+
+## Security Features
+
+### Session Management
+
+```kotlin
+val pipeline = Pipeline().apply {
+    installSessions(InMemorySessionStore(), SessionConfig(
+        cookieName = "AETHER_SESSION",
+        maxAge = 3600L,
+        secure = true,
+        httpOnly = true,
+        sameSite = SameSite.STRICT
+    ))
+}
+
+// In handlers
+val session = exchange.session
+session["user"] = "john"
+val user = session["user"]
+exchange.invalidateSession()
+```
+
+### CSRF Protection
+
+```kotlin
+val pipeline = Pipeline().apply {
+    installCsrf(CsrfConfig(
+        tokenLength = 32,
+        headerName = "X-CSRF-Token"
+    ))
+}
+
+// In templates
+exchange.render {
+    form(action = "/submit", method = "POST") {
+        csrfInput(exchange) // Adds hidden CSRF token field
+        // form fields...
+    }
+}
+```
+
+### Authentication
+
+```kotlin
+val authConfig = AuthenticationConfig().apply {
+    providers["basic"] = BasicAuthProvider { credentials ->
+        if (validateUser(credentials.username, credentials.password)) {
+            AuthResult.Success(Principal.User(credentials.username, setOf("user")))
+        } else {
+            AuthResult.Failure("Invalid credentials")
+        }
+    }
+    providers["jwt"] = JwtAuthProvider(jwtConfig)
+}
+
+val pipeline = Pipeline().apply {
+    installAuthentication(authConfig) {
+        excludePaths.add("/public")
+    }
+    installAuthorization(AuthorizationConfig().apply {
+        rules["/admin"] = AuthorizationRule(requiredRoles = setOf("admin"))
+    })
+}
+```
+
+## File Uploads
+
+```kotlin
+router {
+    post("/upload") { exchange ->
+        val file = exchange.file("document")
+        if (file != null) {
+            // file.filename, file.contentType, file.content (ByteArray)
+            saveFile(file)
+            exchange.respond(200, "Uploaded: ${file.filename}")
+        }
+    }
+
+    post("/multi-upload") { exchange ->
+        val files = exchange.files("attachments")
+        files.forEach { saveFile(it) }
+        exchange.respond(200, "Uploaded ${files.size} files")
+    }
+}
+```
+
+## WebSocket Support
+
+```kotlin
+val wsConfig = webSocket {
+    path("/ws/chat") {
+        onConnect { session ->
+            broadcast("User joined")
+        }
+        onMessage { session, message ->
+            when (message) {
+                is WebSocketMessage.Text -> broadcast(message.data)
+                is WebSocketMessage.Binary -> session.send(message.data)
+            }
+        }
+        onClose { session, code, reason ->
+            broadcast("User left")
+        }
+    }
+}
+
+val wsServer = VertxWebSocketServer(vertx, 8080, wsConfig)
+wsServer.start()
+```
+
+## Database Migrations
+
+Using KSP to generate migrations automatically:
+
+```kotlin
+@AetherModel
+object Users : Model<User>() {
+    override val tableName = "users"
+
+    @PrimaryKey(autoIncrement = true)
+    val id = integer("id")
+
+    @Column(maxLength = 100)
+    @Index(unique = true)
+    val username = varchar("username", maxLength = 100)
+
+    @Column(maxLength = 255)
+    val email = varchar("email", maxLength = 255)
+}
+
+// Generated migration
+val migration = migration("002", "Add users table") {
+    createTable("users") {
+        column("id", "SERIAL", primaryKey = true)
+        column("username", "VARCHAR(100)", nullable = false)
+        column("email", "VARCHAR(255)", nullable = false)
+    }
+    createIndex("idx_users_username", "users", listOf("username"), unique = true)
+}
+```
+
+## Production Deployment
+
+### Docker
+
+```bash
+# Build image
+docker build -t aether-app:latest -f docs/deployment/Dockerfile .
+
+# Run with Docker Compose
+cd docs/deployment
+docker compose up -d
+```
+
+### Kubernetes
+
+```bash
+# Apply all manifests
+kubectl apply -f docs/deployment/kubernetes/
+
+# Check status
+kubectl -n aether get pods
+```
+
+See [Deployment Guide](docs/deployment/DEPLOYMENT.md) for detailed instructions on AWS, GCP, Azure, and DigitalOcean deployments.
 
 ## Contributing
 

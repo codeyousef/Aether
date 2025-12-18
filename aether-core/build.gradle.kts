@@ -51,6 +51,8 @@ kotlin {
                 implementation(libs.vertx.core)
                 implementation(libs.vertx.kotlin.coroutines)
                 implementation(libs.slf4j.api)
+                implementation(libs.java.jwt)
+                implementation(libs.kotlinx.datetime)
             }
         }
 

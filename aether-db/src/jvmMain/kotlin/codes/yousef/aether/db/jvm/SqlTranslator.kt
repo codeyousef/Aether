@@ -22,6 +22,7 @@ object SqlTranslator {
             is UpdateQuery -> translateUpdate(query, params)
             is DeleteQuery -> translateDelete(query, params)
             is CreateTableQuery -> translateCreateTable(query)
+            is RawQuery -> query.sql
         }
         return TranslatedQuery(sql, params)
     }
