@@ -46,6 +46,7 @@ kotlin {
                 implementation(libs.testcontainers.postgresql)
                 implementation("org.testcontainers:junit-jupiter:1.20.4")
                 implementation(libs.netty.codec.http)
+                implementation(libs.netty.codec.redis)
                 implementation(libs.vertx.redis.client)
             }
         }
