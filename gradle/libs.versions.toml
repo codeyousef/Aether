@@ -36,6 +36,7 @@ vertx-web = { module = "io.vertx:vertx-web", version.ref = "vertx" }
 vertx-kotlin-coroutines = { module = "io.vertx:vertx-lang-kotlin-coroutines", version.ref = "vertx" }
 vertx-sql-client = { module = "io.vertx:vertx-sql-client", version.ref = "vertx" }
 vertx-pg-client = { module = "io.vertx:vertx-pg-client", version.ref = "vertx" }
+vertx-redis-client = { module = "io.vertx:vertx-redis-client", version.ref = "vertx" }
 
 # Database (JVM)
 postgres-driver = { module = "org.postgresql:postgresql", version.ref = "postgres" }
