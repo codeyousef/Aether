@@ -287,7 +287,10 @@ private suspend fun <T> respondJson(exchange: Exchange, data: T, statusCode: Int
     exchange.response.statusCode = statusCode
     exchange.response.setHeader("Content-Type", "application/json; charset=utf-8")
     val json = when (data) {
-        is List<*> -> Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(UserDto.serializer()), data as List<UserDto>)
+        is List<*> -> {
+            @Suppress("UNCHECKED_CAST")
+            Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(UserDto.serializer()), data as List<UserDto>)
+        }
         is UserDto -> Json.encodeToString(UserDto.serializer(), data)
         else -> throw IllegalArgumentException("Unsupported data type")
     }

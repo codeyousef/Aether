@@ -17,6 +17,7 @@ datetime = "0.6.1"
 java-jwt = "4.4.0"
 kotlinpoet = "1.18.1"
 ksp-api = "2.1.0-1.0.29"
+netty = "4.1.115.Final"
 
 [libraries]
 # Kotlin Core
@@ -63,6 +64,9 @@ java-jwt = { module = "com.auth0:java-jwt", version.ref = "java-jwt" }
 ksp-api = { module = "com.google.devtools.ksp:symbol-processing-api", version.ref = "ksp-api" }
 kotlinpoet = { module = "com.squareup:kotlinpoet", version.ref = "kotlinpoet" }
 kotlinpoet-ksp = { module = "com.squareup:kotlinpoet-ksp", version.ref = "kotlinpoet" }
+
+# Netty
+netty-codec-http = { module = "io.netty:netty-codec-http", version.ref = "netty" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
