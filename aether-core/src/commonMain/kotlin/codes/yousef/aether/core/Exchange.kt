@@ -3,6 +3,7 @@ package codes.yousef.aether.core
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.cbor.Cbor
+import kotlinx.serialization.serializer
 
 /**
  * Represents a request-response exchange.
@@ -107,4 +108,15 @@ interface Exchange {
     suspend fun forbidden(message: String = "Forbidden") {
         respond(403, message)
     }
+}
+
+/**
+ * Send a JSON response using reified type parameter.
+ */
+suspend inline fun <reified T> Exchange.respondJson(
+    statusCode: Int = 200,
+    data: T,
+    json: Json = Json
+) {
+    respondJson(statusCode, data, json, serializer<T>())
 }

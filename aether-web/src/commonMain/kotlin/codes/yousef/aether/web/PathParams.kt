@@ -39,25 +39,14 @@ fun Exchange.pathParam(name: String): String? {
 }
 
 /**
- * Get a single path parameter by name, or throw an exception if not found.
- *
- * Example:
- * ```
- * router {
- *     get("/users/:id") { exchange ->
- *         val id = exchange.pathParamOrThrow("id")
- *         exchange.respond("User ID: $id")
- *     }
- * }
- * ```
- *
- * @param name The name of the path parameter (without the : prefix)
- * @return The parameter value
- * @throws IllegalStateException if the parameter is not found
+ * Get a required path parameter by name.
+ * Throws IllegalStateException if the parameter is missing.
  */
 fun Exchange.pathParamOrThrow(name: String): String {
-    return pathParam(name) ?: throw IllegalStateException("Path parameter '$name' not found")
+    return pathParam(name) ?: throw IllegalStateException("Missing path parameter: $name")
 }
+
+
 
 /**
  * Get all path parameters as a map.

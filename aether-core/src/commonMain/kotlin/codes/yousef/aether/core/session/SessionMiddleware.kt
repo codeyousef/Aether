@@ -11,6 +11,12 @@ import codes.yousef.aether.core.pipeline.Middleware
 val SessionAttributeKey = AttributeKey<Session>("aether.session", Session::class)
 
 /**
+ * Get the current session from the exchange.
+ * Returns null if no session is active (e.g. middleware not installed).
+ */
+fun Exchange.session(): Session? = attributes.get(SessionAttributeKey)
+
+/**
  * Session middleware that manages session creation, loading, and persistence.
  *
  * This middleware:
@@ -105,12 +111,6 @@ class SessionMiddleware(
         )
     }
 }
-
-/**
- * Extension function to get the session from an Exchange.
- * Returns null if session middleware is not installed.
- */
-fun Exchange.session(): Session? = attributes.get(SessionAttributeKey)
 
 /**
  * Extension function to get the session from an Exchange, throwing if not available.
