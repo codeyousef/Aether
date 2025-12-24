@@ -76,6 +76,10 @@ private class VertxResponse(
      */
     private fun writeHeaders() {
         if (!headersWritten) {
+            // Enable chunked transfer encoding if Content-Length is not set
+            if (!headers.build().contains("Content-Length")) {
+                vertxResponse.isChunked = true
+            }
             headers.build().entries().forEach { (name, values) ->
                 values.forEach { value ->
                     vertxResponse.putHeader(name, value)
@@ -118,8 +122,14 @@ suspend fun createVertxExchange(vertxRequest: HttpServerRequest): VertxExchange 
     val request = VertxRequest(vertxRequest, bodyDeferred)
     val response = VertxResponse(vertxRequest.response())
 
-    vertxRequest.body().coAwait().let { buffer ->
-        bodyDeferred.complete(buffer.bytes)
+    // Read body safely - some requests may already be consumed (e.g., GET with no body)
+    try {
+        vertxRequest.body().coAwait().let { buffer ->
+            bodyDeferred.complete(buffer.bytes)
+        }
+    } catch (e: IllegalStateException) {
+        // Request already read or has no body - provide empty body
+        bodyDeferred.complete(ByteArray(0))
     }
 
     return VertxExchange(request, response)
