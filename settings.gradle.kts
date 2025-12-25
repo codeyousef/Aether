@@ -27,5 +27,6 @@ include(
     ":aether-cli",
     ":aether-ksp",
     ":aether-auth",
+    ":aether-forms",
     ":example-app"
 )

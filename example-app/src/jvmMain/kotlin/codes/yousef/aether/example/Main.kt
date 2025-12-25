@@ -94,20 +94,14 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
 
         // Login Page
         get("/login") { exchange ->
+            val form = LoginForm()
             exchange.render {
                 element("html") {
                     head { title { text("Login") } }
                     body {
                         h1 { text("Login") }
                         form(action = "/login", method = "post") {
-                            div {
-                                text("Username: ")
-                                input(type = "text", name = "username")
-                            }
-                            div {
-                                text("Password: ")
-                                input(type = "password", name = "password")
-                            }
+                            form.asP(this)
                             div {
                                 input(type = "submit", attributes = mapOf("value" to "Login"))
                             }
@@ -128,27 +122,49 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
                 key to value
             }
             
-            val username = params["username"]
-            val password = params["password"]
-
-            if (!username.isNullOrBlank() && !password.isNullOrBlank()) {
+            val form = LoginForm()
+            form.bind(params)
+            
+            if (form.isValid()) {
+                val username = form.get<String>("username")!!
+                val password = form.get<String>("password")!!
+                
                 val user = Auth.authenticate(username, password, Users) as? User
                 if (user != null) {
                     Auth.login(exchange, user)
                     exchange.redirect("/")
                 } else {
+                    form.addError("__all__", "Invalid username or password")
                     exchange.render {
                         element("html") {
                             body {
-                                h1 { text("Login Failed") }
-                                p { text("Invalid username or password") }
-                                a("/login") { text("Try again") }
+                                h1 { text("Login") }
+                                form(action = "/login", method = "post") {
+                                    form.asP(this)
+                                    div {
+                                        input(type = "submit", attributes = mapOf("value" to "Login"))
+                                    }
+                                }
+                                div { a("/") { text("Back") } }
                             }
                         }
                     }
                 }
             } else {
-                exchange.badRequest("Missing credentials")
+                exchange.render {
+                    element("html") {
+                        body {
+                            h1 { text("Login") }
+                            form(action = "/login", method = "post") {
+                                form.asP(this)
+                                div {
+                                    input(type = "submit", attributes = mapOf("value" to "Login"))
+                                }
+                            }
+                            div { a("/") { text("Back") } }
+                        }
+                    }
+                }
             }
         }
 
@@ -160,24 +176,14 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
 
         // Register Page
         get("/register") { exchange ->
+             val form = RegisterForm()
              exchange.render {
                 element("html") {
                     head { title { text("Register") } }
                     body {
                         h1 { text("Register") }
                         form(action = "/register", method = "post") {
-                            div {
-                                text("Username: ")
-                                input(type = "text", name = "username")
-                            }
-                            div {
-                                text("Email: ")
-                                input(type = "email", name = "email")
-                            }
-                            div {
-                                text("Password: ")
-                                input(type = "password", name = "password")
-                            }
+                            form.asP(this)
                             div {
                                 input(type = "submit", attributes = mapOf("value" to "Register"))
                             }
@@ -198,18 +204,27 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
                 key to value
             }
             
-            val username = params["username"]
-            val email = params["email"]?.replace("%40", "@")
-            val password = params["password"]
+            val form = RegisterForm()
+            form.bind(params)
+            
+            if (form.isValid()) {
+                val username = form.get<String>("username")!!
+                val email = form.get<String>("email")!!.replace("%40", "@")
+                val password = form.get<String>("password")!!
 
-            if (!username.isNullOrBlank() && !email.isNullOrBlank() && !password.isNullOrBlank()) {
                 if (User.findByUsername(username) != null) {
+                     form.addError("username", "Username already taken")
                      exchange.render {
                         element("html") {
                             body {
-                                h1 { text("Registration Failed") }
-                                p { text("Username already taken") }
-                                a("/register") { text("Try again") }
+                                h1 { text("Register") }
+                                form(action = "/register", method = "post") {
+                                    form.asP(this)
+                                    div {
+                                        input(type = "submit", attributes = mapOf("value" to "Register"))
+                                    }
+                                }
+                                div { a("/") { text("Back") } }
                             }
                         }
                     }
@@ -219,7 +234,20 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
                     exchange.redirect("/")
                 }
             } else {
-                exchange.badRequest("Missing fields")
+                exchange.render {
+                    element("html") {
+                        body {
+                            h1 { text("Register") }
+                            form(action = "/register", method = "post") {
+                                form.asP(this)
+                                div {
+                                    input(type = "submit", attributes = mapOf("value" to "Register"))
+                                }
+                            }
+                            div { a("/") { text("Back") } }
+                        }
+                    }
+                }
             }
         }
 
