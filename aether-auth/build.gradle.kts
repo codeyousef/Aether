@@ -26,5 +26,11 @@ kotlin {
                 implementation(project(":aether-db"))
             }
         }
+        
+        jvmMain {
+            dependencies {
+                implementation(libs.bcrypt)
+            }
+        }
     }
 }

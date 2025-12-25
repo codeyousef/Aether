@@ -49,7 +49,7 @@ This document outlines the sequential feature list required to elevate Aether fr
 7.  **Security Hardening**
     *   [x] **CSRF Protection**: Middleware to prevent Cross-Site Request Forgery.
     *   [x] **Security Headers**: HSTS, X-Frame-Options, X-Content-Type-Options.
-    *   [ ] **Password Hashing**: Integrate robust hashing (Argon2/BCrypt).
+    *   [x] **Password Hashing**: Integrate robust hashing (Argon2/BCrypt).
 
 ## Phase 4: Tooling & DX
 *Objective: Make development fast and easy.*
@@ -73,5 +73,6 @@ This document outlines the sequential feature list required to elevate Aether fr
 *   [x] **Completed**: Phase 2 - Admin Interface Filters & Search (aether-admin)
 *   [x] **Completed**: Phase 3 - CSRF Protection (aether-core/middleware)
 *   [x] **Completed**: Phase 3 - Security Headers (aether-core/middleware)
-*   [ ] **Current Task**: Phase 3 - Password Hashing (aether-auth)
+*   [x] **Completed**: Phase 3 - Password Hashing (aether-auth)
+*   [ ] **Current Task**: Phase 4 - CLI Scaffolding (aether-cli)
 

@@ -18,6 +18,7 @@ java-jwt = "4.4.0"
 kotlinpoet = "1.18.1"
 ksp-api = "2.1.0-1.0.29"
 netty = "4.1.115.Final"
+bcrypt = "0.10.2"
 
 [libraries]
 # Kotlin Core
@@ -44,6 +45,9 @@ hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
 # Logging (JVM)
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+
+# Security
+bcrypt = { module = "at.favre.lib:bcrypt", version.ref = "bcrypt" }
 
 # Kotlin Wrappers (Wasm)
 kotlin-wrappers-browser = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser", version.ref = "kotlin-wrappers" }
