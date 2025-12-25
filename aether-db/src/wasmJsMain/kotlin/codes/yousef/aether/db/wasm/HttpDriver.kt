@@ -35,6 +35,17 @@ class HttpDriver(
         return response.rows.map { HttpRow(it) }
     }
 
+    override suspend fun executeQueryRaw(sql: String): List<Row> {
+        val request = QueryRequest(
+            query = RawQuery(sql),
+            operation = "query"
+        )
+
+        val response = sendRequest(request)
+
+        return response.rows.map { HttpRow(it) }
+    }
+
     override suspend fun executeUpdate(query: QueryAST): Int {
         val request = QueryRequest(
             query = query,

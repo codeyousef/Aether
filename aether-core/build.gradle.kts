@@ -36,6 +36,7 @@ kotlin {
                 implementation(libs.kotlinx.serialization.json)
                 implementation(libs.kotlinx.serialization.cbor)
                 implementation(libs.kotlinx.atomicfu)
+                implementation(libs.kotlinx.datetime)
             }
         }
 

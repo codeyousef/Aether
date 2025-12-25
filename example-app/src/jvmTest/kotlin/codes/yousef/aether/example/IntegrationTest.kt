@@ -90,7 +90,7 @@ class IntegrationTest {
             }
 
             get("/users/:id") { exchange ->
-                val userId = exchange.pathParam("id")?.toIntOrNull()
+                val userId = exchange.pathParam("id")?.toLongOrNull()
                 if (userId == null) {
                     exchange.badRequest("Invalid ID")
                     return@get
