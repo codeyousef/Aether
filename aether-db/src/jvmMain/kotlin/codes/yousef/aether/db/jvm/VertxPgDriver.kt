@@ -114,6 +114,28 @@ class VertxPgDriver(
         }
     }
 
+    override suspend fun execute(sql: String, params: List<SqlValue>): Int {
+        val paramValues = params.map { 
+            when (it) {
+                is SqlValue.StringValue -> it.value
+                is SqlValue.IntValue -> it.value
+                is SqlValue.LongValue -> it.value
+                is SqlValue.DoubleValue -> it.value
+                is SqlValue.BooleanValue -> it.value
+                is SqlValue.NullValue -> null
+            }
+        }
+        val tuple = Tuple.from(paramValues)
+        try {
+            val rowSet = client.preparedQuery(sql)
+                .execute(tuple)
+                .coAwait()
+            return rowSet.rowCount()
+        } catch (e: Exception) {
+            throw DatabaseException("Failed to execute raw SQL: $sql", e)
+        }
+    }
+
     override suspend fun close() {
         try {
             client.close().coAwait()

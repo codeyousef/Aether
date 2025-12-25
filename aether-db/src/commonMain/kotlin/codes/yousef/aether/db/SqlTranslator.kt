@@ -254,6 +254,11 @@ object SqlTranslator {
                 val values = where.values.joinToString(", ") { translateExpression(it, params) }
                 "$col IN ($values)"
             }
+            is WhereClause.InSubQuery -> {
+                val col = translateExpression(where.column, params)
+                val sub = translateSelect(where.subQuery, params)
+                "$col IN ($sub)"
+            }
             is WhereClause.Between -> {
                 val col = translateExpression(where.column, params)
                 val lower = translateExpression(where.lower, params)

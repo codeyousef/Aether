@@ -28,5 +28,6 @@ include(
     ":aether-ksp",
     ":aether-auth",
     ":aether-forms",
+    ":aether-admin",
     ":example-app"
 )

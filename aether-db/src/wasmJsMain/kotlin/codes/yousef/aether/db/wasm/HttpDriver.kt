@@ -63,6 +63,10 @@ class HttpDriver(
         throw DatabaseException("Introspection not supported in HttpDriver")
     }
 
+    override suspend fun execute(sql: String, params: List<SqlValue>): Int {
+        throw DatabaseException("Raw SQL execution not supported in HttpDriver")
+    }
+
     override suspend fun close() {
         // HTTP driver doesn't maintain persistent connections
     }

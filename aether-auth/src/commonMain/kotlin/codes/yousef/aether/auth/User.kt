@@ -6,6 +6,8 @@ import codes.yousef.aether.db.varchar
 import codes.yousef.aether.db.boolean
 import codes.yousef.aether.db.long
 import codes.yousef.aether.db.bigSerial
+import codes.yousef.aether.db.manyToMany
+import codes.yousef.aether.db.eq
 
 /**
  * Base class for User entities.
@@ -48,6 +50,30 @@ abstract class AbstractUser<T : AbstractUser<T>> : BaseEntity<T>() {
     var dateJoined: Long?
         get() = userModel.dateJoined.getValue(this as T)
         set(value) = userModel.dateJoined.setValue(this as T, value)
+        
+    /**
+     * Check if user has a specific permission.
+     * Checks both direct user permissions and permissions inherited from groups.
+     */
+    suspend fun hasPermission(codename: String): Boolean {
+        if (isSuperuser == true) return true
+        if (isActive != true) return false
+        
+        // Check direct permissions
+        if (userModel.userPermissions.query(this as T).filter(Permissions.codename eq codename).exists()) {
+            return true
+        }
+        
+        // Check group permissions
+        val groups = userModel.groups.query(this as T).toList()
+        for (group in groups) {
+            if (Groups.permissions.query(group).filter(Permissions.codename eq codename).exists()) {
+                return true
+            }
+        }
+        
+        return false 
+    }
 }
 
 /**
@@ -63,4 +89,7 @@ abstract class UserModel<T : AbstractUser<T>> : Model<T>() {
     val isSuperuser = boolean("is_superuser", defaultValue = false)
     val lastLogin = long("last_login", nullable = true)
     val dateJoined = long("date_joined", defaultValue = SystemClock.now())
+    
+    val groups = manyToMany(Groups, tableName = "auth_user_groups")
+    val userPermissions = manyToMany(Permissions, tableName = "auth_user_user_permissions")
 }

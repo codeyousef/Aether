@@ -32,6 +32,12 @@ interface DatabaseDriver {
     suspend fun getColumns(table: String): List<ColumnDefinition>
 
     /**
+     * Executes a raw SQL query.
+     * Use with caution.
+     */
+    suspend fun execute(sql: String, params: List<SqlValue> = emptyList()): Int
+
+    /**
      * Closes the database connection and releases resources.
      */
     suspend fun close()

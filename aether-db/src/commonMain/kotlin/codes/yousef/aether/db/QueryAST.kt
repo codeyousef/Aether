@@ -121,6 +121,9 @@ sealed class WhereClause {
     data class In(val column: Expression, val values: List<Expression>) : WhereClause()
 
     @Serializable
+    data class InSubQuery(val column: Expression, val subQuery: SelectQuery) : WhereClause()
+
+    @Serializable
     data class Between(val column: Expression, val lower: Expression, val upper: Expression) : WhereClause()
 
     @Serializable

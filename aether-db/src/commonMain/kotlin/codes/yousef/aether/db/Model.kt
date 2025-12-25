@@ -25,6 +25,11 @@ abstract class Model<T : BaseEntity<T>> {
     lateinit var primaryKeyColumn: ColumnProperty<T, *>
 
     /**
+     * List of ManyToMany relations defined on this model.
+     */
+    internal val manyToManyRelations = mutableListOf<ManyToManyRelation<T, *>>()
+
+    /**
      * Returns a QuerySet for this model.
      */
     val objects: QuerySet<T> get() = QuerySet(this)
