@@ -41,7 +41,7 @@ This document outlines the sequential feature list required to elevate Aether fr
 6.  **Admin Interface (`aether-admin`)**
     *   [x] **Model Registration**: `admin.register(User)`.
     *   [x] **Auto-CRUD**: Generate List, Create, Update, Delete views automatically using `Summon`.
-    *   [ ] **Filters & Search**: Auto-generate UI filters based on model fields.
+    *   [x] **Filters & Search**: Auto-generate UI filters based on model fields.
 
 ## Phase 3: Security & Middleware
 *Objective: Secure by default.*
@@ -70,5 +70,6 @@ This document outlines the sequential feature list required to elevate Aether fr
 *   [x] **Completed**: Phase 2 - Forms & Validation (aether-forms)
 *   [x] **Completed**: Phase 2 - Admin Interface Auto-CRUD (aether-admin)
 *   [x] **Completed**: Phase 4 - CLI Migrations (aether-cli)
-*   [ ] **Current Task**: Phase 2 - Admin Interface Filters & Search (aether-admin)
+*   [x] **Completed**: Phase 2 - Admin Interface Filters & Search (aether-admin)
+*   [ ] **Current Task**: Phase 3 - CSRF Protection (aether-core/middleware)
 
