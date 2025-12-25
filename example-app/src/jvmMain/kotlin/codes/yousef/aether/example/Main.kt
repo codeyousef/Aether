@@ -9,6 +9,8 @@ import codes.yousef.aether.core.pipeline.installCallLogging
 import codes.yousef.aether.core.pipeline.installContentNegotiation
 import codes.yousef.aether.core.pipeline.installRecovery
 import codes.yousef.aether.auth.*
+import codes.yousef.aether.admin.AdminSite
+import codes.yousef.aether.admin.ModelAdmin
 import codes.yousef.aether.db.DatabaseDriverRegistry
 import codes.yousef.aether.db.jvm.VertxPgDriver
 import codes.yousef.aether.ui.*
@@ -43,6 +45,13 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
     // Create tables if they don't exist
     Users.createTable()
     Sessions.createTable()
+
+    // Initialize Admin Site
+    val adminSite = AdminSite()
+    adminSite.register(Users, object : ModelAdmin<User>(Users) {
+        override val listDisplay = listOf("id", "username", "email", "isStaff", "isActive")
+        override val listDisplayLinks = listOf("id", "username")
+    })
 
     // Create router with all routes
     val router = router {
@@ -405,6 +414,7 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
         installCallLogging()
         installContentNegotiation()
         use(authMiddleware(Users))
+        use(adminSite.urls().asMiddleware())
         use(router.asMiddleware())
     }
 

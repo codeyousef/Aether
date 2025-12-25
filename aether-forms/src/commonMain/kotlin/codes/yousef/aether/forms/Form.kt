@@ -9,7 +9,7 @@ import codes.yousef.aether.ui.input
  * Base class for all forms.
  */
 abstract class Form {
-    private val fields = mutableMapOf<String, Field<*>>()
+    protected val fields = mutableMapOf<String, Field<*>>()
     private val errors = mutableMapOf<String, MutableList<String>>()
     private val cleanedData = mutableMapOf<String, Any?>()
 

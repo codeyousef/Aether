@@ -4,6 +4,7 @@ import codes.yousef.aether.db.BaseEntity
 import codes.yousef.aether.db.Model
 import codes.yousef.aether.web.Router
 import codes.yousef.aether.web.router
+import codes.yousef.aether.web.pathParam
 import codes.yousef.aether.ui.*
 
 /**
@@ -161,7 +162,10 @@ class AdminSite(val name: String = "admin") {
         }
         
         router.get("$baseUrl/:id") { exchange ->
-            val id = exchange.pathParam("id")
+            val id = exchange.pathParam("id") ?: run {
+                exchange.notFound("ID not provided")
+                return@get
+            }
             // We need to convert ID to correct type. Assuming Long or Int.
             // Since we don't know the type easily here without reflection on PK column,
             // we'll try to parse as Long (covers Int too usually) or String.
@@ -182,7 +186,10 @@ class AdminSite(val name: String = "admin") {
         }
         
         router.post("$baseUrl/:id") { exchange ->
-            val id = exchange.pathParam("id")
+            val id = exchange.pathParam("id") ?: run {
+                exchange.notFound("ID not provided")
+                return@post
+            }
             val pkValue: Any = id.toLongOrNull() ?: id
             val obj = model.get(pkValue)
             
@@ -205,7 +212,10 @@ class AdminSite(val name: String = "admin") {
         }
         
         router.get("$baseUrl/:id/delete") { exchange ->
-             val id = exchange.pathParam("id")
+             val id = exchange.pathParam("id") ?: run {
+                 exchange.notFound("ID not provided")
+                 return@get
+             }
              val pkValue: Any = id.toLongOrNull() ?: id
              val obj = model.get(pkValue)
              
@@ -237,7 +247,10 @@ class AdminSite(val name: String = "admin") {
         }
         
         router.post("$baseUrl/:id/delete") { exchange ->
-             val id = exchange.pathParam("id")
+             val id = exchange.pathParam("id") ?: run {
+                 exchange.notFound("ID not provided")
+                 return@post
+             }
              val pkValue: Any = id.toLongOrNull() ?: id
              val obj = model.get(pkValue)
              

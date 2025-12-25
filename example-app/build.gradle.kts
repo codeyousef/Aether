@@ -28,6 +28,7 @@ kotlin {
                 implementation(project(":aether-ui"))
                 implementation(project(":aether-auth"))
                 implementation(project(":aether-forms"))
+                implementation(project(":aether-admin"))
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization.json)
             }
