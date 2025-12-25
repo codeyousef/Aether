@@ -3,6 +3,9 @@ package codes.yousef.aether.cli
 import kotlinx.serialization.json.Json
 import java.io.File
 import kotlin.system.exitProcess
+import codes.yousef.aether.db.*
+import codes.yousef.aether.db.jvm.VertxPgDriver
+import kotlinx.coroutines.runBlocking
 
 /**
  * Aether CLI - Command line tools for the Aether framework.
@@ -168,19 +171,87 @@ private fun applyMigrationFiles(migrationsDir: File) {
     println("Applying ${migrations.size} migration(s)...")
     println()
 
-    // In a full implementation, this would:
-    // 1. Connect to the database
-    // 2. Check which migrations have already been applied
-    // 3. Execute pending migrations in order
-    // 4. Record applied migrations in a migrations table
+    // Connect to DB
+    val dbHost = System.getenv("DB_HOST") ?: "localhost"
+    val dbPort = System.getenv("DB_PORT")?.toIntOrNull() ?: 5432
+    val dbName = System.getenv("DB_NAME") ?: "aether_example"
+    val dbUser = System.getenv("DB_USER") ?: "postgres"
+    val dbPassword = System.getenv("DB_PASSWORD") ?: "postgres"
 
-    migrations.forEach { migration ->
-        println("  [DRY RUN] Would apply: ${migration.name}")
+    runBlocking {
+        println("Connecting to database $dbName at $dbHost:$dbPort...")
+        val driver = VertxPgDriver.create(
+            host = dbHost,
+            port = dbPort,
+            database = dbName,
+            user = dbUser,
+            password = dbPassword
+        )
+        DatabaseDriverRegistry.initialize(driver)
+
+        try {
+            // Create migrations table
+            driver.execute("""
+                CREATE TABLE IF NOT EXISTS _migrations (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL UNIQUE,
+                    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """.trimIndent())
+
+            // Get applied migrations
+            val appliedMigrations = try {
+                val rows = driver.executeQuery(SelectQuery(
+                    columns = listOf(Expression.ColumnRef(column = "name")),
+                    from = "_migrations"
+                ))
+                rows.map { it.getValue("name") as String }.toSet()
+            } catch (e: Exception) {
+                println("Error fetching applied migrations: ${e.message}")
+                emptySet()
+            }
+
+            var appliedCount = 0
+            migrations.forEach { migration ->
+                if (migration.name in appliedMigrations) {
+                    // println("  [SKIP] ${migration.name} (already applied)")
+                } else {
+                    println("  [APPLY] ${migration.name}")
+                    try {
+                        val sql = migration.readText()
+                        // Execute migration SQL
+                        // We split by semicolon to handle multiple statements if driver doesn't support it?
+                        // Vertx driver usually supports multiple statements if enabled, but let's assume single block or use execute.
+                        driver.execute(sql)
+
+                        // Record migration
+                        driver.executeUpdate(InsertQuery(
+                            table = "_migrations",
+                            columns = listOf("name"),
+                            values = listOf(Expression.Literal(SqlValue.StringValue(migration.name)))
+                        ))
+                        println("    -> Success")
+                        appliedCount++
+                    } catch (e: Exception) {
+                        println("    -> FAILED: ${e.message}")
+                        throw e // Stop on error
+                    }
+                }
+            }
+            
+            if (appliedCount == 0) {
+                println("Database is up to date.")
+            } else {
+                println("Successfully applied $appliedCount migration(s).")
+            }
+
+        } catch (e: Exception) {
+            println("Error applying migrations: ${e.message}")
+            e.printStackTrace()
+        } finally {
+            driver.close()
+        }
     }
-
-    println()
-    println("Note: This is a dry run. Full implementation requires database connection.")
-    println("      Configure your database connection in application.conf")
 }
 
 /**
