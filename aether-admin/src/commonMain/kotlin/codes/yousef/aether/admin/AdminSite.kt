@@ -1,7 +1,6 @@
 package codes.yousef.aether.admin
 
-import codes.yousef.aether.db.BaseEntity
-import codes.yousef.aether.db.Model
+import codes.yousef.aether.db.*
 import codes.yousef.aether.web.Router
 import codes.yousef.aether.web.router
 import codes.yousef.aether.web.pathParam
@@ -66,7 +65,44 @@ class AdminSite(val name: String = "admin") {
         val baseUrl = "/$modelName"
         
         router.get(baseUrl) { exchange ->
-            val objects = model.objects.toList()
+            var qs = model.objects
+            val queryParams = exchange.request.queryParameters()
+            
+            // Search
+            val searchQuery = exchange.request.queryParameter("q")
+            if (!searchQuery.isNullOrBlank() && admin.searchFields.isNotEmpty()) {
+                val searchConditions = admin.searchFields.map { field ->
+                    WhereClause.Like(
+                        column = Expression.ColumnRef(column = field),
+                        pattern = Expression.Literal(SqlValue.StringValue("%$searchQuery%"))
+                    )
+                }
+                qs = qs.filter(WhereClause.Or(searchConditions))
+            }
+            
+            // Filters
+            for (filterField in admin.listFilter) {
+                val filterValue = queryParams[filterField]?.firstOrNull()
+                if (!filterValue.isNullOrBlank()) {
+                    val column = model.columns.find { it.name == filterField }
+                    if (column != null) {
+                         val typedValue: SqlValue = when(column.type) {
+                             ColumnType.Integer, ColumnType.Serial -> SqlValue.IntValue(filterValue.toIntOrNull() ?: 0)
+                             ColumnType.Long, ColumnType.BigSerial -> SqlValue.LongValue(filterValue.toLongOrNull() ?: 0L)
+                             ColumnType.Boolean -> SqlValue.BooleanValue(filterValue.toBoolean())
+                             else -> SqlValue.StringValue(filterValue)
+                         }
+                         
+                         qs = qs.filter(WhereClause.Condition(
+                             left = Expression.ColumnRef(column = filterField),
+                             operator = ComparisonOperator.EQUALS,
+                             right = Expression.Literal(typedValue)
+                         ))
+                    }
+                }
+            }
+
+            val objects = qs.toList()
             
             exchange.render {
                 element("html") {
@@ -75,62 +111,119 @@ class AdminSite(val name: String = "admin") {
                         element("link", mapOf("rel" to "stylesheet", "href" to "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"))
                     }
                     body {
-                        div(mapOf("class" to "container mt-4")) {
-                            div(mapOf("class" to "d-flex justify-content-between align-items-center mb-4")) {
-                                h1 { text("Select $modelName to change") }
-                                a(href = "$name$baseUrl/add", attributes = mapOf("class" to "btn btn-primary")) {
-                                    text("Add $modelName")
-                                }
-                            }
-                            
-                            table(mapOf("class" to "table table-striped")) {
-                                thead {
-                                    tr {
-                                        // Headers
-                                        val displayFields = if (admin.listDisplay.isNotEmpty()) {
-                                            admin.listDisplay
-                                        } else {
-                                            listOf("ID", "String Representation")
+                        div(mapOf("class" to "container-fluid mt-4")) {
+                            div(mapOf("class" to "row")) {
+                                // Main Content
+                                div(mapOf("class" to if (admin.listFilter.isNotEmpty()) "col-md-9" else "col-12")) {
+                                    div(mapOf("class" to "d-flex justify-content-between align-items-center mb-4")) {
+                                        h1 { text("Select $modelName to change") }
+                                        a(href = "$name$baseUrl/add", attributes = mapOf("class" to "btn btn-primary")) {
+                                            text("Add $modelName")
                                         }
-                                        
-                                        for (field in displayFields) {
-                                            th { text(field.uppercase()) }
+                                    }
+                                    
+                                    // Search Bar
+                                    if (admin.searchFields.isNotEmpty()) {
+                                         form(action = "$name$baseUrl", method = "get", attributes = mapOf("class" to "mb-4")) {
+                                             div(mapOf("class" to "input-group")) {
+                                                 input(type = "text", name = "q", attributes = mapOf("class" to "form-control", "placeholder" to "Search...", "value" to (searchQuery ?: "")))
+                                                 // Preserve other filters
+                                                 for (filter in admin.listFilter) {
+                                                     val v = queryParams[filter]?.firstOrNull()
+                                                     if (v != null) input(type="hidden", name=filter, attributes=mapOf("value" to v))
+                                                 }
+                                                 button(attributes = mapOf("class" to "btn btn-outline-secondary", "type" to "submit")) { text("Search") }
+                                             }
+                                         }
+                                    }
+                                    
+                                    table(mapOf("class" to "table table-striped")) {
+                                        thead {
+                                            tr {
+                                                // Headers
+                                                val displayFields = if (admin.listDisplay.isNotEmpty()) {
+                                                    admin.listDisplay
+                                                } else {
+                                                    listOf("ID", "String Representation")
+                                                }
+                                                
+                                                for (field in displayFields) {
+                                                    th { text(field.uppercase()) }
+                                                }
+                                            }
+                                        }
+                                        tbody {
+                                            for (obj in objects) {
+                                                tr {
+                                                    if (admin.listDisplay.isNotEmpty()) {
+                                                        for (fieldName in admin.listDisplay) {
+                                                            val column = model.columns.find { it.name == fieldName }
+                                                            val value = if (column != null) {
+                                                                column.getValue(obj)?.toString() ?: "-"
+                                                            } else {
+                                                                "?"
+                                                            }
+                                                            
+                                                            td { 
+                                                                if (admin.listDisplayLinks.contains(fieldName) || 
+                                                                    (admin.listDisplayLinks.isEmpty() && fieldName == admin.listDisplay.first())) {
+                                                                    val pk = model.primaryKeyColumn.getValue(obj)
+                                                                    a(href = "$name$baseUrl/$pk") {
+                                                                        text(value)
+                                                                    }
+                                                                } else {
+                                                                    text(value)
+                                                                }
+                                                            }
+                                                        }
+                                                    } else {
+                                                        // Default display
+                                                        val pk = model.primaryKeyColumn.getValue(obj)
+                                                        td { 
+                                                            a(href = "$name$baseUrl/$pk") {
+                                                                text(pk.toString())
+                                                            }
+                                                        }
+                                                        td { text(obj.toString()) }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
-                                tbody {
-                                    for (obj in objects) {
-                                        tr {
-                                            if (admin.listDisplay.isNotEmpty()) {
-                                                for (fieldName in admin.listDisplay) {
-                                                    val column = model.columns.find { it.name == fieldName }
-                                                    val value = if (column != null) {
-                                                        column.getValue(obj)?.toString() ?: "-"
-                                                    } else {
-                                                        "?"
-                                                    }
-                                                    
-                                                    td { 
-                                                        if (admin.listDisplayLinks.contains(fieldName) || 
-                                                            (admin.listDisplayLinks.isEmpty() && fieldName == admin.listDisplay.first())) {
-                                                            val pk = model.primaryKeyColumn.getValue(obj)
-                                                            a(href = "$name$baseUrl/$pk") {
-                                                                text(value)
-                                                            }
-                                                        } else {
-                                                            text(value)
+                                
+                                // Sidebar
+                                if (admin.listFilter.isNotEmpty()) {
+                                    div(mapOf("class" to "col-md-3")) {
+                                        div(mapOf("class" to "card")) {
+                                            div(mapOf("class" to "card-header")) { text("Filter") }
+                                            div(mapOf("class" to "card-body")) {
+                                                for (filterField in admin.listFilter) {
+                                                    element("h5") { text(filterField.replaceFirstChar { it.uppercase() }) }
+                                                    div(mapOf("class" to "list-group mb-3")) {
+                                                        val currentVal = queryParams[filterField]?.firstOrNull()
+                                                        val allParams = queryParams.toMutableMap()
+                                                        allParams.remove(filterField)
+                                                        val allQueryString = allParams.entries.joinToString("&") { "${it.key}=${it.value.firstOrNull() ?: ""}" }
+                                                        
+                                                        a(href = "$name$baseUrl?$allQueryString", attributes = mapOf("class" to "list-group-item list-group-item-action ${if(currentVal == null) "active" else ""}")) { text("All") }
+                                                        
+                                                        // TODO: Fetch distinct values.
+                                                        // For now, if it's boolean, show True/False
+                                                        val column = model.columns.find { it.name == filterField }
+                                                        if (column?.type == ColumnType.Boolean) {
+                                                            val trueParams = queryParams.toMutableMap()
+                                                            trueParams[filterField] = listOf("true")
+                                                            val trueQs = trueParams.entries.joinToString("&") { "${it.key}=${it.value.firstOrNull() ?: ""}" }
+                                                            a(href = "$name$baseUrl?$trueQs", attributes = mapOf("class" to "list-group-item list-group-item-action ${if(currentVal == "true") "active" else ""}")) { text("Yes") }
+                                                            
+                                                            val falseParams = queryParams.toMutableMap()
+                                                            falseParams[filterField] = listOf("false")
+                                                            val falseQs = falseParams.entries.joinToString("&") { "${it.key}=${it.value.firstOrNull() ?: ""}" }
+                                                            a(href = "$name$baseUrl?$falseQs", attributes = mapOf("class" to "list-group-item list-group-item-action ${if(currentVal == "false") "active" else ""}")) { text("No") }
                                                         }
                                                     }
                                                 }
-                                            } else {
-                                                // Default display
-                                                val pk = model.primaryKeyColumn.getValue(obj)
-                                                td { 
-                                                    a(href = "$name$baseUrl/$pk") {
-                                                        text(pk.toString())
-                                                    }
-                                                }
-                                                td { text(obj.toString()) }
                                             }
                                         }
                                     }

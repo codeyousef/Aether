@@ -51,6 +51,8 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
     adminSite.register(Users, object : ModelAdmin<User>(Users) {
         override val listDisplay = listOf("id", "username", "email", "isStaff", "isActive")
         override val listDisplayLinks = listOf("id", "username")
+        override val searchFields = listOf("username", "email")
+        override val listFilter = listOf("isStaff", "isActive")
     })
 
     // Create router with all routes
