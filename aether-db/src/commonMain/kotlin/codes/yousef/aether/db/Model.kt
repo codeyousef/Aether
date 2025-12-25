@@ -16,7 +16,7 @@ abstract class Model<T : BaseEntity<T>> {
      * List of all columns in this model.
      * Populated automatically by property delegates.
      */
-    internal val columns = mutableListOf<ColumnProperty<T, *>>()
+    public val columns = mutableListOf<ColumnProperty<T, *>>()
 
     /**
      * The primary key column.
@@ -138,7 +138,7 @@ abstract class Model<T : BaseEntity<T>> {
      * Creates a new instance of the entity.
      * Must be implemented by subclasses.
      */
-    protected abstract fun createInstance(): T
+    public abstract fun createInstance(): T
 }
 
 // ============= Column Types =============

@@ -97,7 +97,8 @@ class ValidationError(message: String) : Exception(message)
 abstract class Field<T>(
     val label: String,
     val required: Boolean = true,
-    var name: String = ""
+    var name: String = "",
+    var value: T? = null
 ) {
     abstract fun clean(value: String?): T?
     abstract fun render(scope: ComposableScope)
@@ -116,10 +117,13 @@ class CharField(
     }
 
     override fun render(scope: ComposableScope) {
+        val attrs = mutableMapOf("id" to "id_$name")
+        value?.let { attrs["value"] = it }
+        
         scope.input(
             type = "text",
             name = name,
-            attributes = mapOf("id" to "id_$name")
+            attributes = attrs
         )
     }
 }
@@ -137,10 +141,13 @@ class IntegerField(
     }
 
     override fun render(scope: ComposableScope) {
+        val attrs = mutableMapOf("id" to "id_$name")
+        value?.let { attrs["value"] = it.toString() }
+        
         scope.input(
             type = "number",
             name = name,
-            attributes = mapOf("id" to "id_$name")
+            attributes = attrs
         )
     }
 }
@@ -158,10 +165,83 @@ class PasswordField(
     }
 
     override fun render(scope: ComposableScope) {
+        // Passwords usually don't pre-fill value for security
         scope.input(
             type = "password",
             name = name,
             attributes = mapOf("id" to "id_$name")
+        )
+    }
+}
+
+class BooleanField(
+    label: String,
+    required: Boolean = false // Checkboxes are usually optional (unchecked = false)
+) : Field<Boolean>(label, required) {
+    override fun clean(value: String?): Boolean? {
+        // HTML checkboxes send "on" or nothing.
+        // If value is present, it's true.
+        return value != null
+    }
+
+    override fun render(scope: ComposableScope) {
+        val attrs = mutableMapOf("id" to "id_$name")
+        if (value == true) {
+            attrs["checked"] = "checked"
+        }
+        
+        scope.input(
+            type = "checkbox",
+            name = name,
+            attributes = attrs
+        )
+    }
+}
+
+class LongField(
+    label: String,
+    required: Boolean = true
+) : Field<Long>(label, required) {
+    override fun clean(value: String?): Long? {
+        if (value.isNullOrBlank()) {
+            if (required) throw ValidationError("This field is required.")
+            return null
+        }
+        return value.toLongOrNull() ?: throw ValidationError("Enter a valid integer.")
+    }
+
+    override fun render(scope: ComposableScope) {
+        val attrs = mutableMapOf("id" to "id_$name")
+        value?.let { attrs["value"] = it.toString() }
+        
+        scope.input(
+            type = "number",
+            name = name,
+            attributes = attrs
+        )
+    }
+}
+
+class DoubleField(
+    label: String,
+    required: Boolean = true
+) : Field<Double>(label, required) {
+    override fun clean(value: String?): Double? {
+        if (value.isNullOrBlank()) {
+            if (required) throw ValidationError("This field is required.")
+            return null
+        }
+        return value.toDoubleOrNull() ?: throw ValidationError("Enter a valid number.")
+    }
+
+    override fun render(scope: ComposableScope) {
+        val attrs = mutableMapOf("id" to "id_$name", "step" to "any")
+        value?.let { attrs["value"] = it.toString() }
+        
+        scope.input(
+            type = "number",
+            name = name,
+            attributes = attrs
         )
     }
 }

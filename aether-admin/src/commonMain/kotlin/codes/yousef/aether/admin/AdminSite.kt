@@ -101,9 +101,26 @@ class AdminSite(val name: String = "admin") {
                                     for (obj in objects) {
                                         tr {
                                             if (admin.listDisplay.isNotEmpty()) {
-                                                // TODO: Reflection or property access to get field values
-                                                // For now, just show ID and toString
-                                                td { text(obj.toString()) }
+                                                for (fieldName in admin.listDisplay) {
+                                                    val column = model.columns.find { it.name == fieldName }
+                                                    val value = if (column != null) {
+                                                        column.getValue(obj)?.toString() ?: "-"
+                                                    } else {
+                                                        "?"
+                                                    }
+                                                    
+                                                    td { 
+                                                        if (admin.listDisplayLinks.contains(fieldName) || 
+                                                            (admin.listDisplayLinks.isEmpty() && fieldName == admin.listDisplay.first())) {
+                                                            val pk = model.primaryKeyColumn.getValue(obj)
+                                                            a(href = "$name$baseUrl/$pk") {
+                                                                text(value)
+                                                            }
+                                                        } else {
+                                                            text(value)
+                                                        }
+                                                    }
+                                                }
                                             } else {
                                                 // Default display
                                                 val pk = model.primaryKeyColumn.getValue(obj)
@@ -125,19 +142,161 @@ class AdminSite(val name: String = "admin") {
         }
         
         router.get("$baseUrl/add") { exchange ->
-            // TODO: Render add view
-            exchange.respond(body = "Add view for $modelName")
+            val form = ModelForm(model)
+            renderForm(exchange, form, "Add $modelName", "$name$baseUrl/add")
+        }
+        
+        router.post("$baseUrl/add") { exchange ->
+            val body = exchange.request.bodyText()
+            val formData = parseFormData(body)
+            val form = ModelForm(model)
+            form.bind(formData)
+            
+            if (form.isValid()) {
+                form.save()
+                exchange.redirect("$name$baseUrl")
+            } else {
+                renderForm(exchange, form, "Add $modelName", "$name$baseUrl/add")
+            }
         }
         
         router.get("$baseUrl/:id") { exchange ->
-            // TODO: Render change view
-            exchange.respond(body = "Change view for $modelName")
+            val id = exchange.pathParam("id")
+            // We need to convert ID to correct type. Assuming Long or Int.
+            // Since we don't know the type easily here without reflection on PK column,
+            // we'll try to parse as Long (covers Int too usually) or String.
+            
+            val pkValue: Any = id.toLongOrNull() ?: id
+            val obj = model.get(pkValue)
+            
+            if (obj == null) {
+                exchange.notFound("Object not found")
+                return@get
+            }
+            
+            val form = ModelForm(model, obj)
+            // Pre-fill form data from object
+            // ModelForm init automatically binds object values to fields.
+            
+            renderForm(exchange, form, "Change $modelName", "$name$baseUrl/$id")
+        }
+        
+        router.post("$baseUrl/:id") { exchange ->
+            val id = exchange.pathParam("id")
+            val pkValue: Any = id.toLongOrNull() ?: id
+            val obj = model.get(pkValue)
+            
+            if (obj == null) {
+                exchange.notFound("Object not found")
+                return@post
+            }
+            
+            val body = exchange.request.bodyText()
+            val formData = parseFormData(body)
+            val form = ModelForm(model, obj)
+            form.bind(formData)
+            
+            if (form.isValid()) {
+                form.save()
+                exchange.redirect("$name$baseUrl")
+            } else {
+                renderForm(exchange, form, "Change $modelName", "$name$baseUrl/$id")
+            }
         }
         
         router.get("$baseUrl/:id/delete") { exchange ->
-            // TODO: Render delete view
-            exchange.respond(body = "Delete view for $modelName")
+             val id = exchange.pathParam("id")
+             val pkValue: Any = id.toLongOrNull() ?: id
+             val obj = model.get(pkValue)
+             
+             if (obj == null) {
+                 exchange.notFound("Object not found")
+                 return@get
+             }
+             
+             exchange.render {
+                 element("html") {
+                     head {
+                         element("title") { text("Delete $modelName | Aether Admin") }
+                         element("link", mapOf("rel" to "stylesheet", "href" to "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"))
+                     }
+                     body {
+                         div(mapOf("class" to "container mt-4")) {
+                             h1 { text("Are you sure?") }
+                             p { text("Are you sure you want to delete the $modelName \"$obj\"? All of the following related items will be deleted:") }
+                             
+                             form(action = "$name$baseUrl/$id/delete", method = "post") {
+                                 csrfInput("dummy") // TODO: Real CSRF
+                                 button(attributes = mapOf("type" to "submit", "class" to "btn btn-danger")) { text("Yes, I'm sure") }
+                                 a(href = "$name$baseUrl", attributes = mapOf("class" to "btn btn-secondary ms-2")) { text("No, take me back") }
+                             }
+                         }
+                     }
+                 }
+             }
         }
+        
+        router.post("$baseUrl/:id/delete") { exchange ->
+             val id = exchange.pathParam("id")
+             val pkValue: Any = id.toLongOrNull() ?: id
+             val obj = model.get(pkValue)
+             
+             if (obj != null) {
+                 obj.delete()
+             }
+             
+             exchange.redirect("$name$baseUrl")
+        }
+    }
+    
+    private suspend fun renderForm(exchange: codes.yousef.aether.core.Exchange, form: codes.yousef.aether.forms.Form, title: String, actionUrl: String) {
+        exchange.render {
+            element("html") {
+                head {
+                    element("title") { text("$title | Aether Admin") }
+                    element("link", mapOf("rel" to "stylesheet", "href" to "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"))
+                }
+                body {
+                    div(mapOf("class" to "container mt-4")) {
+                        h1 { text(title) }
+                        
+                        form(action = actionUrl, method = "post", attributes = mapOf("class" to "mt-4")) {
+                            csrfInput("dummy")
+                            
+                            // Render form fields
+                            form.asP(this)
+                            
+                            div(attributes = mapOf("class" to "mt-3")) {
+                                button(attributes = mapOf("type" to "submit", "class" to "btn btn-primary")) { text("Save") }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private fun parseFormData(body: String): Map<String, String> {
+        return body.split("&")
+            .mapNotNull { part ->
+                val index = part.indexOf('=')
+                if (index > 0) {
+                    val name = decodeUrl(part.substring(0, index))
+                    val value = decodeUrl(part.substring(index + 1))
+                    name to value
+                } else {
+                    null
+                }
+            }
+            .toMap()
+    }
+    
+    private fun decodeUrl(value: String): String {
+        // Basic URL decoding
+        return value.replace("+", " ")
+            .replace(Regex("%([0-9A-Fa-f]{2})")) { match ->
+                match.groupValues[1].toInt(16).toChar().toString()
+            }
     }
 }
 
