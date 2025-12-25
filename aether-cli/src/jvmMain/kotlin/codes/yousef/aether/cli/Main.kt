@@ -13,6 +13,8 @@ import kotlinx.coroutines.runBlocking
  * Available commands:
  * - migrate: Generate and apply database migrations
  * - init: Initialize a new Aether project
+ * - startproject: Create a new Aether project structure
+ * - startapp: Create a new Aether app (module)
  * - help: Show help information
  */
 fun main(args: Array<String>) {
@@ -27,6 +29,8 @@ fun main(args: Array<String>) {
         when (command) {
             "migrate" -> handleMigrate(args.drop(1))
             "init" -> handleInit(args.drop(1))
+            "startproject" -> handleStartProject(args.drop(1))
+            "startapp" -> handleStartApp(args.drop(1))
             "help", "--help", "-h" -> printHelp()
             else -> {
                 println("Unknown command: $command")
@@ -306,6 +310,178 @@ private fun handleInit(args: List<String>) {
 }
 
 /**
+ * Handles the 'startproject' command.
+ */
+private fun handleStartProject(args: List<String>) {
+    if (args.isEmpty()) {
+        println("Error: Project name is required.")
+        println("Usage: aether-cli startproject <project_name>")
+        return
+    }
+
+    val projectName = args[0]
+    val projectDir = File(projectName)
+
+    if (projectDir.exists()) {
+        println("Error: Directory '$projectName' already exists.")
+        return
+    }
+
+    println("Creating Aether project '$projectName'...")
+    projectDir.mkdirs()
+
+    // Create build.gradle.kts
+    File(projectDir, "build.gradle.kts").writeText("""
+        plugins {
+            alias(libs.plugins.kotlin.multiplatform)
+            alias(libs.plugins.kotlin.serialization)
+            application
+        }
+
+        repositories {
+            mavenCentral()
+        }
+
+        kotlin {
+            jvm {
+                compilations.all {
+                    compilerOptions.configure {
+                        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+                    }
+                }
+            }
+            
+            sourceSets {
+                val commonMain by getting {
+                    dependencies {
+                        implementation("codes.yousef.aether:aether-core:0.1.0")
+                        implementation("codes.yousef.aether:aether-db:0.1.0")
+                        implementation("codes.yousef.aether:aether-web:0.1.0")
+                        implementation("codes.yousef.aether:aether-ui:0.1.0")
+                    }
+                }
+                val jvmMain by getting {
+                    dependencies {
+                        implementation("ch.qos.logback:logback-classic:1.4.14")
+                    }
+                }
+            }
+        }
+
+        application {
+            mainClass.set("$projectName.MainKt")
+        }
+    """.trimIndent())
+
+    // Create settings.gradle.kts
+    File(projectDir, "settings.gradle.kts").writeText("""
+        rootProject.name = "$projectName"
+        
+        dependencyResolutionManagement {
+            repositories {
+                mavenCentral()
+            }
+        }
+    """.trimIndent())
+
+    // Create gradle.properties
+    File(projectDir, "gradle.properties").writeText("""
+        kotlin.code.style=official
+    """.trimIndent())
+
+    // Create source structure
+    val srcDir = File(projectDir, "src/jvmMain/kotlin/$projectName")
+    srcDir.mkdirs()
+
+    // Create Main.kt
+    File(srcDir, "Main.kt").writeText("""
+        package $projectName
+
+        import codes.yousef.aether.core.AetherDispatcher
+        import codes.yousef.aether.core.jvm.VertxServer
+        import codes.yousef.aether.core.jvm.VertxServerConfig
+        import codes.yousef.aether.core.pipeline.Pipeline
+        import codes.yousef.aether.web.router
+        import kotlinx.coroutines.runBlocking
+
+        fun main() = runBlocking(AetherDispatcher.dispatcher) {
+            val router = router {
+                get("/") { exchange ->
+                    exchange.respondText("Hello, Aether!")
+                }
+            }
+
+            val pipeline = Pipeline().apply {
+                use(router.asMiddleware())
+            }
+
+            val server = VertxServer(VertxServerConfig(8080), pipeline)
+            server.start()
+            println("Server started on http://localhost:8080")
+        }
+    """.trimIndent())
+
+    println("Project '$projectName' created successfully!")
+}
+
+/**
+ * Handles the 'startapp' command.
+ */
+private fun handleStartApp(args: List<String>) {
+    if (args.isEmpty()) {
+        println("Error: App name is required.")
+        println("Usage: aether-cli startapp <app_name>")
+        return
+    }
+
+    val appName = args[0]
+    val appDir = File(appName)
+
+    if (appDir.exists()) {
+        println("Error: Directory '$appName' already exists.")
+        return
+    }
+
+    println("Creating Aether app '$appName'...")
+    appDir.mkdirs()
+
+    // Create build.gradle.kts
+    File(appDir, "build.gradle.kts").writeText("""
+        plugins {
+            kotlin("multiplatform")
+        }
+
+        kotlin {
+            jvm()
+            sourceSets {
+                val commonMain by getting {
+                    dependencies {
+                        implementation(project(":aether-core"))
+                        implementation(project(":aether-db"))
+                    }
+                }
+            }
+        }
+    """.trimIndent())
+
+    // Create source structure
+    val srcDir = File(appDir, "src/commonMain/kotlin/$appName")
+    srcDir.mkdirs()
+
+    // Create Models.kt
+    File(srcDir, "Models.kt").writeText("""
+        package $appName
+
+        import codes.yousef.aether.db.Model
+
+        // object MyModel : Model<MyEntity>() { ... }
+    """.trimIndent())
+
+    println("App '$appName' created successfully!")
+    println("Don't forget to include ':$appName' in your settings.gradle.kts")
+}
+
+/**
  * Prints general help information.
  */
 private fun printHelp() {
@@ -317,13 +493,14 @@ private fun printHelp() {
         Commands:
           migrate               Manage database migrations
           init [directory]      Initialize a new Aether project
+          startproject [name]   Create a new Aether project structure
+          startapp [name]       Create a new Aether app (module)
           help                  Show this help message
 
         Examples:
-          aether-cli migrate --create add_users_table
+          aether-cli startproject myproject
+          aether-cli startapp blog
           aether-cli migrate --apply
-          aether-cli init my-project
-          aether-cli help
 
         For command-specific help:
           aether-cli <command> --help
