@@ -7,6 +7,7 @@ package codes.yousef.aether.web
  * Supports:
  * - Static paths: /users/list
  * - Path parameters: /users/:id, /users/:userId/posts/:postId
+ * - Wildcard catch-all: /files/[asterisk] (captures remaining path as "*" parameter)
  * - Proper prefix splitting and node merging
  */
 class RadixTree<T> {
@@ -31,8 +32,16 @@ class RadixTree<T> {
         while (remaining.isNotEmpty()) {
             val segment = extractNextSegment(remaining)
             val isParam = segment.startsWith(':')
+            val isWildcard = segment == "*"
 
-            if (isParam) {
+            if (isWildcard) {
+                // Wildcard must be at the end of the route
+                if (current.wildcardChild == null) {
+                    current.wildcardChild = RadixNode()
+                }
+                current = current.wildcardChild!!
+                remaining = ""  // Wildcard consumes everything, nothing remains
+            } else if (isParam) {
                 val paramName = segment.substring(1)
                 if (current.paramChild == null) {
                     current.paramChild = RadixNode(paramName = paramName)
@@ -134,9 +143,20 @@ class RadixTree<T> {
                 if (remaining.startsWith("/")) {
                     remaining = remaining.substring(1)
                 }
+            } else if (current.wildcardChild != null) {
+                // Wildcard captures the entire remaining path
+                params["*"] = remaining
+                current = current.wildcardChild!!
+                remaining = ""  // Consumed everything
             } else {
                 return null
             }
+        }
+
+        // Check if we ended on a node with a wildcard that should match empty remaining
+        if (current.value == null && current.wildcardChild != null) {
+            params["*"] = ""
+            return current.wildcardChild!!.value?.let { RouteMatch(it, params) }
         }
 
         return current.value?.let { RouteMatch(it, params) }
@@ -188,12 +208,14 @@ class RadixTree<T> {
  * @property children Map of edge labels to child nodes
  * @property paramChild The child node for parameter segments (e.g., :id)
  * @property paramName The name of the parameter (if this is a parameter node)
+ * @property wildcardChild The child node for wildcard catch-all segments (*)
  */
 internal class RadixNode<T>(
     var value: T? = null,
     val children: MutableMap<String, RadixNode<T>> = mutableMapOf(),
     var paramChild: RadixNode<T>? = null,
-    var paramName: String? = null
+    var paramName: String? = null,
+    var wildcardChild: RadixNode<T>? = null
 )
 
 /**

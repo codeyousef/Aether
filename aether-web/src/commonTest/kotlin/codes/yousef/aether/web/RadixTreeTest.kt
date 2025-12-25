@@ -176,4 +176,77 @@ class RadixTreeTest {
         assertEquals("user_detail", match.value)
         assertEquals("abc-123_xyz", match.params["id"])
     }
+
+    @Test
+    fun testWildcardCatchAll() {
+        val tree = RadixTree<String>()
+        tree.insert("/files/*", "file_handler")
+
+        val match1 = tree.search("/files/document.pdf")
+        assertNotNull(match1)
+        assertEquals("file_handler", match1.value)
+        assertEquals("document.pdf", match1.params["*"])
+
+        val match2 = tree.search("/files/path/to/deep/file.txt")
+        assertNotNull(match2)
+        assertEquals("file_handler", match2.value)
+        assertEquals("path/to/deep/file.txt", match2.params["*"])
+    }
+
+    @Test
+    fun testWildcardWithPrefix() {
+        val tree = RadixTree<String>()
+        tree.insert("/docs/*", "docs_handler")
+
+        val match = tree.search("/docs/roadmap/v0.7.0")
+        assertNotNull(match)
+        assertEquals("docs_handler", match.value)
+        assertEquals("roadmap/v0.7.0", match.params["*"])
+    }
+
+    @Test
+    fun testWildcardWithStaticFallback() {
+        val tree = RadixTree<String>()
+        tree.insert("/docs", "docs_index")
+        tree.insert("/docs/*", "docs_handler")
+
+        val match1 = tree.search("/docs")
+        assertNotNull(match1)
+        assertEquals("docs_index", match1.value)
+
+        val match2 = tree.search("/docs/getting-started")
+        assertNotNull(match2)
+        assertEquals("docs_handler", match2.value)
+        assertEquals("getting-started", match2.params["*"])
+    }
+
+    @Test
+    fun testWildcardMatchesWithTrailingSlash() {
+        val tree = RadixTree<String>()
+        tree.insert("/api/*", "api_handler")
+
+        // /api (without trailing path) matches the wildcard with empty capture
+        // This is intentional - wildcard routes should match their prefix
+        val match = tree.search("/api")
+        assertNotNull(match)
+        assertEquals("api_handler", match.value)
+        assertEquals("", match.params["*"])
+    }
+
+    @Test
+    fun testMultipleWildcardRoutes() {
+        val tree = RadixTree<String>()
+        tree.insert("/static/*", "static_handler")
+        tree.insert("/assets/*", "asset_handler")
+
+        val match1 = tree.search("/static/css/style.css")
+        assertNotNull(match1)
+        assertEquals("static_handler", match1.value)
+        assertEquals("css/style.css", match1.params["*"])
+
+        val match2 = tree.search("/assets/images/logo.png")
+        assertNotNull(match2)
+        assertEquals("asset_handler", match2.value)
+        assertEquals("images/logo.png", match2.params["*"])
+    }
 }
