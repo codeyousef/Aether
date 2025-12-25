@@ -7,7 +7,13 @@ import codes.yousef.aether.core.jvm.VertxServerConfig
 import codes.yousef.aether.core.pipeline.Pipeline
 import codes.yousef.aether.core.pipeline.installCallLogging
 import codes.yousef.aether.core.pipeline.installContentNegotiation
+import codes.yousef.aether.core.pipeline.installCsrfProtection
 import codes.yousef.aether.core.pipeline.installRecovery
+import codes.yousef.aether.core.pipeline.installSecurityHeaders
+import codes.yousef.aether.core.pipeline.installDebugToolbar
+import codes.yousef.aether.auth.*
+import codes.yousef.aether.admin.AdminSite
+import codes.yousef.aether.admin.ModelAdmin
 import codes.yousef.aether.db.DatabaseDriverRegistry
 import codes.yousef.aether.db.jvm.VertxPgDriver
 import codes.yousef.aether.ui.*
@@ -41,11 +47,22 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
 
     // Create tables if they don't exist
     Users.createTable()
+    Sessions.createTable()
+
+    // Initialize Admin Site
+    val adminSite = AdminSite()
+    adminSite.register(Users, object : ModelAdmin<User>(Users) {
+        override val listDisplay = listOf("id", "username", "email", "isStaff", "isActive")
+        override val listDisplayLinks = listOf("id", "username")
+        override val searchFields = listOf("username", "email")
+        override val listFilter = listOf("isStaff", "isActive")
+    })
 
     // Create router with all routes
     val router = router {
         // Home page with UI DSL
         get("/") { exchange ->
+            val currentUser = exchange.attributes.get(UserKey) as? User
             exchange.render {
                 element("html") {
                     head {
@@ -53,6 +70,18 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
                     }
                     body {
                         h1 { text("Welcome to Aether Framework") }
+                        if (currentUser != null) {
+                            p { text("Logged in as: ${currentUser.username}") }
+                            div {
+                                a("/logout") { text("Logout") }
+                            }
+                        } else {
+                            div {
+                                a("/login") { text("Login") }
+                                text(" | ")
+                                a("/register") { text("Register") }
+                            }
+                        }
                         p { text("A modern Kotlin Multiplatform web framework") }
                         div {
                             h2 { text("Features") }
@@ -71,6 +100,171 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
                                 li { a("/api/users") { text("JSON API - List Users") } }
                                 li { a("/about") { text("About Page") } }
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Login Page
+        get("/login") { exchange ->
+            val form = LoginForm()
+            exchange.render {
+                element("html") {
+                    head { title { text("Login") } }
+                    body {
+                        h1 { text("Login") }
+                        form(action = "/login", method = "post") {
+                            csrfToken(exchange)
+                            form.asP(this)
+                            div {
+                                input(type = "submit", attributes = mapOf("value" to "Login"))
+                            }
+                        }
+                        div { a("/") { text("Back") } }
+                    }
+                }
+            }
+        }
+
+        // Handle Login
+        post("/login") { exchange ->
+            val body = exchange.request.bodyText()
+            val params = body.split("&").associate {
+                val parts = it.split("=")
+                val key = parts.getOrElse(0) { "" }
+                val value = parts.getOrElse(1) { "" }
+                key to value
+            }
+            
+            val form = LoginForm()
+            form.bind(params)
+            
+            if (form.isValid()) {
+                val username = form.get<String>("username")!!
+                val password = form.get<String>("password")!!
+                
+                val user = Auth.authenticate(username, password, Users) as? User
+                if (user != null) {
+                    Auth.login(exchange, user)
+                    exchange.redirect("/")
+                } else {
+                    form.addError("__all__", "Invalid username or password")
+                    exchange.render {
+                        element("html") {
+                            body {
+                                h1 { text("Login") }
+                                form(action = "/login", method = "post") {
+                                    csrfToken(exchange)
+                                    form.asP(this)
+                                    div {
+                                        input(type = "submit", attributes = mapOf("value" to "Login"))
+                                    }
+                                }
+                                div { a("/") { text("Back") } }
+                            }
+                        }
+                    }
+                }
+            } else {
+                exchange.render {
+                    element("html") {
+                        body {
+                            h1 { text("Login") }
+                            form(action = "/login", method = "post") {
+                                csrfToken(exchange)
+                                form.asP(this)
+                                div {
+                                    input(type = "submit", attributes = mapOf("value" to "Login"))
+                                }
+                            }
+                            div { a("/") { text("Back") } }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Logout
+        get("/logout") { exchange ->
+            Auth.logout(exchange)
+            exchange.redirect("/")
+        }
+
+        // Register Page
+        get("/register") { exchange ->
+             val form = RegisterForm()
+             exchange.render {
+                element("html") {
+                    head { title { text("Register") } }
+                    body {
+                        h1 { text("Register") }
+                        form(action = "/register", method = "post") {
+                            csrfToken(exchange)
+                            form.asP(this)
+                            div {
+                                input(type = "submit", attributes = mapOf("value" to "Register"))
+                            }
+                        }
+                        div { a("/") { text("Back") } }
+                    }
+                }
+            }
+        }
+
+        // Handle Register
+        post("/register") { exchange ->
+            val body = exchange.request.bodyText()
+            val params = body.split("&").associate {
+                val parts = it.split("=")
+                val key = parts.getOrElse(0) { "" }
+                val value = parts.getOrElse(1) { "" }
+                key to value
+            }
+            
+            val form = RegisterForm()
+            form.bind(params)
+            
+            if (form.isValid()) {
+                val username = form.get<String>("username")!!
+                val email = form.get<String>("email")!!.replace("%40", "@")
+                val password = form.get<String>("password")!!
+
+                if (User.findByUsername(username) != null) {
+                     form.addError("username", "Username already taken")
+                     exchange.render {
+                        element("html") {
+                            body {
+                                h1 { text("Register") }
+                                form(action = "/register", method = "post") {
+                                    csrfToken(exchange)
+                                    form.asP(this)
+                                    div {
+                                        input(type = "submit", attributes = mapOf("value" to "Register"))
+                                    }
+                                }
+                                div { a("/") { text("Back") } }
+                            }
+                        }
+                    }
+                } else {
+                    val user = User.create(username, email, null, password)
+                    Auth.login(exchange, user)
+                    exchange.redirect("/")
+                }
+            } else {
+                exchange.render {
+                    element("html") {
+                        body {
+                            h1 { text("Register") }
+                            form(action = "/register", method = "post") {
+                                csrfToken(exchange)
+                                form.asP(this)
+                                div {
+                                    input(type = "submit", attributes = mapOf("value" to "Register"))
+                                }
+                            }
+                            div { a("/") { text("Back") } }
                         }
                     }
                 }
@@ -113,7 +307,7 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
 
         // Show user by ID with path parameter
         get("/users/:id") { exchange ->
-            val userId = exchange.pathParamInt("id")
+            val userId = exchange.pathParam("id")?.toLongOrNull()
             if (userId == null) {
                 exchange.badRequest("Invalid user ID")
                 return@get
@@ -178,7 +372,8 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
                 val user = User.create(
                     username = createRequest.username,
                     email = createRequest.email,
-                    age = createRequest.age
+                    age = createRequest.age,
+                    password = createRequest.password
                 )
 
                 val userDto = UserDto(
@@ -228,7 +423,12 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
     val pipeline = Pipeline().apply {
         installRecovery()
         installCallLogging()
+        installDebugToolbar()
+        installSecurityHeaders()
         installContentNegotiation()
+        installCsrfProtection()
+        use(authMiddleware(Users))
+        use(adminSite.urls().asMiddleware())
         use(router.asMiddleware())
     }
 
@@ -267,7 +467,7 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
  */
 @Serializable
 data class UserDto(
-    val id: Int?,
+    val id: Long?,
     val username: String?,
     val email: String?,
     val age: Int?
@@ -277,7 +477,8 @@ data class UserDto(
 data class CreateUserRequest(
     val username: String?,
     val email: String?,
-    val age: Int?
+    val age: Int?,
+    val password: String? = null
 )
 
 /**

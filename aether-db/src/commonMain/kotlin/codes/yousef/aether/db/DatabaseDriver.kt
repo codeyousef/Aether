@@ -11,6 +11,11 @@ interface DatabaseDriver {
     suspend fun executeQuery(query: QueryAST): List<Row>
 
     /**
+     * Executes a raw SQL query that returns rows.
+     */
+    suspend fun executeQueryRaw(sql: String): List<Row>
+
+    /**
      * Executes a query that modifies data (INSERT, UPDATE, DELETE).
      * Returns the number of affected rows.
      */
@@ -20,6 +25,22 @@ interface DatabaseDriver {
      * Executes a DDL statement (CREATE TABLE, etc.).
      */
     suspend fun executeDDL(query: QueryAST)
+
+    /**
+     * Returns a list of all table names in the database.
+     */
+    suspend fun getTables(): List<String>
+
+    /**
+     * Returns the column definitions for the specified table.
+     */
+    suspend fun getColumns(table: String): List<ColumnDefinition>
+
+    /**
+     * Executes a raw SQL query.
+     * Use with caution.
+     */
+    suspend fun execute(sql: String, params: List<SqlValue> = emptyList()): Int
 
     /**
      * Closes the database connection and releases resources.

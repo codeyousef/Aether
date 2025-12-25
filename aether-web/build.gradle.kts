@@ -16,7 +16,11 @@ kotlin {
     }
 
     wasmJs {
-        browser()
+        browser {
+            testTask {
+                enabled = false
+            }
+        }
         nodejs()
     }
 

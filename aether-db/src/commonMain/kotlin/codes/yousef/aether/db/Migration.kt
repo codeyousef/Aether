@@ -254,6 +254,7 @@ data class MigrationStatus(
 /**
  * Raw SQL query for DDL operations.
  */
+@kotlinx.serialization.Serializable
 data class RawQuery(val sql: String) : QueryAST()
 
 /**

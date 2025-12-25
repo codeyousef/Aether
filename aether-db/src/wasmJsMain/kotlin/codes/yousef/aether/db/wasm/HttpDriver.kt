@@ -35,6 +35,17 @@ class HttpDriver(
         return response.rows.map { HttpRow(it) }
     }
 
+    override suspend fun executeQueryRaw(sql: String): List<Row> {
+        val request = QueryRequest(
+            query = RawQuery(sql),
+            operation = "query"
+        )
+
+        val response = sendRequest(request)
+
+        return response.rows.map { HttpRow(it) }
+    }
+
     override suspend fun executeUpdate(query: QueryAST): Int {
         val request = QueryRequest(
             query = query,
@@ -53,6 +64,18 @@ class HttpDriver(
         )
 
         sendRequest(request)
+    }
+
+    override suspend fun getTables(): List<String> {
+        throw DatabaseException("Introspection not supported in HttpDriver")
+    }
+
+    override suspend fun getColumns(table: String): List<ColumnDefinition> {
+        throw DatabaseException("Introspection not supported in HttpDriver")
+    }
+
+    override suspend fun execute(sql: String, params: List<SqlValue>): Int {
+        throw DatabaseException("Raw SQL execution not supported in HttpDriver")
     }
 
     override suspend fun close() {

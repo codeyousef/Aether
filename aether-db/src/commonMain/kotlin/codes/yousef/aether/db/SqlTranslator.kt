@@ -1,6 +1,4 @@
-package codes.yousef.aether.db.jvm
-
-import codes.yousef.aether.db.*
+package codes.yousef.aether.db
 
 /**
  * Result of SQL translation containing the SQL string and parameters.
@@ -255,6 +253,11 @@ object SqlTranslator {
                 val col = translateExpression(where.column, params)
                 val values = where.values.joinToString(", ") { translateExpression(it, params) }
                 "$col IN ($values)"
+            }
+            is WhereClause.InSubQuery -> {
+                val col = translateExpression(where.column, params)
+                val sub = translateSelect(where.subQuery, params)
+                "$col IN ($sub)"
             }
             is WhereClause.Between -> {
                 val col = translateExpression(where.column, params)

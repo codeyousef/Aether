@@ -3,6 +3,9 @@ package codes.yousef.aether.cli
 import kotlinx.serialization.json.Json
 import java.io.File
 import kotlin.system.exitProcess
+import codes.yousef.aether.db.*
+import codes.yousef.aether.db.jvm.VertxPgDriver
+import kotlinx.coroutines.runBlocking
 
 /**
  * Aether CLI - Command line tools for the Aether framework.
@@ -10,6 +13,9 @@ import kotlin.system.exitProcess
  * Available commands:
  * - migrate: Generate and apply database migrations
  * - init: Initialize a new Aether project
+ * - startproject: Create a new Aether project structure
+ * - startapp: Create a new Aether app (module)
+ * - inspectdb: Introspect database and generate Model classes
  * - help: Show help information
  */
 fun main(args: Array<String>) {
@@ -24,6 +30,10 @@ fun main(args: Array<String>) {
         when (command) {
             "migrate" -> handleMigrate(args.drop(1))
             "init" -> handleInit(args.drop(1))
+            "startproject" -> handleStartProject(args.drop(1))
+            "startapp" -> handleStartApp(args.drop(1))
+            "inspectdb" -> handleInspectDb(args.drop(1))
+            "shell" -> handleShell(args.drop(1))
             "help", "--help", "-h" -> printHelp()
             else -> {
                 println("Unknown command: $command")
@@ -168,19 +178,87 @@ private fun applyMigrationFiles(migrationsDir: File) {
     println("Applying ${migrations.size} migration(s)...")
     println()
 
-    // In a full implementation, this would:
-    // 1. Connect to the database
-    // 2. Check which migrations have already been applied
-    // 3. Execute pending migrations in order
-    // 4. Record applied migrations in a migrations table
+    // Connect to DB
+    val dbHost = System.getenv("DB_HOST") ?: "localhost"
+    val dbPort = System.getenv("DB_PORT")?.toIntOrNull() ?: 5432
+    val dbName = System.getenv("DB_NAME") ?: "aether_example"
+    val dbUser = System.getenv("DB_USER") ?: "postgres"
+    val dbPassword = System.getenv("DB_PASSWORD") ?: "postgres"
 
-    migrations.forEach { migration ->
-        println("  [DRY RUN] Would apply: ${migration.name}")
+    runBlocking {
+        println("Connecting to database $dbName at $dbHost:$dbPort...")
+        val driver = VertxPgDriver.create(
+            host = dbHost,
+            port = dbPort,
+            database = dbName,
+            user = dbUser,
+            password = dbPassword
+        )
+        DatabaseDriverRegistry.initialize(driver)
+
+        try {
+            // Create migrations table
+            driver.execute("""
+                CREATE TABLE IF NOT EXISTS _migrations (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL UNIQUE,
+                    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """.trimIndent())
+
+            // Get applied migrations
+            val appliedMigrations = try {
+                val rows = driver.executeQuery(SelectQuery(
+                    columns = listOf(Expression.ColumnRef(column = "name")),
+                    from = "_migrations"
+                ))
+                rows.map { it.getValue("name") as String }.toSet()
+            } catch (e: Exception) {
+                println("Error fetching applied migrations: ${e.message}")
+                emptySet()
+            }
+
+            var appliedCount = 0
+            migrations.forEach { migration ->
+                if (migration.name in appliedMigrations) {
+                    // println("  [SKIP] ${migration.name} (already applied)")
+                } else {
+                    println("  [APPLY] ${migration.name}")
+                    try {
+                        val sql = migration.readText()
+                        // Execute migration SQL
+                        // We split by semicolon to handle multiple statements if driver doesn't support it?
+                        // Vertx driver usually supports multiple statements if enabled, but let's assume single block or use execute.
+                        driver.execute(sql)
+
+                        // Record migration
+                        driver.executeUpdate(InsertQuery(
+                            table = "_migrations",
+                            columns = listOf("name"),
+                            values = listOf(Expression.Literal(SqlValue.StringValue(migration.name)))
+                        ))
+                        println("    -> Success")
+                        appliedCount++
+                    } catch (e: Exception) {
+                        println("    -> FAILED: ${e.message}")
+                        throw e // Stop on error
+                    }
+                }
+            }
+            
+            if (appliedCount == 0) {
+                println("Database is up to date.")
+            } else {
+                println("Successfully applied $appliedCount migration(s).")
+            }
+
+        } catch (e: Exception) {
+            println("Error applying migrations: ${e.message}")
+            e.printStackTrace()
+        } finally {
+            driver.close()
+        }
     }
-
-    println()
-    println("Note: This is a dry run. Full implementation requires database connection.")
-    println("      Configure your database connection in application.conf")
 }
 
 /**
@@ -235,6 +313,280 @@ private fun handleInit(args: List<String>) {
 }
 
 /**
+ * Handles the 'startproject' command.
+ */
+private fun handleStartProject(args: List<String>) {
+    if (args.isEmpty()) {
+        println("Error: Project name is required.")
+        println("Usage: aether-cli startproject <project_name>")
+        return
+    }
+
+    val projectName = args[0]
+    val projectDir = File(projectName)
+
+    if (projectDir.exists()) {
+        println("Error: Directory '$projectName' already exists.")
+        return
+    }
+
+    println("Creating Aether project '$projectName'...")
+    projectDir.mkdirs()
+
+    // Create build.gradle.kts
+    File(projectDir, "build.gradle.kts").writeText("""
+        plugins {
+            alias(libs.plugins.kotlin.multiplatform)
+            alias(libs.plugins.kotlin.serialization)
+            application
+        }
+
+        repositories {
+            mavenCentral()
+        }
+
+        kotlin {
+            jvm {
+                compilations.all {
+                    compilerOptions.configure {
+                        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+                    }
+                }
+            }
+            
+            sourceSets {
+                val commonMain by getting {
+                    dependencies {
+                        implementation("codes.yousef.aether:aether-core:0.1.0")
+                        implementation("codes.yousef.aether:aether-db:0.1.0")
+                        implementation("codes.yousef.aether:aether-web:0.1.0")
+                        implementation("codes.yousef.aether:aether-ui:0.1.0")
+                    }
+                }
+                val jvmMain by getting {
+                    dependencies {
+                        implementation("ch.qos.logback:logback-classic:1.4.14")
+                    }
+                }
+            }
+        }
+
+        application {
+            mainClass.set("$projectName.MainKt")
+        }
+    """.trimIndent())
+
+    // Create settings.gradle.kts
+    File(projectDir, "settings.gradle.kts").writeText("""
+        rootProject.name = "$projectName"
+        
+        dependencyResolutionManagement {
+            repositories {
+                mavenCentral()
+            }
+        }
+    """.trimIndent())
+
+    // Create gradle.properties
+    File(projectDir, "gradle.properties").writeText("""
+        kotlin.code.style=official
+    """.trimIndent())
+
+    // Create source structure
+    val srcDir = File(projectDir, "src/jvmMain/kotlin/$projectName")
+    srcDir.mkdirs()
+
+    // Create Main.kt
+    File(srcDir, "Main.kt").writeText("""
+        package $projectName
+
+        import codes.yousef.aether.core.AetherDispatcher
+        import codes.yousef.aether.core.jvm.VertxServer
+        import codes.yousef.aether.core.jvm.VertxServerConfig
+        import codes.yousef.aether.core.pipeline.Pipeline
+        import codes.yousef.aether.web.router
+        import kotlinx.coroutines.runBlocking
+
+        fun main() = runBlocking(AetherDispatcher.dispatcher) {
+            val router = router {
+                get("/") { exchange ->
+                    exchange.respondText("Hello, Aether!")
+                }
+            }
+
+            val pipeline = Pipeline().apply {
+                use(router.asMiddleware())
+            }
+
+            val server = VertxServer(VertxServerConfig(8080), pipeline)
+            server.start()
+            println("Server started on http://localhost:8080")
+        }
+    """.trimIndent())
+
+    println("Project '$projectName' created successfully!")
+}
+
+/**
+ * Handles the 'startapp' command.
+ */
+private fun handleStartApp(args: List<String>) {
+    if (args.isEmpty()) {
+        println("Error: App name is required.")
+        println("Usage: aether-cli startapp <app_name>")
+        return
+    }
+
+    val appName = args[0]
+    val appDir = File(appName)
+
+    if (appDir.exists()) {
+        println("Error: Directory '$appName' already exists.")
+        return
+    }
+
+    println("Creating Aether app '$appName'...")
+    appDir.mkdirs()
+
+    // Create build.gradle.kts
+    File(appDir, "build.gradle.kts").writeText("""
+        plugins {
+            kotlin("multiplatform")
+        }
+
+        kotlin {
+            jvm()
+            sourceSets {
+                val commonMain by getting {
+                    dependencies {
+                        implementation(project(":aether-core"))
+                        implementation(project(":aether-db"))
+                    }
+                }
+            }
+        }
+    """.trimIndent())
+
+    // Create source structure
+    val srcDir = File(appDir, "src/commonMain/kotlin/$appName")
+    srcDir.mkdirs()
+
+    // Create Models.kt
+    File(srcDir, "Models.kt").writeText("""
+        package $appName
+
+        import codes.yousef.aether.db.Model
+
+        // object MyModel : Model<MyEntity>() { ... }
+    """.trimIndent())
+
+    println("App '$appName' created successfully!")
+    println("Don't forget to include ':$appName' in your settings.gradle.kts")
+}
+
+/**
+ * Handles the 'inspectdb' command.
+ */
+private fun handleInspectDb(args: List<String>) {
+    // Parse args
+    var host = "localhost"
+    var port = 5432
+    var db = "postgres"
+    var user = "postgres"
+    var password = "postgres"
+
+    var i = 0
+    while (i < args.size) {
+        when (args[i]) {
+            "--host" -> if (i + 1 < args.size) host = args[++i]
+            "--port" -> if (i + 1 < args.size) port = args[++i].toIntOrNull() ?: 5432
+            "--db" -> if (i + 1 < args.size) db = args[++i]
+            "--user" -> if (i + 1 < args.size) user = args[++i]
+            "--password" -> if (i + 1 < args.size) password = args[++i]
+            "--help", "-h" -> {
+                println("Usage: aether-cli inspectdb --host <host> --port <port> --db <db> --user <user> --password <password>")
+                return
+            }
+        }
+        i++
+    }
+
+    runBlocking {
+        val driver = VertxPgDriver.create(host, port, db, user, password)
+        try {
+            val tables = driver.getTables()
+            
+            println("// Auto-generated by Aether inspectdb")
+            println("package codes.yousef.aether.generated")
+            println()
+            println("import codes.yousef.aether.db.*")
+            println("import kotlinx.serialization.Serializable")
+            println()
+
+            for (tableName in tables) {
+                if (tableName.startsWith("_")) continue // Skip internal tables
+
+                val className = tableName.split("_")
+                    .joinToString("") { it.replaceFirstChar { char -> char.uppercase() } }
+                val entityName = className.removeSuffix("s") // Simple plural to singular
+
+                println("@Serializable")
+                println("data class $entityName(")
+                
+                val columns = driver.getColumns(tableName)
+                val pkColumn = columns.find { it.primaryKey }
+                
+                // Generate Entity class
+                columns.forEachIndexed { index, col ->
+                    val type = when {
+                        col.type.contains("BIGINT") || col.type.contains("BIGSERIAL") -> "Long"
+                        col.type.contains("INT") || col.type.contains("SERIAL") -> "Int"
+                        col.type.contains("CHAR") || col.type.contains("TEXT") -> "String"
+                        col.type.contains("BOOL") -> "Boolean"
+                        else -> "String" // Fallback
+                    }
+                    val nullable = if (col.nullable || col.primaryKey) "?" else ""
+                    val comma = if (index < columns.size - 1) "," else ""
+                    println("    val ${col.name}: $type$nullable = null$comma")
+                }
+                println(") : BaseEntity<$entityName>")
+                println()
+
+                // Generate Model object
+                println("object $className : Model<$entityName>() {")
+                println("    override val tableName = \"$tableName\"")
+                
+                columns.forEach { col ->
+                    val fieldType = when {
+                        col.type.contains("BIGINT") || col.type.contains("BIGSERIAL") -> "long"
+                        col.type.contains("INT") || col.type.contains("SERIAL") -> "integer"
+                        col.type.contains("TEXT") -> "text"
+                        col.type.contains("BOOL") -> "boolean"
+                        else -> "varchar"
+                    }
+                    
+                    val params = mutableListOf<String>()
+                    params.add("\"${col.name}\"")
+                    if (col.primaryKey) params.add("primaryKey = true")
+                    if (col.autoIncrement) params.add("autoIncrement = true")
+                    if (col.nullable) params.add("nullable = true")
+                    if (col.unique) params.add("unique = true")
+                    
+                    println("    val ${col.name} = $fieldType(${params.joinToString(", ")})")
+                }
+                println("}")
+                println()
+            }
+        } catch (e: Exception) {
+            println("Error inspecting database: ${e.message}")
+            e.printStackTrace()
+        } finally {
+            driver.close()
+        }
+    }
+}
+
+/**
  * Prints general help information.
  */
 private fun printHelp() {
@@ -246,18 +598,146 @@ private fun printHelp() {
         Commands:
           migrate               Manage database migrations
           init [directory]      Initialize a new Aether project
+          startproject [name]   Create a new Aether project structure
+          startapp [name]       Create a new Aether app (module)
+          inspectdb             Introspect database and generate Model classes
+          shell                 Start an interactive SQL shell
           help                  Show this help message
 
         Examples:
-          aether-cli migrate --create add_users_table
+          aether-cli startproject myproject
+          aether-cli startapp blog
           aether-cli migrate --apply
-          aether-cli init my-project
-          aether-cli help
+          aether-cli shell
 
         For command-specific help:
           aether-cli <command> --help
 
     """.trimIndent())
+}
+
+/**
+ * Handles the 'shell' command.
+ * Starts an interactive SQL shell.
+ */
+private fun handleShell(args: List<String>) {
+    var host = System.getenv("DB_HOST") ?: "localhost"
+    var port = System.getenv("DB_PORT")?.toIntOrNull() ?: 5432
+    var db = System.getenv("DB_NAME") ?: "postgres"
+    var user = System.getenv("DB_USER") ?: "postgres"
+    var password = System.getenv("DB_PASSWORD") ?: "postgres"
+
+    var i = 0
+    while (i < args.size) {
+        when (args[i]) {
+            "--host" -> if (i + 1 < args.size) host = args[++i]
+            "--port" -> if (i + 1 < args.size) port = args[++i].toIntOrNull() ?: 5432
+            "--db" -> if (i + 1 < args.size) db = args[++i]
+            "--user" -> if (i + 1 < args.size) user = args[++i]
+            "--password" -> if (i + 1 < args.size) password = args[++i]
+            "--help", "-h" -> {
+                println("Usage: aether-cli shell --host <host> --port <port> --db <db> --user <user> --password <password>")
+                return
+            }
+        }
+        i++
+    }
+
+    runBlocking {
+        val driver = VertxPgDriver.create(host, port, db, user, password)
+        println("Connected to postgres://$user@$host:$port/$db")
+        println("Type 'exit' or 'quit' to leave.")
+        println("Type SQL queries ending with ';'")
+        println()
+
+        try {
+            val scanner = java.util.Scanner(System.`in`)
+            var buffer = StringBuilder()
+
+            print("aether> ")
+            while (scanner.hasNextLine()) {
+                val line = scanner.nextLine().trim()
+                
+                if (line.equals("exit", ignoreCase = true) || line.equals("quit", ignoreCase = true)) {
+                    break
+                }
+
+                if (line.isEmpty()) {
+                    if (buffer.isEmpty()) {
+                        print("aether> ")
+                    } else {
+                        print("      > ")
+                    }
+                    continue
+                }
+
+                buffer.append(line).append(" ")
+
+                if (line.endsWith(";")) {
+                    val sql = buffer.toString().trim().removeSuffix(";")
+                    buffer.clear()
+                    
+                    try {
+                        val start = System.currentTimeMillis()
+                        val rows = driver.executeQueryRaw(sql)
+                        val duration = System.currentTimeMillis() - start
+                        
+                        if (rows.isEmpty()) {
+                            println("Empty result set (${duration}ms)")
+                        } else {
+                            printTable(rows)
+                            println("(${rows.size} rows, ${duration}ms)")
+                        }
+                    } catch (e: Exception) {
+                        println("Error: ${e.message}")
+                    }
+                    println()
+                    print("aether> ")
+                } else {
+                    print("      > ")
+                }
+            }
+        } finally {
+            driver.close()
+            println("Bye!")
+        }
+    }
+}
+
+private fun printTable(rows: List<Row>) {
+    if (rows.isEmpty()) return
+    
+    val columns = rows[0].getColumnNames()
+    val widths = columns.map { it.length }.toMutableList()
+    
+    // Calculate widths
+    rows.forEach { row ->
+        columns.forEachIndexed { index, col ->
+            val value = row.getValue(col)?.toString() ?: "NULL"
+            widths[index] = kotlin.math.max(widths[index], value.length)
+        }
+    }
+    
+    // Print header
+    columns.forEachIndexed { index, col ->
+        print(col.padEnd(widths[index] + 2))
+    }
+    println()
+    
+    // Print separator
+    columns.forEachIndexed { index, _ ->
+        print("-".repeat(widths[index]).padEnd(widths[index] + 2))
+    }
+    println()
+    
+    // Print rows
+    rows.forEach { row ->
+        columns.forEachIndexed { index, col ->
+            val value = row.getValue(col)?.toString() ?: "NULL"
+            print(value.padEnd(widths[index] + 2))
+        }
+        println()
+    }
 }
 
 /**
@@ -281,3 +761,4 @@ private fun printMigrateHelp() {
 
     """.trimIndent())
 }
+
