@@ -329,7 +329,7 @@ class AdminSite(val name: String = "admin") {
                              p { text("Are you sure you want to delete the $modelName \"$obj\"? All of the following related items will be deleted:") }
                              
                              form(action = "$name$baseUrl/$id/delete", method = "post") {
-                                 csrfInput("dummy") // TODO: Real CSRF
+                                 csrfToken(exchange)
                                  button(attributes = mapOf("type" to "submit", "class" to "btn btn-danger")) { text("Yes, I'm sure") }
                                  a(href = "$name$baseUrl", attributes = mapOf("class" to "btn btn-secondary ms-2")) { text("No, take me back") }
                              }
@@ -367,7 +367,7 @@ class AdminSite(val name: String = "admin") {
                         h1 { text(title) }
                         
                         form(action = actionUrl, method = "post", attributes = mapOf("class" to "mt-4")) {
-                            csrfInput("dummy")
+                            csrfToken(exchange)
                             
                             // Render form fields
                             form.asP(this)

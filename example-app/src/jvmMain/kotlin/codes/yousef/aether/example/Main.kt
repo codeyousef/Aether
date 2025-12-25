@@ -7,6 +7,7 @@ import codes.yousef.aether.core.jvm.VertxServerConfig
 import codes.yousef.aether.core.pipeline.Pipeline
 import codes.yousef.aether.core.pipeline.installCallLogging
 import codes.yousef.aether.core.pipeline.installContentNegotiation
+import codes.yousef.aether.core.pipeline.installCsrfProtection
 import codes.yousef.aether.core.pipeline.installRecovery
 import codes.yousef.aether.auth.*
 import codes.yousef.aether.admin.AdminSite
@@ -112,6 +113,7 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
                     body {
                         h1 { text("Login") }
                         form(action = "/login", method = "post") {
+                            csrfToken(exchange)
                             form.asP(this)
                             div {
                                 input(type = "submit", attributes = mapOf("value" to "Login"))
@@ -151,6 +153,7 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
                             body {
                                 h1 { text("Login") }
                                 form(action = "/login", method = "post") {
+                                    csrfToken(exchange)
                                     form.asP(this)
                                     div {
                                         input(type = "submit", attributes = mapOf("value" to "Login"))
@@ -167,6 +170,7 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
                         body {
                             h1 { text("Login") }
                             form(action = "/login", method = "post") {
+                                csrfToken(exchange)
                                 form.asP(this)
                                 div {
                                     input(type = "submit", attributes = mapOf("value" to "Login"))
@@ -194,6 +198,7 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
                     body {
                         h1 { text("Register") }
                         form(action = "/register", method = "post") {
+                            csrfToken(exchange)
                             form.asP(this)
                             div {
                                 input(type = "submit", attributes = mapOf("value" to "Register"))
@@ -230,6 +235,7 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
                             body {
                                 h1 { text("Register") }
                                 form(action = "/register", method = "post") {
+                                    csrfToken(exchange)
                                     form.asP(this)
                                     div {
                                         input(type = "submit", attributes = mapOf("value" to "Register"))
@@ -250,6 +256,7 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
                         body {
                             h1 { text("Register") }
                             form(action = "/register", method = "post") {
+                                csrfToken(exchange)
                                 form.asP(this)
                                 div {
                                     input(type = "submit", attributes = mapOf("value" to "Register"))
@@ -415,6 +422,7 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
         installRecovery()
         installCallLogging()
         installContentNegotiation()
+        installCsrfProtection()
         use(authMiddleware(Users))
         use(adminSite.urls().asMiddleware())
         use(router.asMiddleware())

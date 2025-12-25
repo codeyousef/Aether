@@ -1,5 +1,7 @@
 package codes.yousef.aether.ui
 
+import codes.yousef.aether.core.Exchange
+import codes.yousef.aether.core.pipeline.CsrfProtection
 import kotlinx.serialization.Serializable
 
 /**
@@ -198,10 +200,20 @@ fun ComposableScope.title(attributes: Map<String, String> = emptyMap(), content:
 /**
  * Create a hidden input field for CSRF token.
  * @param token The CSRF token value
- * @param name The field name (defaults to "_csrf")
+ * @param name The field name (defaults to "csrftoken")
  */
-fun ComposableScope.csrfInput(token: String, name: String = "_csrf") {
+fun ComposableScope.csrfInput(token: String, name: String = "csrftoken") {
     input(type = "hidden", name = name, attributes = mapOf("value" to token))
+}
+
+/**
+ * Create a hidden input field for CSRF token using the token from the Exchange.
+ * @param exchange The current Exchange
+ * @param name The field name (defaults to "csrftoken")
+ */
+fun ComposableScope.csrfToken(exchange: Exchange, name: String = "csrftoken") {
+    val token = exchange.attributes.get(CsrfProtection.CsrfTokenKey) ?: ""
+    csrfInput(token, name)
 }
 
 /**
