@@ -25,6 +25,11 @@ abstract class Model<T : BaseEntity<T>> {
     lateinit var primaryKeyColumn: ColumnProperty<T, *>
 
     /**
+     * Returns a QuerySet for this model.
+     */
+    val objects: QuerySet<T> get() = QuerySet(this)
+
+    /**
      * Generates a CREATE TABLE query for this model.
      */
     fun getCreateTableQuery(): CreateTableQuery {
@@ -109,7 +114,7 @@ abstract class Model<T : BaseEntity<T>> {
     /**
      * Converts a database row to an entity instance.
      */
-    private fun rowToEntity(row: Row): T {
+    internal fun rowToEntity(row: Row): T {
         val entity = createInstance()
 
         for (column in columns) {
@@ -129,18 +134,6 @@ abstract class Model<T : BaseEntity<T>> {
      * Must be implemented by subclasses.
      */
     protected abstract fun createInstance(): T
-
-    private fun toExpression(value: Any?): Expression {
-        return when (value) {
-            null -> Expression.Literal(SqlValue.NullValue)
-            is String -> Expression.Literal(SqlValue.StringValue(value))
-            is Int -> Expression.Literal(SqlValue.IntValue(value))
-            is Long -> Expression.Literal(SqlValue.LongValue(value))
-            is Double -> Expression.Literal(SqlValue.DoubleValue(value))
-            is Boolean -> Expression.Literal(SqlValue.BooleanValue(value))
-            else -> throw DatabaseException("Unsupported value type: ${value::class}")
-        }
-    }
 }
 
 // ============= Column Types =============
@@ -207,6 +200,7 @@ fun <T : BaseEntity<T>> Model<T>.varchar(
     length: Int = 255,
     nullable: Boolean = true,
     unique: Boolean = false,
+    primaryKey: Boolean = false,
     defaultValue: String? = null
 ): ColumnProperty<T, String> {
     val columnName = name ?: ""
@@ -215,9 +209,13 @@ fun <T : BaseEntity<T>> Model<T>.varchar(
         type = if (length == 255) ColumnType.Varchar else ColumnType.VarcharCustom(length),
         nullable = nullable,
         unique = unique,
+        isPrimaryKey = primaryKey,
         defaultValue = defaultValue
     )
     columns.add(column)
+    if (primaryKey) {
+        primaryKeyColumn = column
+    }
     return column
 }
 
@@ -247,6 +245,7 @@ fun <T : BaseEntity<T>> Model<T>.integer(
     name: String? = null,
     nullable: Boolean = true,
     unique: Boolean = false,
+    primaryKey: Boolean = false,
     defaultValue: Int? = null
 ): ColumnProperty<T, Int> {
     val columnName = name ?: ""
@@ -255,9 +254,13 @@ fun <T : BaseEntity<T>> Model<T>.integer(
         type = ColumnType.Integer,
         nullable = nullable,
         unique = unique,
+        isPrimaryKey = primaryKey,
         defaultValue = defaultValue
     )
     columns.add(column)
+    if (primaryKey) {
+        primaryKeyColumn = column
+    }
     return column
 }
 
@@ -268,6 +271,7 @@ fun <T : BaseEntity<T>> Model<T>.long(
     name: String? = null,
     nullable: Boolean = true,
     unique: Boolean = false,
+    primaryKey: Boolean = false,
     defaultValue: Long? = null
 ): ColumnProperty<T, Long> {
     val columnName = name ?: ""
@@ -276,9 +280,13 @@ fun <T : BaseEntity<T>> Model<T>.long(
         type = ColumnType.Long,
         nullable = nullable,
         unique = unique,
+        isPrimaryKey = primaryKey,
         defaultValue = defaultValue
     )
     columns.add(column)
+    if (primaryKey) {
+        primaryKeyColumn = column
+    }
     return column
 }
 

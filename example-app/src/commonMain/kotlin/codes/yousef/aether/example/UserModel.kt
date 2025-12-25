@@ -1,16 +1,18 @@
 package codes.yousef.aether.example
 
+import codes.yousef.aether.auth.AbstractUser
+import codes.yousef.aether.auth.UserModel
+import codes.yousef.aether.auth.crypto.PasswordHasher
 import codes.yousef.aether.db.*
 
 /**
  * User Model defining the database table structure.
  */
-object Users : Model<User>() {
+object Users : UserModel<User>() {
     override val tableName: String = "users"
-
-    val id = serial("id")
-    val username = varchar("username", nullable = false, unique = true)
-    val email = varchar("email", nullable = false)
+    
+    // Inherited fields: id, username, password, email, isActive, isStaff, isSuperuser, lastLogin, dateJoined
+    
     val age = integer("age", nullable = true)
 
     override fun createInstance(): User {
@@ -21,12 +23,11 @@ object Users : Model<User>() {
 /**
  * User Entity with ActiveRecord pattern methods.
  */
-data class User(
-    var id: Int? = null,
-    var username: String? = null,
-    var email: String? = null,
-    var age: Int? = null
-) : BaseEntity<User>() {
+class User : AbstractUser<User>() {
+    
+    var age: Int?
+        get() = Users.age.getValue(this)
+        set(value) = Users.age.setValue(this, value)
 
     override fun getModel(): Model<User> = Users
 
@@ -34,7 +35,7 @@ data class User(
         /**
          * Find a user by ID.
          */
-        suspend fun findById(id: Int): User? {
+        suspend fun findById(id: Long): User? {
             return Users.get(id)
         }
 
@@ -51,25 +52,24 @@ data class User(
             )
             return results.firstOrNull()
         }
-
+        
         /**
-         * Get all users.
+         * Create a new user.
          */
-        suspend fun all(): List<User> {
-            return Users.all()
-        }
-
-        /**
-         * Create a new user and save it to the database.
-         */
-        suspend fun create(username: String, email: String, age: Int? = null): User {
-            val user = User(
-                username = username,
-                email = email,
-                age = age
-            )
+        suspend fun create(username: String, email: String, age: Int? = null, password: String? = null): User {
+            val user = User()
+            user.username = username
+            user.email = email
+            user.age = age
+            if (password != null) {
+                user.password = PasswordHasher.hash(password)
+            }
             user.save()
             return user
+        }
+        
+        suspend fun all(): List<User> {
+            return Users.all()
         }
     }
 }

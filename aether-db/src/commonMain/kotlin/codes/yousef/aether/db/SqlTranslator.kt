@@ -1,6 +1,4 @@
-package codes.yousef.aether.db.jvm
-
-import codes.yousef.aether.db.*
+package codes.yousef.aether.db
 
 /**
  * Result of SQL translation containing the SQL string and parameters.

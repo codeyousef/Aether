@@ -61,6 +61,59 @@ class VertxPgDriver(
         }
     }
 
+    override suspend fun getTables(): List<String> {
+        val sql = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+        try {
+            val rowSet = client.query(sql).execute().coAwait()
+            return rowSet.map { it.getString("table_name") }
+        } catch (e: Exception) {
+            throw DatabaseException("Failed to fetch tables", e)
+        }
+    }
+
+    override suspend fun getColumns(table: String): List<ColumnDefinition> {
+        val sql = """
+            SELECT column_name, data_type, is_nullable, column_default, is_identity 
+            FROM information_schema.columns 
+            WHERE table_name = $1 AND table_schema = 'public'
+        """.trimIndent()
+        
+        try {
+            val rowSet = client.preparedQuery(sql).execute(Tuple.of(table)).coAwait()
+            return rowSet.map { row ->
+                val name = row.getString("column_name")
+                val dataType = row.getString("data_type")
+                val isNullable = row.getString("is_nullable") == "YES"
+                val defaultVal = row.getString("column_default")
+                val isIdentity = row.getString("is_identity") == "YES"
+                
+                // Map Postgres types to our types (simplified)
+                // This is a lossy conversion but sufficient for basic diffing
+                val type = when (dataType.uppercase()) {
+                    "CHARACTER VARYING", "VARCHAR" -> "VARCHAR(255)" // Length check needed?
+                    "TEXT" -> "TEXT"
+                    "INTEGER", "INT" -> "INTEGER"
+                    "BIGINT" -> "BIGINT"
+                    "BOOLEAN" -> "BOOLEAN"
+                    "DOUBLE PRECISION" -> "DOUBLE PRECISION"
+                    else -> dataType.uppercase()
+                }
+
+                ColumnDefinition(
+                    name = name,
+                    type = type,
+                    nullable = isNullable,
+                    primaryKey = false, // Need another query for PKs
+                    unique = false, // Need another query for Unique constraints
+                    defaultValue = null, // Parsing default value is complex
+                    autoIncrement = isIdentity || defaultVal?.contains("nextval") == true
+                )
+            }
+        } catch (e: Exception) {
+            throw DatabaseException("Failed to fetch columns for table $table", e)
+        }
+    }
+
     override suspend fun close() {
         try {
             client.close().coAwait()

@@ -22,6 +22,16 @@ interface DatabaseDriver {
     suspend fun executeDDL(query: QueryAST)
 
     /**
+     * Returns a list of all table names in the database.
+     */
+    suspend fun getTables(): List<String>
+
+    /**
+     * Returns the column definitions for the specified table.
+     */
+    suspend fun getColumns(table: String): List<ColumnDefinition>
+
+    /**
      * Closes the database connection and releases resources.
      */
     suspend fun close()
