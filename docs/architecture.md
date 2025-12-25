@@ -16,6 +16,8 @@ Aether is designed as a "Write Once, Deploy Anywhere" framework, leveraging Kotl
 *   **`aether-web`**: The router. Implements a Radix Tree for O(k) route matching.
 *   **`aether-db`**: The data layer. A Django-style ORM that builds a Query AST.
 *   **`aether-ui`**: The view layer. A Composable DSL for Server-Side Rendering (SSR).
+*   **`aether-forms`**: The validation layer. Handles HTML form generation and data cleaning.
+*   **`aether-admin`**: The administration layer. Provides an auto-generated CRUD interface for models.
 *   **`aether-net`**: The transport layer. Abstracts TCP/UDP/WebSocket connections.
 
 ## The Request Lifecycle
