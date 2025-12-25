@@ -10,6 +10,7 @@ import codes.yousef.aether.core.pipeline.installContentNegotiation
 import codes.yousef.aether.core.pipeline.installCsrfProtection
 import codes.yousef.aether.core.pipeline.installRecovery
 import codes.yousef.aether.core.pipeline.installSecurityHeaders
+import codes.yousef.aether.core.pipeline.installDebugToolbar
 import codes.yousef.aether.auth.*
 import codes.yousef.aether.admin.AdminSite
 import codes.yousef.aether.admin.ModelAdmin
@@ -422,6 +423,7 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
     val pipeline = Pipeline().apply {
         installRecovery()
         installCallLogging()
+        installDebugToolbar()
         installSecurityHeaders()
         installContentNegotiation()
         installCsrfProtection()

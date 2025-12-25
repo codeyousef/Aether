@@ -11,6 +11,11 @@ interface DatabaseDriver {
     suspend fun executeQuery(query: QueryAST): List<Row>
 
     /**
+     * Executes a raw SQL query that returns rows.
+     */
+    suspend fun executeQueryRaw(sql: String): List<Row>
+
+    /**
      * Executes a query that modifies data (INSERT, UPDATE, DELETE).
      * Returns the number of affected rows.
      */

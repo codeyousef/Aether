@@ -57,11 +57,11 @@ This document outlines the sequential feature list required to elevate Aether fr
 8.  **CLI Enhancements (`aether-cli`)**
     *   [x] `startproject` / `startapp`: Scaffolding.
     *   [x] `makemigrations` / `migrate`: Database management.
-    *   [ ] `shell`: Interactive REPL with context loaded.
+    *   [x] `shell`: Interactive REPL with context loaded.
     *   [x] `inspectdb`: Generate Models from existing DB.
 
 9.  **Debug Toolbar**
-    *   [ ] UI overlay showing SQL queries, headers, and timing.
+    *   [x] UI overlay showing SQL queries, headers, and timing.
 
 ---
 
@@ -76,5 +76,8 @@ This document outlines the sequential feature list required to elevate Aether fr
 *   [x] **Completed**: Phase 3 - Password Hashing (aether-auth)
 *   [x] **Completed**: Phase 4 - CLI Scaffolding (aether-cli)
 *   [x] **Completed**: Phase 4 - InspectDB (aether-cli)
-*   [ ] **Current Task**: Phase 4 - Debug Toolbar (aether-core/ui)
+*   [x] **Completed**: Phase 4 - Debug Toolbar (aether-core/ui)
+*   [x] **Completed**: Phase 4 - Shell (aether-cli)
+*   [ ] **Next Task**: Review and Polish
 
+   

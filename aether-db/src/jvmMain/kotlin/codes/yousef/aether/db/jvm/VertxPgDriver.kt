@@ -1,6 +1,8 @@
 package codes.yousef.aether.db.jvm
 
 import codes.yousef.aether.db.*
+import codes.yousef.aether.core.pipeline.QueryLogContext
+import codes.yousef.aether.core.pipeline.QueryLogEntry
 import io.vertx.core.Vertx
 import io.vertx.kotlin.coroutines.coAwait
 import io.vertx.pgclient.PgConnectOptions
@@ -8,6 +10,8 @@ import io.vertx.pgclient.PgPool
 import io.vertx.sqlclient.PoolOptions
 import io.vertx.sqlclient.SqlClient
 import io.vertx.sqlclient.Tuple
+import kotlin.coroutines.coroutineContext
+import kotlinx.datetime.Clock
 
 /**
  * JVM implementation of DatabaseDriver using Vert.x Reactive PostgreSQL Client.
@@ -20,11 +24,15 @@ class VertxPgDriver(
     override suspend fun executeQuery(query: QueryAST): List<Row> {
         val translated = SqlTranslator.translate(query)
         val tuple = Tuple.from(translated.params)
+        val start = Clock.System.now()
 
         try {
             val rowSet = client.preparedQuery(translated.sql)
                 .execute(tuple)
                 .coAwait()
+
+            val duration = Clock.System.now().toEpochMilliseconds() - start.toEpochMilliseconds()
+            logQuery(translated.sql, duration)
 
             return rowSet.map { vertxRow ->
                 VertxRow(vertxRow)
@@ -34,19 +42,45 @@ class VertxPgDriver(
         }
     }
 
+    override suspend fun executeQueryRaw(sql: String): List<Row> {
+        val start = Clock.System.now()
+        try {
+            val rowSet = client.query(sql)
+                .execute()
+                .coAwait()
+
+            val duration = Clock.System.now().toEpochMilliseconds() - start.toEpochMilliseconds()
+            logQuery(sql, duration)
+
+            return rowSet.map { vertxRow ->
+                VertxRow(vertxRow)
+            }
+        } catch (e: Exception) {
+            throw DatabaseException("Failed to execute raw query: $sql", e)
+        }
+    }
+
     override suspend fun executeUpdate(query: QueryAST): Int {
         val translated = SqlTranslator.translate(query)
         val tuple = Tuple.from(translated.params)
+        val start = Clock.System.now()
 
         try {
             val rowSet = client.preparedQuery(translated.sql)
                 .execute(tuple)
                 .coAwait()
 
+            val duration = Clock.System.now().toEpochMilliseconds() - start.toEpochMilliseconds()
+            logQuery(translated.sql, duration)
+
             return rowSet.rowCount()
         } catch (e: Exception) {
             throw DatabaseException("Failed to execute update: ${translated.sql}", e)
         }
+    }
+
+    private suspend fun logQuery(sql: String, duration: Long) {
+        coroutineContext[QueryLogContext]?.logs?.add(QueryLogEntry(sql, duration))
     }
 
     override suspend fun executeDDL(query: QueryAST) {

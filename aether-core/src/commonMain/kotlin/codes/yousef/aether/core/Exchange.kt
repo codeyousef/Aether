@@ -28,10 +28,18 @@ interface Exchange {
      * Send an HTML response.
      */
     suspend fun respondHtml(statusCode: Int = 200, html: String) {
+        var finalHtml = html
+        val hooks = attributes.get(HtmlResponseHooksKey)
+        hooks?.forEach { hook -> finalHtml = hook(finalHtml) }
+
         response.statusCode = statusCode
         response.setHeader("Content-Type", "text/html; charset=utf-8")
-        response.write(html)
+        response.write(finalHtml)
         response.end()
+    }
+
+    companion object {
+        val HtmlResponseHooksKey = Attributes.key<MutableList<(String) -> String>>("HtmlResponseHooks")
     }
 
     /**

@@ -33,6 +33,7 @@ fun main(args: Array<String>) {
             "startproject" -> handleStartProject(args.drop(1))
             "startapp" -> handleStartApp(args.drop(1))
             "inspectdb" -> handleInspectDb(args.drop(1))
+            "shell" -> handleShell(args.drop(1))
             "help", "--help", "-h" -> printHelp()
             else -> {
                 println("Unknown command: $command")
@@ -533,18 +534,18 @@ private fun handleInspectDb(args: List<String>) {
                 println("data class $entityName(")
                 
                 val columns = driver.getColumns(tableName)
-                val pkColumn = columns.find { it.isPrimaryKey }
+                val pkColumn = columns.find { it.primaryKey }
                 
                 // Generate Entity class
                 columns.forEachIndexed { index, col ->
-                    val type = when (col.type) {
-                        ColumnType.Integer, ColumnType.Serial -> "Int"
-                        ColumnType.Long, ColumnType.BigSerial -> "Long"
-                        ColumnType.Varchar, ColumnType.Text -> "String"
-                        ColumnType.Boolean -> "Boolean"
+                    val type = when {
+                        col.type.contains("BIGINT") || col.type.contains("BIGSERIAL") -> "Long"
+                        col.type.contains("INT") || col.type.contains("SERIAL") -> "Int"
+                        col.type.contains("CHAR") || col.type.contains("TEXT") -> "String"
+                        col.type.contains("BOOL") -> "Boolean"
                         else -> "String" // Fallback
                     }
-                    val nullable = if (col.isNullable || col.isPrimaryKey) "?" else ""
+                    val nullable = if (col.nullable || col.primaryKey) "?" else ""
                     val comma = if (index < columns.size - 1) "," else ""
                     println("    val ${col.name}: $type$nullable = null$comma")
                 }
@@ -556,23 +557,20 @@ private fun handleInspectDb(args: List<String>) {
                 println("    override val tableName = \"$tableName\"")
                 
                 columns.forEach { col ->
-                    val fieldType = when (col.type) {
-                        ColumnType.Integer -> "integer"
-                        ColumnType.Serial -> "integer" // Usually handled as ID
-                        ColumnType.Long -> "long"
-                        ColumnType.BigSerial -> "long"
-                        ColumnType.Varchar -> "varchar"
-                        ColumnType.Text -> "text"
-                        ColumnType.Boolean -> "boolean"
+                    val fieldType = when {
+                        col.type.contains("BIGINT") || col.type.contains("BIGSERIAL") -> "long"
+                        col.type.contains("INT") || col.type.contains("SERIAL") -> "integer"
+                        col.type.contains("TEXT") -> "text"
+                        col.type.contains("BOOL") -> "boolean"
                         else -> "varchar"
                     }
                     
                     val params = mutableListOf<String>()
                     params.add("\"${col.name}\"")
-                    if (col.isPrimaryKey) params.add("primaryKey = true")
-                    if (col.isAutoIncrement) params.add("autoIncrement = true")
-                    if (col.isNullable) params.add("nullable = true")
-                    if (col.isUnique) params.add("unique = true")
+                    if (col.primaryKey) params.add("primaryKey = true")
+                    if (col.autoIncrement) params.add("autoIncrement = true")
+                    if (col.nullable) params.add("nullable = true")
+                    if (col.unique) params.add("unique = true")
                     
                     println("    val ${col.name} = $fieldType(${params.joinToString(", ")})")
                 }
@@ -602,17 +600,144 @@ private fun printHelp() {
           init [directory]      Initialize a new Aether project
           startproject [name]   Create a new Aether project structure
           startapp [name]       Create a new Aether app (module)
+          inspectdb             Introspect database and generate Model classes
+          shell                 Start an interactive SQL shell
           help                  Show this help message
 
         Examples:
           aether-cli startproject myproject
           aether-cli startapp blog
           aether-cli migrate --apply
+          aether-cli shell
 
         For command-specific help:
           aether-cli <command> --help
 
     """.trimIndent())
+}
+
+/**
+ * Handles the 'shell' command.
+ * Starts an interactive SQL shell.
+ */
+private fun handleShell(args: List<String>) {
+    var host = System.getenv("DB_HOST") ?: "localhost"
+    var port = System.getenv("DB_PORT")?.toIntOrNull() ?: 5432
+    var db = System.getenv("DB_NAME") ?: "postgres"
+    var user = System.getenv("DB_USER") ?: "postgres"
+    var password = System.getenv("DB_PASSWORD") ?: "postgres"
+
+    var i = 0
+    while (i < args.size) {
+        when (args[i]) {
+            "--host" -> if (i + 1 < args.size) host = args[++i]
+            "--port" -> if (i + 1 < args.size) port = args[++i].toIntOrNull() ?: 5432
+            "--db" -> if (i + 1 < args.size) db = args[++i]
+            "--user" -> if (i + 1 < args.size) user = args[++i]
+            "--password" -> if (i + 1 < args.size) password = args[++i]
+            "--help", "-h" -> {
+                println("Usage: aether-cli shell --host <host> --port <port> --db <db> --user <user> --password <password>")
+                return
+            }
+        }
+        i++
+    }
+
+    runBlocking {
+        val driver = VertxPgDriver.create(host, port, db, user, password)
+        println("Connected to postgres://$user@$host:$port/$db")
+        println("Type 'exit' or 'quit' to leave.")
+        println("Type SQL queries ending with ';'")
+        println()
+
+        try {
+            val scanner = java.util.Scanner(System.`in`)
+            var buffer = StringBuilder()
+
+            print("aether> ")
+            while (scanner.hasNextLine()) {
+                val line = scanner.nextLine().trim()
+                
+                if (line.equals("exit", ignoreCase = true) || line.equals("quit", ignoreCase = true)) {
+                    break
+                }
+
+                if (line.isEmpty()) {
+                    if (buffer.isEmpty()) {
+                        print("aether> ")
+                    } else {
+                        print("      > ")
+                    }
+                    continue
+                }
+
+                buffer.append(line).append(" ")
+
+                if (line.endsWith(";")) {
+                    val sql = buffer.toString().trim().removeSuffix(";")
+                    buffer.clear()
+                    
+                    try {
+                        val start = System.currentTimeMillis()
+                        val rows = driver.executeQueryRaw(sql)
+                        val duration = System.currentTimeMillis() - start
+                        
+                        if (rows.isEmpty()) {
+                            println("Empty result set (${duration}ms)")
+                        } else {
+                            printTable(rows)
+                            println("(${rows.size} rows, ${duration}ms)")
+                        }
+                    } catch (e: Exception) {
+                        println("Error: ${e.message}")
+                    }
+                    println()
+                    print("aether> ")
+                } else {
+                    print("      > ")
+                }
+            }
+        } finally {
+            driver.close()
+            println("Bye!")
+        }
+    }
+}
+
+private fun printTable(rows: List<Row>) {
+    if (rows.isEmpty()) return
+    
+    val columns = rows[0].getColumnNames()
+    val widths = columns.map { it.length }.toMutableList()
+    
+    // Calculate widths
+    rows.forEach { row ->
+        columns.forEachIndexed { index, col ->
+            val value = row.getValue(col)?.toString() ?: "NULL"
+            widths[index] = kotlin.math.max(widths[index], value.length)
+        }
+    }
+    
+    // Print header
+    columns.forEachIndexed { index, col ->
+        print(col.padEnd(widths[index] + 2))
+    }
+    println()
+    
+    // Print separator
+    columns.forEachIndexed { index, _ ->
+        print("-".repeat(widths[index]).padEnd(widths[index] + 2))
+    }
+    println()
+    
+    // Print rows
+    rows.forEach { row ->
+        columns.forEachIndexed { index, col ->
+            val value = row.getValue(col)?.toString() ?: "NULL"
+            print(value.padEnd(widths[index] + 2))
+        }
+        println()
+    }
 }
 
 /**
@@ -636,3 +761,4 @@ private fun printMigrateHelp() {
 
     """.trimIndent())
 }
+
