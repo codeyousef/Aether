@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.1.0] - 2025-12-26
+### Added
+- **First Maven Central publish** for `aether-auth`, `aether-forms`, and `aether-admin` modules
+
 ## [0.3.0.0] - 2025-12-26
 ### Added
 - **Admin Module** (`aether-admin`): Django-like admin interface for managing database models
