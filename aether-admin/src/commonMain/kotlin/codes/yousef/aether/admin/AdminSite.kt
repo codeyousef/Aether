@@ -26,7 +26,7 @@ class AdminSite(val name: String = "admin") {
      */
     fun urls(): Router {
         return router {
-            get("/") { exchange ->
+            val dashboardHandler: codes.yousef.aether.web.RouteHandler = { exchange ->
                 exchange.render {
                     element("html") {
                         head {
@@ -40,7 +40,7 @@ class AdminSite(val name: String = "admin") {
                                 div(mapOf("class" to "list-group mt-4")) {
                                     registry.forEach { registered ->
                                         val modelName = registered.model.tableName
-                                        a(href = "$name/$modelName", attributes = mapOf("class" to "list-group-item list-group-item-action")) {
+                                        a(href = "/$name/$modelName", attributes = mapOf("class" to "list-group-item list-group-item-action")) {
                                             text(modelName.replaceFirstChar { it.uppercase() })
                                         }
                                     }
@@ -50,6 +50,9 @@ class AdminSite(val name: String = "admin") {
                     }
                 }
             }
+            
+            get("/$name", dashboardHandler)
+            get("/$name/", dashboardHandler)
             
             // Register routes for each model
             registry.forEach { registered ->
@@ -62,7 +65,7 @@ class AdminSite(val name: String = "admin") {
         val model = registered.model
         val admin = registered.admin
         val modelName = model.tableName
-        val baseUrl = "/$modelName"
+        val baseUrl = "/$name/$modelName"
         
         router.get(baseUrl) { exchange ->
             var qs = model.objects

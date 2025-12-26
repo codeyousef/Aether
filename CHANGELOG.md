@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.1.1] - 2025-12-26
+### Fixed
+- AdminSite routing issue where dashboard handler was not properly registered for root path
+
 ## [0.3.1.0] - 2025-12-26
 ### Added
 - **First Maven Central publish** for `aether-auth`, `aether-forms`, and `aether-admin` modules
