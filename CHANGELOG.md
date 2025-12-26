@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.1.2] - 2025-12-27
+### Fixed
+- Publish workflow now includes `aether-auth`, `aether-forms`, and `aether-admin` modules
+
 ## [0.3.1.1] - 2025-12-26
 ### Fixed
 - AdminSite routing issue where dashboard handler was not properly registered for root path
