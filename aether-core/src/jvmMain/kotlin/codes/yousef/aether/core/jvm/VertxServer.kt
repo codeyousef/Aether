@@ -59,6 +59,11 @@ class VertxServer(
                     try {
                         val exchange = createVertxExchange(vertxRequest)
                         pipeline.execute(exchange, handler)
+                        // Ensure response is finalized after all middleware completes
+                        // This allows middleware (like SessionMiddleware) to add cookies in finally blocks
+                        if (!vertxRequest.response().ended()) {
+                            exchange.response.end()
+                        }
                     } catch (e: Exception) {
                         logger.error("Error processing request", e)
                         try {

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.1.3] - 2025-12-27
+### Fixed
+- Redirect now defers `response.end()` so SessionMiddleware can set cookies before headers are finalized
+- Vert.x server finalizes responses after middleware completes to ensure Set-Cookie is emitted on redirects
+
 ## [0.3.1.2] - 2025-12-27
 ### Fixed
 - Publish workflow now includes `aether-auth`, `aether-forms`, and `aether-admin` modules

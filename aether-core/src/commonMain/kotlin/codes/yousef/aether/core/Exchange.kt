@@ -75,11 +75,15 @@ interface Exchange {
 
     /**
      * Send a redirect response.
+     * 
+     * Note: This method does NOT call response.end() to allow middleware (like SessionMiddleware)
+     * to add cookies/headers in their finally blocks before the response is finalized.
+     * The pipeline is responsible for calling end() after all middleware completes.
      */
     suspend fun redirect(url: String, permanent: Boolean = false) {
         response.statusCode = if (permanent) 301 else 302
         response.setHeader("Location", url)
-        response.end()
+        // Don't call response.end() here - let the pipeline finalize after middleware finally blocks
     }
 
     /**
