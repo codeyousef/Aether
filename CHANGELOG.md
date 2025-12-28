@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.1.4] - 2025-12-28
+### Fixed
+- Admin site URLs no longer duplicate the admin prefix (e.g., `/admin/admin/services` → `/admin/services`)
+
 ## [0.3.1.3] - 2025-12-27
 ### Fixed
 - Redirect now defers `response.end()` so SessionMiddleware can set cookies before headers are finalized

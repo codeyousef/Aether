@@ -120,14 +120,14 @@ class AdminSite(val name: String = "admin") {
                                 div(mapOf("class" to if (admin.listFilter.isNotEmpty()) "col-md-9" else "col-12")) {
                                     div(mapOf("class" to "d-flex justify-content-between align-items-center mb-4")) {
                                         h1 { text("Select $modelName to change") }
-                                        a(href = "$name$baseUrl/add", attributes = mapOf("class" to "btn btn-primary")) {
+                                        a(href = "$baseUrl/add", attributes = mapOf("class" to "btn btn-primary")) {
                                             text("Add $modelName")
                                         }
                                     }
                                     
                                     // Search Bar
                                     if (admin.searchFields.isNotEmpty()) {
-                                         form(action = "$name$baseUrl", method = "get", attributes = mapOf("class" to "mb-4")) {
+                                         form(action = "$baseUrl", method = "get", attributes = mapOf("class" to "mb-4")) {
                                              div(mapOf("class" to "input-group")) {
                                                  input(type = "text", name = "q", attributes = mapOf("class" to "form-control", "placeholder" to "Search...", "value" to (searchQuery ?: "")))
                                                  // Preserve other filters
@@ -171,7 +171,7 @@ class AdminSite(val name: String = "admin") {
                                                                 if (admin.listDisplayLinks.contains(fieldName) || 
                                                                     (admin.listDisplayLinks.isEmpty() && fieldName == admin.listDisplay.first())) {
                                                                     val pk = model.primaryKeyColumn.getValue(obj)
-                                                                    a(href = "$name$baseUrl/$pk") {
+                                                                    a(href = "$baseUrl/$pk") {
                                                                         text(value)
                                                                     }
                                                                 } else {
@@ -183,7 +183,7 @@ class AdminSite(val name: String = "admin") {
                                                         // Default display
                                                         val pk = model.primaryKeyColumn.getValue(obj)
                                                         td { 
-                                                            a(href = "$name$baseUrl/$pk") {
+                                                            a(href = "$baseUrl/$pk") {
                                                                 text(pk.toString())
                                                             }
                                                         }
@@ -209,7 +209,7 @@ class AdminSite(val name: String = "admin") {
                                                         allParams.remove(filterField)
                                                         val allQueryString = allParams.entries.joinToString("&") { "${it.key}=${it.value.firstOrNull() ?: ""}" }
                                                         
-                                                        a(href = "$name$baseUrl?$allQueryString", attributes = mapOf("class" to "list-group-item list-group-item-action ${if(currentVal == null) "active" else ""}")) { text("All") }
+                                                        a(href = "$baseUrl?$allQueryString", attributes = mapOf("class" to "list-group-item list-group-item-action ${if(currentVal == null) "active" else ""}")) { text("All") }
                                                         
                                                         // TODO: Fetch distinct values.
                                                         // For now, if it's boolean, show True/False
@@ -218,12 +218,12 @@ class AdminSite(val name: String = "admin") {
                                                             val trueParams = queryParams.toMutableMap()
                                                             trueParams[filterField] = listOf("true")
                                                             val trueQs = trueParams.entries.joinToString("&") { "${it.key}=${it.value.firstOrNull() ?: ""}" }
-                                                            a(href = "$name$baseUrl?$trueQs", attributes = mapOf("class" to "list-group-item list-group-item-action ${if(currentVal == "true") "active" else ""}")) { text("Yes") }
+                                                            a(href = "$baseUrl?$trueQs", attributes = mapOf("class" to "list-group-item list-group-item-action ${if(currentVal == "true") "active" else ""}")) { text("Yes") }
                                                             
                                                             val falseParams = queryParams.toMutableMap()
                                                             falseParams[filterField] = listOf("false")
                                                             val falseQs = falseParams.entries.joinToString("&") { "${it.key}=${it.value.firstOrNull() ?: ""}" }
-                                                            a(href = "$name$baseUrl?$falseQs", attributes = mapOf("class" to "list-group-item list-group-item-action ${if(currentVal == "false") "active" else ""}")) { text("No") }
+                                                            a(href = "$baseUrl?$falseQs", attributes = mapOf("class" to "list-group-item list-group-item-action ${if(currentVal == "false") "active" else ""}")) { text("No") }
                                                         }
                                                     }
                                                 }
@@ -240,7 +240,7 @@ class AdminSite(val name: String = "admin") {
         
         router.get("$baseUrl/add") { exchange ->
             val form = ModelForm(model)
-            renderForm(exchange, form, "Add $modelName", "$name$baseUrl/add")
+            renderForm(exchange, form, "Add $modelName", "$baseUrl/add")
         }
         
         router.post("$baseUrl/add") { exchange ->
@@ -251,9 +251,9 @@ class AdminSite(val name: String = "admin") {
             
             if (form.isValid()) {
                 form.save()
-                exchange.redirect("$name$baseUrl")
+                exchange.redirect("$baseUrl")
             } else {
-                renderForm(exchange, form, "Add $modelName", "$name$baseUrl/add")
+                renderForm(exchange, form, "Add $modelName", "$baseUrl/add")
             }
         }
         
@@ -278,7 +278,7 @@ class AdminSite(val name: String = "admin") {
             // Pre-fill form data from object
             // ModelForm init automatically binds object values to fields.
             
-            renderForm(exchange, form, "Change $modelName", "$name$baseUrl/$id")
+            renderForm(exchange, form, "Change $modelName", "$baseUrl/$id")
         }
         
         router.post("$baseUrl/:id") { exchange ->
@@ -301,9 +301,9 @@ class AdminSite(val name: String = "admin") {
             
             if (form.isValid()) {
                 form.save()
-                exchange.redirect("$name$baseUrl")
+                exchange.redirect("$baseUrl")
             } else {
-                renderForm(exchange, form, "Change $modelName", "$name$baseUrl/$id")
+                renderForm(exchange, form, "Change $modelName", "$baseUrl/$id")
             }
         }
         
@@ -331,10 +331,10 @@ class AdminSite(val name: String = "admin") {
                              h1 { text("Are you sure?") }
                              p { text("Are you sure you want to delete the $modelName \"$obj\"? All of the following related items will be deleted:") }
                              
-                             form(action = "$name$baseUrl/$id/delete", method = "post") {
+                             form(action = "$baseUrl/$id/delete", method = "post") {
                                  csrfToken(exchange)
                                  button(attributes = mapOf("type" to "submit", "class" to "btn btn-danger")) { text("Yes, I'm sure") }
-                                 a(href = "$name$baseUrl", attributes = mapOf("class" to "btn btn-secondary ms-2")) { text("No, take me back") }
+                                 a(href = "$baseUrl", attributes = mapOf("class" to "btn btn-secondary ms-2")) { text("No, take me back") }
                              }
                          }
                      }
@@ -354,7 +354,7 @@ class AdminSite(val name: String = "admin") {
                  obj.delete()
              }
              
-             exchange.redirect("$name$baseUrl")
+             exchange.redirect("$baseUrl")
         }
     }
     
