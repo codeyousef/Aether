@@ -28,4 +28,21 @@ open class ModelAdmin<T : BaseEntity<T>>(val model: Model<T>) {
      * Fields to filter by in the sidebar.
      */
     open val listFilter: List<String> = emptyList()
+    
+    /**
+     * Fields that should render as multiline textarea inputs.
+     */
+    open val multilineFields: List<String> = emptyList()
+    
+    /**
+     * Fields to exclude from the add/edit form.
+     * Useful for auto-generated or constant fields.
+     */
+    open val excludeFields: List<String> = emptyList()
+    
+    /**
+     * Default values for fields when creating new objects.
+     * Map of field name to default value.
+     */
+    open val defaultValues: Map<String, Any?> = emptyMap()
 }

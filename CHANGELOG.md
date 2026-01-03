@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.3.0] - 2026-01-03
+### Added
+- **ModelAdmin enhancements**: New configuration options for form customization
+  - `multilineFields`: List of field names that should render as textarea instead of single-line input
+  - `excludeFields`: List of field names to hide from forms (values still saved via defaults)
+  - `defaultValues`: Map of field names to default values for new objects
+- **ModelForm defaults**: Constructor now accepts `defaultValues` parameter for pre-filling forms
+
+### Changed
+- Form rendering now respects `multilineFields` and `excludeFields` from ModelAdmin
+- Default values are automatically merged when submitting new objects
+
 ## [0.3.2.0] - 2026-01-03
 ### Added
 - **Modern Admin UI**: Complete redesign of the admin interface with CMS-style look

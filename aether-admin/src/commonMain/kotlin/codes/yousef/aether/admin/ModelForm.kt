@@ -9,7 +9,8 @@ import codes.yousef.aether.ui.ComposableScope
  */
 class ModelForm<T : BaseEntity<T>>(
     val model: Model<T>,
-    val instance: T? = null
+    val instance: T? = null,
+    val defaultValues: Map<String, Any?> = emptyMap()
 ) : Form() {
     
     init {
@@ -46,6 +47,18 @@ class ModelForm<T : BaseEntity<T>>(
 
         if (instance != null) {
             fillFromInstance()
+        } else {
+            // Apply default values for new instances
+            applyDefaultValues()
+        }
+    }
+    
+    private fun applyDefaultValues() {
+        for ((fieldName, defaultValue) in defaultValues) {
+            val field = fields[fieldName]
+            if (field != null && defaultValue != null) {
+                setFieldValue(field, defaultValue)
+            }
         }
     }
 

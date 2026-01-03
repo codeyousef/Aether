@@ -395,22 +395,24 @@ class AdminSite(val name: String = "admin") {
         
         // Add form
         router.get("$baseUrl/add") { exchange ->
-            val form = ModelForm(model)
-            renderForm(exchange, form, "Add $displayName", "$baseUrl/add", displayName, baseUrl, isNew = true)
+            val form = ModelForm(model, defaultValues = admin.defaultValues)
+            renderForm(exchange, form, "Add $displayName", "$baseUrl/add", displayName, baseUrl, isNew = true, admin = admin)
         }
         
         // Add submit
         router.post("$baseUrl/add") { exchange ->
             val body = exchange.request.bodyText()
             val formData = parseFormData(body)
-            val form = ModelForm(model)
-            form.bind(formData)
+            // Merge default values with form data for excluded fields
+            val mergedData = admin.defaultValues.mapValues { it.value?.toString() ?: "" } + formData
+            val form = ModelForm(model, defaultValues = admin.defaultValues)
+            form.bind(mergedData)
             
             if (form.isValid()) {
                 form.save()
                 exchange.redirect(baseUrl)
             } else {
-                renderForm(exchange, form, "Add $displayName", "$baseUrl/add", displayName, baseUrl, isNew = true)
+                renderForm(exchange, form, "Add $displayName", "$baseUrl/add", displayName, baseUrl, isNew = true, admin = admin)
             }
         }
         
@@ -430,7 +432,7 @@ class AdminSite(val name: String = "admin") {
             }
             
             val form = ModelForm(model, obj)
-            renderForm(exchange, form, "Edit $displayName", "$baseUrl/$id", displayName, baseUrl, isNew = false, objectId = id)
+            renderForm(exchange, form, "Edit $displayName", "$baseUrl/$id", displayName, baseUrl, isNew = false, objectId = id, admin = admin)
         }
         
         // Edit submit
@@ -456,7 +458,7 @@ class AdminSite(val name: String = "admin") {
                 form.save()
                 exchange.redirect(baseUrl)
             } else {
-                renderForm(exchange, form, "Edit $displayName", "$baseUrl/$id", displayName, baseUrl, isNew = false, objectId = id)
+                renderForm(exchange, form, "Edit $displayName", "$baseUrl/$id", displayName, baseUrl, isNew = false, objectId = id, admin = admin)
             }
         }
         
@@ -546,7 +548,7 @@ class AdminSite(val name: String = "admin") {
         }
     }
     
-    private suspend fun renderForm(
+    private suspend fun <T : BaseEntity<T>> renderForm(
         exchange: codes.yousef.aether.core.Exchange,
         form: codes.yousef.aether.forms.Form,
         title: String,
@@ -554,7 +556,8 @@ class AdminSite(val name: String = "admin") {
         displayName: String,
         baseUrl: String,
         isNew: Boolean,
-        objectId: String? = null
+        objectId: String? = null,
+        admin: ModelAdmin<T>? = null
     ) {
         exchange.render {
             adminLayout(
@@ -588,8 +591,16 @@ class AdminSite(val name: String = "admin") {
                             // Render form fields
                             element("div", mapOf("style" to "display: grid; gap: 16px;")) {
                                 for ((fieldName, field) in form.allFields()) {
+                                    // Skip excluded fields
+                                    if (admin != null && fieldName in admin.excludeFields) {
+                                        continue
+                                    }
+                                    
                                     val error = form.getFieldError(fieldName)
                                     val value = field.value?.toString() ?: ""
+                                    
+                                    // Check if field should be multiline
+                                    val shouldBeMultiline = admin != null && fieldName in admin.multilineFields
                                     
                                     when (field) {
                                         is codes.yousef.aether.forms.BooleanField -> {
@@ -606,7 +617,7 @@ class AdminSite(val name: String = "admin") {
                                                 value = value,
                                                 required = field.required,
                                                 error = error,
-                                                multiline = field is codes.yousef.aether.forms.CharField && value.length > 100,
+                                                multiline = shouldBeMultiline || (field is codes.yousef.aether.forms.CharField && value.length > 100),
                                                 type = when (field) {
                                                     is codes.yousef.aether.forms.IntegerField, 
                                                     is codes.yousef.aether.forms.LongField,
