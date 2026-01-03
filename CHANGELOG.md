@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.2.0] - 2026-01-03
+### Added
+- **Modern Admin UI**: Complete redesign of the admin interface with CMS-style look
+  - `AdminTheme`: Design tokens (colors, spacing, typography, shadows) with Tailwind-inspired slate/blue palette
+  - `AdminComponents`: Reusable UI building blocks (cards, tables, forms, filters, badges)
+  - Dashboard with stats cards, quick actions, and content overview
+  - Improved list views with search toolbar, filter sidebar, and action buttons
+  - Modern form pages with proper layout and validation styling
+  - Styled delete confirmation pages
+  - Responsive sidebar navigation with SVG icons
+  - Inter font and smooth transitions
+
+### Changed
+- `Form.allFields()`: New public method to access form fields (replaces protected access)
+- `Form.getFieldError()`: New method to get single field error message
+
 ## [0.3.1.4] - 2025-12-28
 ### Fixed
 - Admin site URLs no longer duplicate the admin prefix (e.g., `/admin/admin/services` → `/admin/services`)

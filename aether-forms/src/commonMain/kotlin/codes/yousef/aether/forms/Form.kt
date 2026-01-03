@@ -67,6 +67,16 @@ abstract class Form {
     }
 
     fun getErrors(): Map<String, List<String>> = errors
+    
+    /**
+     * Get all registered fields.
+     */
+    fun allFields(): Map<String, Field<*>> = fields
+    
+    /**
+     * Get the error for a specific field.
+     */
+    fun getFieldError(name: String): String? = errors[name]?.firstOrNull()
 
     @Suppress("UNCHECKED_CAST")
     fun <T> get(name: String): T? = cleanedData[name] as? T

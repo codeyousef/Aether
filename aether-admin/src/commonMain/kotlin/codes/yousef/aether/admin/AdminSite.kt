@@ -5,9 +5,27 @@ import codes.yousef.aether.web.Router
 import codes.yousef.aether.web.router
 import codes.yousef.aether.web.pathParam
 import codes.yousef.aether.ui.*
+import codes.yousef.aether.admin.AdminComponents.adminLayout
+import codes.yousef.aether.admin.AdminComponents.adminPageHeader
+import codes.yousef.aether.admin.AdminComponents.adminBreadcrumbs
+import codes.yousef.aether.admin.AdminComponents.adminButton
+import codes.yousef.aether.admin.AdminComponents.adminCard
+import codes.yousef.aether.admin.AdminComponents.adminStatCard
+import codes.yousef.aether.admin.AdminComponents.adminSearchInput
+import codes.yousef.aether.admin.AdminComponents.adminTable
+import codes.yousef.aether.admin.AdminComponents.adminTableRow
+import codes.yousef.aether.admin.AdminComponents.adminEmptyState
+import codes.yousef.aether.admin.AdminComponents.adminFormGroup
+import codes.yousef.aether.admin.AdminComponents.adminFormCheckbox
+import codes.yousef.aether.admin.AdminComponents.adminBadge
+import codes.yousef.aether.admin.AdminComponents.adminFilterSidebar
+import codes.yousef.aether.admin.AdminComponents.adminFilterSection
+import codes.yousef.aether.admin.AdminComponents.adminFilterOption
+import codes.yousef.aether.admin.AdminComponents.rawHtml
 
 /**
  * The main admin site registry and router.
+ * Generates a modern CMS-style admin interface.
  */
 class AdminSite(val name: String = "admin") {
     private class RegisteredModel<T : BaseEntity<T>>(val model: Model<T>, val admin: ModelAdmin<T>)
@@ -20,6 +38,14 @@ class AdminSite(val name: String = "admin") {
     fun <T : BaseEntity<T>> register(model: Model<T>, admin: ModelAdmin<T>? = null) {
         registry.add(RegisteredModel(model, admin ?: ModelAdmin(model)))
     }
+    
+    private fun getModelList(): List<Pair<String, String>> {
+        return registry.map { registered ->
+            val tableName = registered.model.tableName
+            val displayName = tableName.replaceFirstChar { it.uppercase() }
+            tableName to displayName
+        }
+    }
 
     /**
      * Returns the router for the admin site.
@@ -27,21 +53,95 @@ class AdminSite(val name: String = "admin") {
     fun urls(): Router {
         return router {
             val dashboardHandler: codes.yousef.aether.web.RouteHandler = { exchange ->
+                // Compute model counts before render (suspend functions must be called here)
+                val modelCounts = registry.map { registered ->
+                    val modelName = registered.model.tableName.replaceFirstChar { it.uppercase() }
+                    val count = try {
+                        registered.model.objects.count()
+                    } catch (e: Exception) {
+                        0L
+                    }
+                    modelName to count
+                }
+                
                 exchange.render {
-                    element("html") {
-                        head {
-                            element("title") { text("Aether Admin") }
-                            element("link", mapOf("rel" to "stylesheet", "href" to "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"))
-                        }
-                        body {
-                            div(mapOf("class" to "container mt-4")) {
-                                h1 { text("Site Administration") }
-                                
-                                div(mapOf("class" to "list-group mt-4")) {
-                                    registry.forEach { registered ->
+                    adminLayout(
+                        title = "Dashboard",
+                        siteName = name,
+                        currentPath = "/$name",
+                        models = getModelList()
+                    ) {
+                        // Page header
+                        adminPageHeader(title = "Dashboard")
+                        
+                        // Content
+                        element("div", mapOf("class" to "admin-content")) {
+                            // Stats grid
+                            element("div", mapOf("class" to "admin-stats-grid")) {
+                                for ((modelName, count) in modelCounts) {
+                                    adminStatCard(
+                                        label = "Total $modelName",
+                                        value = count.toString()
+                                    )
+                                }
+                            }
+                            
+                            // Quick actions
+                            adminCard(title = "Quick Actions") {
+                                element("div", mapOf("style" to "display: flex; gap: 12px; flex-wrap: wrap;")) {
+                                    for (registered in registry) {
                                         val modelName = registered.model.tableName
-                                        a(href = "/$name/$modelName", attributes = mapOf("class" to "list-group-item list-group-item-action")) {
-                                            text(modelName.replaceFirstChar { it.uppercase() })
+                                        val displayName = modelName.replaceFirstChar { it.uppercase() }
+                                        adminButton(
+                                            text = "Add $displayName",
+                                            href = "/$name/$modelName/add",
+                                            icon = AdminTheme.Icons.plus
+                                        )
+                                    }
+                                }
+                            }
+                            
+                            // Models overview
+                            element("div", mapOf("style" to "margin-top: 24px")) {
+                                adminCard(title = "Content Overview") {
+                                    adminTable(
+                                        headers = listOf("Model", "Records")
+                                    ) {
+                                        for ((idx, registered) in registry.withIndex()) {
+                                            val modelName = registered.model.tableName
+                                            val displayName = modelName.replaceFirstChar { it.uppercase() }
+                                            val count = modelCounts.getOrNull(idx)?.second ?: 0L
+                                            
+                                            element("tr") {
+                                                element("td") {
+                                                    element("a", mapOf(
+                                                        "href" to "/$name/$modelName",
+                                                        "class" to "admin-table-link"
+                                                    )) {
+                                                        rawHtml(AdminTheme.Icons.database)
+                                                        text(" $displayName")
+                                                    }
+                                                }
+                                                element("td") { text(count.toString()) }
+                                                element("td") {
+                                                    element("div", mapOf("class" to "admin-actions")) {
+                                                        element("a", mapOf(
+                                                            "href" to "/$name/$modelName",
+                                                            "class" to "admin-action-btn",
+                                                            "title" to "View all"
+                                                        )) {
+                                                            rawHtml(AdminTheme.Icons.folder)
+                                                        }
+                                                        element("a", mapOf(
+                                                            "href" to "/$name/$modelName/add",
+                                                            "class" to "admin-action-btn",
+                                                            "title" to "Add new"
+                                                        )) {
+                                                            rawHtml(AdminTheme.Icons.plus)
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -65,8 +165,10 @@ class AdminSite(val name: String = "admin") {
         val model = registered.model
         val admin = registered.admin
         val modelName = model.tableName
+        val displayName = modelName.replaceFirstChar { it.uppercase() }
         val baseUrl = "/$name/$modelName"
         
+        // List view
         router.get(baseUrl) { exchange ->
             var qs = model.objects
             val queryParams = exchange.request.queryParameters()
@@ -108,124 +210,177 @@ class AdminSite(val name: String = "admin") {
             val objects = qs.toList()
             
             exchange.render {
-                element("html") {
-                    head {
-                        element("title") { text("Select $modelName to change | Aether Admin") }
-                        element("link", mapOf("rel" to "stylesheet", "href" to "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"))
+                adminLayout(
+                    title = displayName,
+                    siteName = name,
+                    currentPath = baseUrl,
+                    models = getModelList()
+                ) {
+                    // Page header
+                    adminPageHeader(title = displayName) {
+                        adminButton(
+                            text = "Add $displayName",
+                            href = "$baseUrl/add",
+                            icon = AdminTheme.Icons.plus
+                        )
                     }
-                    body {
-                        div(mapOf("class" to "container-fluid mt-4")) {
-                            div(mapOf("class" to "row")) {
-                                // Main Content
-                                div(mapOf("class" to if (admin.listFilter.isNotEmpty()) "col-md-9" else "col-12")) {
-                                    div(mapOf("class" to "d-flex justify-content-between align-items-center mb-4")) {
-                                        h1 { text("Select $modelName to change") }
-                                        a(href = "$baseUrl/add", attributes = mapOf("class" to "btn btn-primary")) {
-                                            text("Add $modelName")
-                                        }
-                                    }
-                                    
-                                    // Search Bar
+                    
+                    // Content
+                    element("div", mapOf("class" to "admin-content")) {
+                        // Breadcrumbs
+                        adminBreadcrumbs(
+                            "Dashboard" to "/$name",
+                            displayName to null
+                        )
+                        
+                        // Layout with optional filter sidebar
+                        val hasFilters = admin.listFilter.isNotEmpty()
+                        
+                        element("div", mapOf("class" to if (hasFilters) "admin-list-layout" else "")) {
+                            // Main content
+                            element("div", mapOf("class" to if (hasFilters) "admin-list-main" else "")) {
+                                adminCard {
+                                    // Search toolbar
                                     if (admin.searchFields.isNotEmpty()) {
-                                         form(action = "$baseUrl", method = "get", attributes = mapOf("class" to "mb-4")) {
-                                             div(mapOf("class" to "input-group")) {
-                                                 input(type = "text", name = "q", attributes = mapOf("class" to "form-control", "placeholder" to "Search...", "value" to (searchQuery ?: "")))
-                                                 // Preserve other filters
-                                                 for (filter in admin.listFilter) {
-                                                     val v = queryParams[filter]?.firstOrNull()
-                                                     if (v != null) input(type="hidden", name=filter, attributes=mapOf("value" to v))
-                                                 }
-                                                 button(attributes = mapOf("class" to "btn btn-outline-secondary", "type" to "submit")) { text("Search") }
-                                             }
-                                         }
-                                    }
-                                    
-                                    table(mapOf("class" to "table table-striped")) {
-                                        thead {
-                                            tr {
-                                                // Headers
-                                                val displayFields = if (admin.listDisplay.isNotEmpty()) {
-                                                    admin.listDisplay
-                                                } else {
-                                                    listOf("ID", "String Representation")
-                                                }
-                                                
-                                                for (field in displayFields) {
-                                                    th { text(field.uppercase()) }
+                                        element("form", mapOf(
+                                            "action" to baseUrl,
+                                            "method" to "get",
+                                            "class" to "admin-toolbar"
+                                        )) {
+                                            adminSearchInput(
+                                                value = searchQuery,
+                                                placeholder = "Search ${admin.searchFields.joinToString(", ")}..."
+                                            )
+                                            // Preserve filter params
+                                            for (filter in admin.listFilter) {
+                                                val v = queryParams[filter]?.firstOrNull()
+                                                if (v != null) {
+                                                    element("input", mapOf(
+                                                        "type" to "hidden",
+                                                        "name" to filter,
+                                                        "value" to v
+                                                    ))
                                                 }
                                             }
+                                            adminButton(
+                                                text = "Search",
+                                                type = "submit",
+                                                variant = "secondary"
+                                            )
                                         }
-                                        tbody {
+                                    }
+                                    
+                                    // Table or empty state
+                                    if (objects.isEmpty()) {
+                                        adminEmptyState(
+                                            title = "No $displayName found",
+                                            message = if (!searchQuery.isNullOrBlank()) 
+                                                "Try adjusting your search or filters." 
+                                                else "Get started by creating your first $displayName.",
+                                            actionText = if (searchQuery.isNullOrBlank()) "Add $displayName" else null,
+                                            actionUrl = if (searchQuery.isNullOrBlank()) "$baseUrl/add" else null
+                                        )
+                                    } else {
+                                        // Determine display fields
+                                        val displayFields = if (admin.listDisplay.isNotEmpty()) {
+                                            admin.listDisplay
+                                        } else {
+                                            listOf("id")
+                                        }
+                                        
+                                        adminTable(headers = displayFields.map { it.uppercase() }) {
                                             for (obj in objects) {
-                                                tr {
-                                                    if (admin.listDisplay.isNotEmpty()) {
-                                                        for (fieldName in admin.listDisplay) {
-                                                            val column = model.columns.find { it.name == fieldName }
-                                                            val value = if (column != null) {
-                                                                column.getValue(obj)?.toString() ?: "-"
-                                                            } else {
-                                                                "?"
-                                                            }
+                                                val pk = model.primaryKeyColumn.getValue(obj)
+                                                
+                                                adminTableRow(
+                                                    editUrl = "$baseUrl/$pk",
+                                                    deleteUrl = "$baseUrl/$pk/delete"
+                                                ) {
+                                                    for (fieldName in displayFields) {
+                                                        val column = model.columns.find { it.name == fieldName }
+                                                        val value = if (column != null) {
+                                                            column.getValue(obj)?.toString() ?: "-"
+                                                        } else if (fieldName == "id") {
+                                                            pk.toString()
+                                                        } else {
+                                                            "?"
+                                                        }
+                                                        
+                                                        element("td") {
+                                                            // Link for first column or specified link fields
+                                                            val isLinked = admin.listDisplayLinks.contains(fieldName) || 
+                                                                (admin.listDisplayLinks.isEmpty() && fieldName == displayFields.first())
                                                             
-                                                            td { 
-                                                                if (admin.listDisplayLinks.contains(fieldName) || 
-                                                                    (admin.listDisplayLinks.isEmpty() && fieldName == admin.listDisplay.first())) {
-                                                                    val pk = model.primaryKeyColumn.getValue(obj)
-                                                                    a(href = "$baseUrl/$pk") {
+                                                            if (isLinked) {
+                                                                element("a", mapOf(
+                                                                    "href" to "$baseUrl/$pk",
+                                                                    "class" to "admin-table-link"
+                                                                )) {
+                                                                    // Render boolean as badge
+                                                                    if (column?.type == ColumnType.Boolean) {
+                                                                        val boolVal = column.getValue(obj) as? Boolean ?: false
+                                                                        adminBadge(
+                                                                            text = if (boolVal) "Yes" else "No",
+                                                                            variant = if (boolVal) "success" else "warning"
+                                                                        )
+                                                                    } else {
                                                                         text(value)
                                                                     }
+                                                                }
+                                                            } else {
+                                                                // Render boolean as badge
+                                                                if (column?.type == ColumnType.Boolean) {
+                                                                    val boolVal = column.getValue(obj) as? Boolean ?: false
+                                                                    adminBadge(
+                                                                        text = if (boolVal) "Yes" else "No",
+                                                                        variant = if (boolVal) "success" else "warning"
+                                                                    )
                                                                 } else {
                                                                     text(value)
                                                                 }
                                                             }
                                                         }
-                                                    } else {
-                                                        // Default display
-                                                        val pk = model.primaryKeyColumn.getValue(obj)
-                                                        td { 
-                                                            a(href = "$baseUrl/$pk") {
-                                                                text(pk.toString())
-                                                            }
-                                                        }
-                                                        td { text(obj.toString()) }
                                                     }
                                                 }
                                             }
                                         }
                                     }
                                 }
-                                
-                                // Sidebar
-                                if (admin.listFilter.isNotEmpty()) {
-                                    div(mapOf("class" to "col-md-3")) {
-                                        div(mapOf("class" to "card")) {
-                                            div(mapOf("class" to "card-header")) { text("Filter") }
-                                            div(mapOf("class" to "card-body")) {
-                                                for (filterField in admin.listFilter) {
-                                                    element("h5") { text(filterField.replaceFirstChar { it.uppercase() }) }
-                                                    div(mapOf("class" to "list-group mb-3")) {
-                                                        val currentVal = queryParams[filterField]?.firstOrNull()
-                                                        val allParams = queryParams.toMutableMap()
-                                                        allParams.remove(filterField)
-                                                        val allQueryString = allParams.entries.joinToString("&") { "${it.key}=${it.value.firstOrNull() ?: ""}" }
-                                                        
-                                                        a(href = "$baseUrl?$allQueryString", attributes = mapOf("class" to "list-group-item list-group-item-action ${if(currentVal == null) "active" else ""}")) { text("All") }
-                                                        
-                                                        // TODO: Fetch distinct values.
-                                                        // For now, if it's boolean, show True/False
-                                                        val column = model.columns.find { it.name == filterField }
-                                                        if (column?.type == ColumnType.Boolean) {
-                                                            val trueParams = queryParams.toMutableMap()
-                                                            trueParams[filterField] = listOf("true")
-                                                            val trueQs = trueParams.entries.joinToString("&") { "${it.key}=${it.value.firstOrNull() ?: ""}" }
-                                                            a(href = "$baseUrl?$trueQs", attributes = mapOf("class" to "list-group-item list-group-item-action ${if(currentVal == "true") "active" else ""}")) { text("Yes") }
-                                                            
-                                                            val falseParams = queryParams.toMutableMap()
-                                                            falseParams[filterField] = listOf("false")
-                                                            val falseQs = falseParams.entries.joinToString("&") { "${it.key}=${it.value.firstOrNull() ?: ""}" }
-                                                            a(href = "$baseUrl?$falseQs", attributes = mapOf("class" to "list-group-item list-group-item-action ${if(currentVal == "false") "active" else ""}")) { text("No") }
-                                                        }
-                                                    }
+                            }
+                            
+                            // Filter sidebar
+                            if (hasFilters) {
+                                adminFilterSidebar {
+                                    for (filterField in admin.listFilter) {
+                                        adminFilterSection(title = filterField.replaceFirstChar { it.uppercase() }) {
+                                            val currentVal = queryParams[filterField]?.firstOrNull()
+                                            
+                                            // Build "All" link (removes this filter)
+                                            val allParams = queryParams.toMutableMap()
+                                            allParams.remove(filterField)
+                                            val allQueryString = allParams.entries
+                                                .joinToString("&") { "${it.key}=${it.value.firstOrNull() ?: ""}" }
+                                            
+                                            adminFilterOption(
+                                                label = "All",
+                                                href = if (allQueryString.isNotEmpty()) "$baseUrl?$allQueryString" else baseUrl,
+                                                active = currentVal == null
+                                            )
+                                            
+                                            // Boolean filter options
+                                            val column = model.columns.find { it.name == filterField }
+                                            if (column?.type == ColumnType.Boolean) {
+                                                for ((value, label) in listOf("true" to "Yes", "false" to "No")) {
+                                                    val params = queryParams.toMutableMap()
+                                                    params[filterField] = listOf(value)
+                                                    val qs = params.entries
+                                                        .joinToString("&") { "${it.key}=${it.value.firstOrNull() ?: ""}" }
+                                                    
+                                                    adminFilterOption(
+                                                        label = label,
+                                                        href = "$baseUrl?$qs",
+                                                        active = currentVal == value
+                                                    )
                                                 }
                                             }
                                         }
@@ -238,11 +393,13 @@ class AdminSite(val name: String = "admin") {
             }
         }
         
+        // Add form
         router.get("$baseUrl/add") { exchange ->
             val form = ModelForm(model)
-            renderForm(exchange, form, "Add $modelName", "$baseUrl/add")
+            renderForm(exchange, form, "Add $displayName", "$baseUrl/add", displayName, baseUrl, isNew = true)
         }
         
+        // Add submit
         router.post("$baseUrl/add") { exchange ->
             val body = exchange.request.bodyText()
             val formData = parseFormData(body)
@@ -251,20 +408,18 @@ class AdminSite(val name: String = "admin") {
             
             if (form.isValid()) {
                 form.save()
-                exchange.redirect("$baseUrl")
+                exchange.redirect(baseUrl)
             } else {
-                renderForm(exchange, form, "Add $modelName", "$baseUrl/add")
+                renderForm(exchange, form, "Add $displayName", "$baseUrl/add", displayName, baseUrl, isNew = true)
             }
         }
         
+        // Edit form
         router.get("$baseUrl/:id") { exchange ->
             val id = exchange.pathParam("id") ?: run {
                 exchange.notFound("ID not provided")
                 return@get
             }
-            // We need to convert ID to correct type. Assuming Long or Int.
-            // Since we don't know the type easily here without reflection on PK column,
-            // we'll try to parse as Long (covers Int too usually) or String.
             
             val pkValue: Any = id.toLongOrNull() ?: id
             val obj = model.get(pkValue)
@@ -275,12 +430,10 @@ class AdminSite(val name: String = "admin") {
             }
             
             val form = ModelForm(model, obj)
-            // Pre-fill form data from object
-            // ModelForm init automatically binds object values to fields.
-            
-            renderForm(exchange, form, "Change $modelName", "$baseUrl/$id")
+            renderForm(exchange, form, "Edit $displayName", "$baseUrl/$id", displayName, baseUrl, isNew = false, objectId = id)
         }
         
+        // Edit submit
         router.post("$baseUrl/:id") { exchange ->
             val id = exchange.pathParam("id") ?: run {
                 exchange.notFound("ID not provided")
@@ -301,82 +454,192 @@ class AdminSite(val name: String = "admin") {
             
             if (form.isValid()) {
                 form.save()
-                exchange.redirect("$baseUrl")
+                exchange.redirect(baseUrl)
             } else {
-                renderForm(exchange, form, "Change $modelName", "$baseUrl/$id")
+                renderForm(exchange, form, "Edit $displayName", "$baseUrl/$id", displayName, baseUrl, isNew = false, objectId = id)
             }
         }
         
+        // Delete confirmation
         router.get("$baseUrl/:id/delete") { exchange ->
-             val id = exchange.pathParam("id") ?: run {
-                 exchange.notFound("ID not provided")
-                 return@get
-             }
-             val pkValue: Any = id.toLongOrNull() ?: id
-             val obj = model.get(pkValue)
-             
-             if (obj == null) {
-                 exchange.notFound("Object not found")
-                 return@get
-             }
-             
-             exchange.render {
-                 element("html") {
-                     head {
-                         element("title") { text("Delete $modelName | Aether Admin") }
-                         element("link", mapOf("rel" to "stylesheet", "href" to "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"))
-                     }
-                     body {
-                         div(mapOf("class" to "container mt-4")) {
-                             h1 { text("Are you sure?") }
-                             p { text("Are you sure you want to delete the $modelName \"$obj\"? All of the following related items will be deleted:") }
-                             
-                             form(action = "$baseUrl/$id/delete", method = "post") {
-                                 csrfToken(exchange)
-                                 button(attributes = mapOf("type" to "submit", "class" to "btn btn-danger")) { text("Yes, I'm sure") }
-                                 a(href = "$baseUrl", attributes = mapOf("class" to "btn btn-secondary ms-2")) { text("No, take me back") }
-                             }
-                         }
-                     }
-                 }
-             }
+            val id = exchange.pathParam("id") ?: run {
+                exchange.notFound("ID not provided")
+                return@get
+            }
+            val pkValue: Any = id.toLongOrNull() ?: id
+            val obj = model.get(pkValue)
+            
+            if (obj == null) {
+                exchange.notFound("Object not found")
+                return@get
+            }
+            
+            exchange.render {
+                adminLayout(
+                    title = "Delete $displayName",
+                    siteName = name,
+                    currentPath = baseUrl,
+                    models = getModelList()
+                ) {
+                    adminPageHeader(title = "Delete $displayName")
+                    
+                    element("div", mapOf("class" to "admin-content")) {
+                        adminBreadcrumbs(
+                            "Dashboard" to "/$name",
+                            displayName to baseUrl,
+                            "Delete" to null
+                        )
+                        
+                        adminCard {
+                            element("div", mapOf("style" to "text-align: center; padding: 32px 16px;")) {
+                                element("div", mapOf("style" to "color: ${AdminTheme.Colors.ERROR}; margin-bottom: 16px;")) {
+                                    rawHtml("""<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width: 48px; height: 48px;"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>""")
+                                }
+                                
+                                element("h2", mapOf("style" to "font-size: 20px; font-weight: 600; margin-bottom: 8px;")) {
+                                    text("Are you sure?")
+                                }
+                                element("p", mapOf("style" to "color: ${AdminTheme.Colors.TEXT_MUTED}; margin-bottom: 24px;")) {
+                                    text("Are you sure you want to delete this $displayName? This action cannot be undone.")
+                                }
+                                
+                                element("div", mapOf("style" to "display: flex; gap: 12px; justify-content: center;")) {
+                                    element("form", mapOf(
+                                        "action" to "$baseUrl/$id/delete",
+                                        "method" to "post",
+                                        "style" to "display: inline;"
+                                    )) {
+                                        csrfToken(exchange)
+                                        adminButton(
+                                            text = "Yes, Delete",
+                                            type = "submit",
+                                            variant = "danger"
+                                        )
+                                    }
+                                    adminButton(
+                                        text = "Cancel",
+                                        href = baseUrl,
+                                        variant = "secondary"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         
+        // Delete submit
         router.post("$baseUrl/:id/delete") { exchange ->
-             val id = exchange.pathParam("id") ?: run {
-                 exchange.notFound("ID not provided")
-                 return@post
-             }
-             val pkValue: Any = id.toLongOrNull() ?: id
-             val obj = model.get(pkValue)
-             
-             if (obj != null) {
-                 obj.delete()
-             }
-             
-             exchange.redirect("$baseUrl")
+            val id = exchange.pathParam("id") ?: run {
+                exchange.notFound("ID not provided")
+                return@post
+            }
+            val pkValue: Any = id.toLongOrNull() ?: id
+            val obj = model.get(pkValue)
+            
+            if (obj != null) {
+                obj.delete()
+            }
+            
+            exchange.redirect(baseUrl)
         }
     }
     
-    private suspend fun renderForm(exchange: codes.yousef.aether.core.Exchange, form: codes.yousef.aether.forms.Form, title: String, actionUrl: String) {
+    private suspend fun renderForm(
+        exchange: codes.yousef.aether.core.Exchange,
+        form: codes.yousef.aether.forms.Form,
+        title: String,
+        actionUrl: String,
+        displayName: String,
+        baseUrl: String,
+        isNew: Boolean,
+        objectId: String? = null
+    ) {
         exchange.render {
-            element("html") {
-                head {
-                    element("title") { text("$title | Aether Admin") }
-                    element("link", mapOf("rel" to "stylesheet", "href" to "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"))
-                }
-                body {
-                    div(mapOf("class" to "container mt-4")) {
-                        h1 { text(title) }
-                        
-                        form(action = actionUrl, method = "post", attributes = mapOf("class" to "mt-4")) {
+            adminLayout(
+                title = title,
+                siteName = name,
+                currentPath = baseUrl,
+                models = getModelList()
+            ) {
+                adminPageHeader(title = title)
+                
+                element("div", mapOf("class" to "admin-content")) {
+                    // Breadcrumbs
+                    val breadcrumbs = mutableListOf<Pair<String, String?>>(
+                        "Dashboard" to "/$name",
+                        displayName to baseUrl
+                    )
+                    if (isNew) {
+                        breadcrumbs.add("Add" to null)
+                    } else {
+                        breadcrumbs.add("Edit #$objectId" to null)
+                    }
+                    adminBreadcrumbs(*breadcrumbs.toTypedArray())
+                    
+                    adminCard {
+                        element("form", mapOf(
+                            "action" to actionUrl,
+                            "method" to "post"
+                        )) {
                             csrfToken(exchange)
                             
                             // Render form fields
-                            form.asP(this)
+                            element("div", mapOf("style" to "display: grid; gap: 16px;")) {
+                                for ((fieldName, field) in form.allFields()) {
+                                    val error = form.getFieldError(fieldName)
+                                    val value = field.value?.toString() ?: ""
+                                    
+                                    when (field) {
+                                        is codes.yousef.aether.forms.BooleanField -> {
+                                            adminFormCheckbox(
+                                                label = field.label,
+                                                name = fieldName,
+                                                checked = field.value == true
+                                            )
+                                        }
+                                        else -> {
+                                            adminFormGroup(
+                                                label = field.label,
+                                                name = fieldName,
+                                                value = value,
+                                                required = field.required,
+                                                error = error,
+                                                multiline = field is codes.yousef.aether.forms.CharField && value.length > 100,
+                                                type = when (field) {
+                                                    is codes.yousef.aether.forms.IntegerField, 
+                                                    is codes.yousef.aether.forms.LongField,
+                                                    is codes.yousef.aether.forms.DoubleField -> "number"
+                                                    else -> "text"
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                             
-                            div(attributes = mapOf("class" to "mt-3")) {
-                                button(attributes = mapOf("type" to "submit", "class" to "btn btn-primary")) { text("Save") }
+                            // Form actions
+                            element("div", mapOf("style" to "display: flex; gap: 12px; margin-top: 24px; padding-top: 24px; border-top: 1px solid #e2e8f0;")) {
+                                adminButton(
+                                    text = if (isNew) "Create $displayName" else "Save Changes",
+                                    type = "submit"
+                                )
+                                adminButton(
+                                    text = "Cancel",
+                                    href = baseUrl,
+                                    variant = "secondary"
+                                )
+                                
+                                if (!isNew && objectId != null) {
+                                    element("div", mapOf("style" to "margin-left: auto;")) {
+                                        adminButton(
+                                            text = "Delete",
+                                            href = "$baseUrl/$objectId/delete",
+                                            variant = "danger"
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -401,7 +664,6 @@ class AdminSite(val name: String = "admin") {
     }
     
     private fun decodeUrl(value: String): String {
-        // Basic URL decoding
         return value.replace("+", " ")
             .replace(Regex("%([0-9A-Fa-f]{2})")) { match ->
                 match.groupValues[1].toInt(16).toChar().toString()
