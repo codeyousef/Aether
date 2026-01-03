@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.5.0] - 2026-01-03
+### Fixed
+- **Vert.x body reading**: Simplified body reading to use `body().coAwait()` with error logging
+  - Previous handler/endHandler approach didn't work correctly
+  - Added error logging for debugging body read failures
+
 ## [0.3.4.0] - 2026-01-03
 ### Fixed
 - **Vert.x body reading**: Fixed request body not being read properly in some environments (e.g., Cloud Run)

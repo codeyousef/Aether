@@ -119,38 +119,21 @@ class VertxExchange(
 suspend fun createVertxExchange(vertxRequest: HttpServerRequest): VertxExchange {
     val bodyDeferred = CompletableDeferred<ByteArray>()
 
+    // Read body using Vert.x's built-in body() method with proper suspension
+    val bodyBytes: ByteArray = try {
+        // The body() method returns a Future<Buffer> which we await
+        val buffer = vertxRequest.body().coAwait()
+        buffer?.bytes ?: ByteArray(0)
+    } catch (e: Exception) {
+        // Log the error for debugging
+        System.err.println("Error reading request body: ${e.message}")
+        ByteArray(0)
+    }
+    
+    bodyDeferred.complete(bodyBytes)
+
     val request = VertxRequest(vertxRequest, bodyDeferred)
     val response = VertxResponse(vertxRequest.response())
-
-    // Read body using bodyHandler for proper stream handling
-    // This ensures the body is fully collected before we proceed
-    try {
-        val buffer = io.vertx.core.buffer.Buffer.buffer()
-        val bodyComplete = CompletableDeferred<Unit>()
-        
-        vertxRequest.handler { chunk ->
-            buffer.appendBuffer(chunk)
-        }
-        vertxRequest.endHandler {
-            bodyDeferred.complete(buffer.bytes)
-            bodyComplete.complete(Unit)
-        }
-        vertxRequest.exceptionHandler { e ->
-            bodyDeferred.complete(ByteArray(0))
-            bodyComplete.complete(Unit)
-        }
-        
-        // Resume reading if paused
-        vertxRequest.resume()
-        
-        // Wait for body to be fully read
-        bodyComplete.await()
-    } catch (e: Exception) {
-        // Request already read or has no body - provide empty body
-        if (!bodyDeferred.isCompleted) {
-            bodyDeferred.complete(ByteArray(0))
-        }
-    }
 
     return VertxExchange(request, response)
 }
