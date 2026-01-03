@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4.0] - 2026-01-03
+### Fixed
+- **Vert.x body reading**: Fixed request body not being read properly in some environments (e.g., Cloud Run)
+  - Changed from `vertxRequest.body().coAwait()` to using `handler`/`endHandler` pattern
+  - Ensures body stream is properly resumed and collected before processing
+  - Fixes forms returning empty data on POST requests
+
 ## [0.3.3.0] - 2026-01-03
 ### Added
 - **ModelAdmin enhancements**: New configuration options for form customization

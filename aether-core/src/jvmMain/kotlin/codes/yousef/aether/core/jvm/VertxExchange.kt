@@ -122,14 +122,34 @@ suspend fun createVertxExchange(vertxRequest: HttpServerRequest): VertxExchange 
     val request = VertxRequest(vertxRequest, bodyDeferred)
     val response = VertxResponse(vertxRequest.response())
 
-    // Read body safely - some requests may already be consumed (e.g., GET with no body)
+    // Read body using bodyHandler for proper stream handling
+    // This ensures the body is fully collected before we proceed
     try {
-        vertxRequest.body().coAwait().let { buffer ->
-            bodyDeferred.complete(buffer.bytes)
+        val buffer = io.vertx.core.buffer.Buffer.buffer()
+        val bodyComplete = CompletableDeferred<Unit>()
+        
+        vertxRequest.handler { chunk ->
+            buffer.appendBuffer(chunk)
         }
-    } catch (e: IllegalStateException) {
+        vertxRequest.endHandler {
+            bodyDeferred.complete(buffer.bytes)
+            bodyComplete.complete(Unit)
+        }
+        vertxRequest.exceptionHandler { e ->
+            bodyDeferred.complete(ByteArray(0))
+            bodyComplete.complete(Unit)
+        }
+        
+        // Resume reading if paused
+        vertxRequest.resume()
+        
+        // Wait for body to be fully read
+        bodyComplete.await()
+    } catch (e: Exception) {
         // Request already read or has no body - provide empty body
-        bodyDeferred.complete(ByteArray(0))
+        if (!bodyDeferred.isCompleted) {
+            bodyDeferred.complete(ByteArray(0))
+        }
     }
 
     return VertxExchange(request, response)
