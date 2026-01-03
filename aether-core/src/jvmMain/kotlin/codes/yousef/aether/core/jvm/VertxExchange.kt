@@ -113,8 +113,25 @@ class VertxExchange(
 ) : Exchange
 
 /**
+ * Create an Exchange from a Vert.x HttpServerRequest with pre-read body bytes.
+ * This is the preferred method when body has been read synchronously in the request handler.
+ */
+fun createVertxExchangeWithBody(vertxRequest: HttpServerRequest, bodyBytes: ByteArray): VertxExchange {
+    val bodyDeferred = CompletableDeferred<ByteArray>()
+    bodyDeferred.complete(bodyBytes)
+
+    val request = VertxRequest(vertxRequest, bodyDeferred)
+    val response = VertxResponse(vertxRequest.response())
+
+    return VertxExchange(request, response)
+}
+
+/**
  * Create an Exchange from a Vert.x HttpServerRequest.
  * Reads the request body and creates the appropriate Request/Response wrappers.
+ * 
+ * @deprecated Use createVertxExchangeWithBody instead - body should be read synchronously
+ *             in the request handler before launching coroutines.
  */
 suspend fun createVertxExchange(vertxRequest: HttpServerRequest): VertxExchange {
     val bodyDeferred = CompletableDeferred<ByteArray>()

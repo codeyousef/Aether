@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.6.0] - 2026-01-03
+### Fixed
+- **Vert.x body reading**: Set up body handlers SYNCHRONOUSLY in request handler before launching coroutine
+  - Fixes "Request has already been read" error on Cloud Run
+  - Body is now collected on the Vert.x event loop thread before any async processing
+  - Added `createVertxExchangeWithBody()` for pre-read body bytes
+
 ## [0.3.5.0] - 2026-01-03
 ### Fixed
 - **Vert.x body reading**: Simplified body reading to use `body().coAwait()` with error logging

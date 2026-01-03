@@ -55,9 +55,29 @@ class VertxServer(
 
         server = vertx.createHttpServer(options)
             .requestHandler { vertxRequest ->
+                // CRITICAL: Set up body handler SYNCHRONOUSLY before any async work
+                // This must happen on the Vert.x event loop thread, before launching coroutine
+                val bodyDeferred = kotlinx.coroutines.CompletableDeferred<ByteArray>()
+                val buffer = io.vertx.core.buffer.Buffer.buffer()
+                
+                vertxRequest.handler { chunk ->
+                    buffer.appendBuffer(chunk)
+                }
+                vertxRequest.endHandler {
+                    bodyDeferred.complete(buffer.bytes)
+                }
+                vertxRequest.exceptionHandler { e ->
+                    if (!bodyDeferred.isCompleted) {
+                        bodyDeferred.complete(ByteArray(0))
+                    }
+                }
+                
+                // Now launch coroutine to process the request
                 scope.launch {
                     try {
-                        val exchange = createVertxExchange(vertxRequest)
+                        // Wait for body to be fully read
+                        val bodyBytes = bodyDeferred.await()
+                        val exchange = createVertxExchangeWithBody(vertxRequest, bodyBytes)
                         pipeline.execute(exchange, handler)
                         // Ensure response is finalized after all middleware completes
                         // This allows middleware (like SessionMiddleware) to add cookies in finally blocks
