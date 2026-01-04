@@ -29,6 +29,9 @@ kotlin {
                 implementation(project(":aether-auth"))
                 implementation(project(":aether-forms"))
                 implementation(project(":aether-admin"))
+                implementation(project(":aether-signals"))
+                implementation(project(":aether-tasks"))
+                implementation(project(":aether-channels"))
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization.json)
             }
@@ -49,6 +52,7 @@ kotlin {
                 implementation(libs.testcontainers.postgresql)
                 implementation("org.testcontainers:junit-jupiter:1.20.4")
                 implementation(libs.netty.codec.http)
+                implementation(libs.vertx.kotlin.coroutines)
             }
         }
     }

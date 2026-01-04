@@ -31,6 +31,7 @@ class AdminSite(val name: String = "admin") {
     private class RegisteredModel<T : BaseEntity<T>>(val model: Model<T>, val admin: ModelAdmin<T>)
     
     private val registry = mutableListOf<RegisteredModel<*>>()
+    private val widgets = mutableListOf<DashboardWidget>()
 
     /**
      * Registers a model with the admin site.
@@ -38,6 +39,35 @@ class AdminSite(val name: String = "admin") {
     fun <T : BaseEntity<T>> register(model: Model<T>, admin: ModelAdmin<T>? = null) {
         registry.add(RegisteredModel(model, admin ?: ModelAdmin(model)))
     }
+    
+    /**
+     * Registers a dashboard widget.
+     * Widgets are displayed on the admin dashboard.
+     * 
+     * Example:
+     * ```kotlin
+     * admin.registerWidget(StatWidget(
+     *     id = "revenue",
+     *     title = "Total Revenue",
+     *     dataSource = { Revenue.objects.sum("amount") }
+     * ))
+     * ```
+     */
+    fun registerWidget(widget: DashboardWidget) {
+        widgets.add(widget)
+    }
+    
+    /**
+     * Unregister a widget by ID.
+     */
+    fun unregisterWidget(id: String) {
+        widgets.removeAll { it.id == id }
+    }
+    
+    /**
+     * Get all registered widgets sorted by order.
+     */
+    fun getWidgets(): List<DashboardWidget> = widgets.sortedBy { it.order }
     
     private fun getModelList(): List<Pair<String, String>> {
         return registry.map { registered ->
@@ -64,6 +94,22 @@ class AdminSite(val name: String = "admin") {
                     modelName to count
                 }
                 
+                // Load widget data
+                val widgetContext = WidgetContext(
+                    siteName = name,
+                    currentPath = "/$name",
+                    models = getModelList()
+                )
+                
+                val sortedWidgets = getWidgets()
+                val widgetData = sortedWidgets.associateWith { widget ->
+                    try {
+                        widget.getData()
+                    } catch (e: Exception) {
+                        null // Widget data load failed
+                    }
+                }
+                
                 exchange.render {
                     adminLayout(
                         title = "Dashboard",
@@ -76,27 +122,58 @@ class AdminSite(val name: String = "admin") {
                         
                         // Content
                         element("div", mapOf("class" to "admin-content")) {
-                            // Stats grid
+                            // Render full-width widgets first (alerts, etc.)
+                            for (widget in sortedWidgets.filter { it.size == "large" }) {
+                                widget.apply {
+                                    render(widgetData[widget], widgetContext)
+                                }
+                            }
+                            
+                            // Stats grid - includes model counts and small widgets
                             element("div", mapOf("class" to "admin-stats-grid")) {
+                                // Model count stats
                                 for ((modelName, count) in modelCounts) {
                                     adminStatCard(
                                         label = "Total $modelName",
                                         value = count.toString()
                                     )
                                 }
+                                
+                                // Small widgets
+                                for (widget in sortedWidgets.filter { it.size == "small" }) {
+                                    widget.apply {
+                                        render(widgetData[widget], widgetContext)
+                                    }
+                                }
                             }
                             
-                            // Quick actions
-                            adminCard(title = "Quick Actions") {
-                                element("div", mapOf("style" to "display: flex; gap: 12px; flex-wrap: wrap;")) {
-                                    for (registered in registry) {
-                                        val modelName = registered.model.tableName
-                                        val displayName = modelName.replaceFirstChar { it.uppercase() }
-                                        adminButton(
-                                            text = "Add $displayName",
-                                            href = "/$name/$modelName/add",
-                                            icon = AdminTheme.Icons.plus
-                                        )
+                            // Medium widgets in a grid
+                            val mediumWidgets = sortedWidgets.filter { it.size == "medium" }
+                            if (mediumWidgets.isNotEmpty()) {
+                                element("div", mapOf(
+                                    "style" to "display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px; margin-top: 24px;"
+                                )) {
+                                    for (widget in mediumWidgets) {
+                                        widget.apply {
+                                            render(widgetData[widget], widgetContext)
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Quick actions (if no widgets provide actions)
+                            if (sortedWidgets.none { it is QuickActionsWidget }) {
+                                adminCard(title = "Quick Actions") {
+                                    element("div", mapOf("style" to "display: flex; gap: 12px; flex-wrap: wrap;")) {
+                                        for (registered in registry) {
+                                            val modelName = registered.model.tableName
+                                            val displayName = modelName.replaceFirstChar { it.uppercase() }
+                                            adminButton(
+                                                text = "Add $displayName",
+                                                href = "/$name/$modelName/add",
+                                                icon = AdminTheme.Icons.plus
+                                            )
+                                        }
                                     }
                                 }
                             }

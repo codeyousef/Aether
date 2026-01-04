@@ -1,5 +1,8 @@
 package codes.yousef.aether.db
 
+import codes.yousef.aether.signals.EntitySignalPayload
+import codes.yousef.aether.signals.Signals
+
 /**
  * Entity interface for ActiveRecord pattern.
  * Provides save(), delete(), and refresh() operations.
@@ -59,8 +62,12 @@ abstract class BaseEntity<T : BaseEntity<T>> : Entity<T> {
     override suspend fun save() {
         val model = getModel()
         val pk = getPrimaryKey()
+        val isNew = pk == null
 
-        if (pk == null) {
+        // Fire pre-save signal
+        Signals.preSave.send(EntitySignalPayload(this, isNew))
+
+        if (isNew) {
             // INSERT
             val columns = mutableListOf<String>()
             val values = mutableListOf<Expression>()
@@ -110,12 +117,18 @@ abstract class BaseEntity<T : BaseEntity<T>> : Entity<T> {
 
             DatabaseDriverRegistry.driver.executeUpdate(updateQuery)
         }
+
+        // Fire post-save signal
+        Signals.postSave.send(EntitySignalPayload(this, isNew))
     }
 
     @Suppress("UNCHECKED_CAST")
     override suspend fun delete() {
         val pk = getPrimaryKey() ?: throw DatabaseException("Cannot delete entity without primary key")
         val model = getModel()
+
+        // Fire pre-delete signal
+        Signals.preDelete.send(EntitySignalPayload(this, false))
 
         val deleteQuery = DeleteQuery(
             table = model.tableName,
@@ -128,6 +141,9 @@ abstract class BaseEntity<T : BaseEntity<T>> : Entity<T> {
 
         DatabaseDriverRegistry.driver.executeUpdate(deleteQuery)
         setPrimaryKey(null)
+
+        // Fire post-delete signal
+        Signals.postDelete.send(EntitySignalPayload(this, false))
     }
 
     @Suppress("UNCHECKED_CAST")

@@ -19,7 +19,10 @@ dependencyResolutionManagement {
 
 include(
     ":aether-core",
+    ":aether-signals",
     ":aether-db",
+    ":aether-tasks",
+    ":aether-channels",
     ":aether-web",
     ":aether-ui",
     ":aether-net",

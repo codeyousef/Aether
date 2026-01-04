@@ -1,5 +1,104 @@
 # Changelog
 
+## [0.4.0.0] - 2026-01-04
+### Added
+- **Aether Signals** (`aether-signals`): Django-style event dispatch system
+  - `Signal<T>`: Type-safe event signal with sender payload
+  - `signal.connect { }`: Register receivers with automatic lifecycle management
+  - `signal.send()` / `signal.sendAsync()`: Synchronous and async event dispatch
+  - `Disposable`: Disconnect receivers to prevent memory leaks
+  - Built-in signals: `preSave`, `postSave`, `preDelete`, `postDelete` in `aether-db`
+  - `SignalMiddleware`: Pipeline middleware for request lifecycle signals
+
+- **Aether Tasks** (`aether-tasks`): Persistent background job queue
+  - `TaskDispatcher`: Enqueue, cancel, and track async tasks
+  - `TaskWorker`: Process tasks with configurable concurrency and polling
+  - `TaskRegistry`: Register task handlers with `register<A, R>("name") { }`
+  - `InMemoryTaskStore`: Development/testing store (tasks lost on restart)
+  - `DatabaseTaskStore`: Production store using `aether-db` (persistent)
+  - `TaskStatus`: PENDING, SCHEDULED, PROCESSING, COMPLETED, FAILED, CANCELLED, RETRYING
+  - `TaskPriority`: LOW, NORMAL, HIGH, CRITICAL with queue ordering
+  - `RetryConfig`: Exponential backoff with jitter for failed tasks
+  - `@BackgroundTask` annotation for KSP code generation (future)
+
+- **Aether Channels** (`aether-channels`): WebSocket pub/sub layer
+  - `ChannelLayer`: Interface for group-based message routing
+  - `InMemoryChannelLayer`: Single-server implementation with atomic operations
+  - `groupAdd()` / `groupDiscard()`: Manage session membership
+  - `groupSend()` / `groupSendBinary()`: Broadcast text or binary to groups
+  - `Channels` singleton: Global access with `Channels.group("name").broadcast()`
+  - `ChannelMessage`: Typed message with type, payload, sender, target, timestamp
+  - `SendResult`: Track sent count, failures, and errors
+
+- **Admin Dashboard Widgets** (`aether-admin`): Pluggable dashboard components
+  - `DashboardWidget` interface: Custom widgets with async data loading
+  - `StatWidget`: Simple stat display with icon, color, and optional link
+  - `ListWidget<T>`: Table of items with headers and row renderer
+  - `QuickActionsWidget`: Action buttons with icons and variants
+  - `HtmlWidget`: Custom rendering with full ComposableScope access
+  - `AlertWidget`: Notifications with info/warning/error/success variants
+  - `ProgressWidget`: Progress bars with value, max, unit, and color
+  - `AdminSite.registerWidget()` / `unregisterWidget()`: Widget management
+  - `WidgetContext`: Site name, current path, and registered models
+
+- **Rate Limit Middleware** (`aether-core`): Quota-based request limiting
+  - `QuotaProvider` interface: Pluggable quota checking strategies
+  - `InMemoryQuotaProvider`: Sliding window rate limiting with atomic counters
+  - `QuotaUsage`: Track used, limit, remaining, resetsAt, percentUsed
+  - `RateLimitConfig`: keyExtractor, costFunction, excludedPaths, exhaustedHandler
+  - `Pipeline.installRateLimit { }`: DSL for middleware configuration
+  - `Pipeline.installRateLimitWithCredits()`: Database-backed credit systems
+  - Rate limit headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+  - HTTP 429 "Rate limit exceeded" response (configurable status code)
+
+- **HTTP Reverse Proxy** (`aether-core`): Production-ready streaming HTTP proxy middleware
+  - `Exchange.proxyTo()`: One-liner proxy forwarding with full header/body/query passthrough
+  - `Exchange.proxyRequest()`: Manual response inspection before forwarding
+  - `Pipeline.installProxy()`: Declarative middleware DSL for path-prefix routing
+  - **Streaming Support**: True streaming via `Flow<ByteArray>` with SSE/chunked transfer encoding
+  - **Header Management**: Add, remove, replace headers; automatic `X-Forwarded-*` headers
+  - **Path Rewriting**: Strip prefixes, transform paths with custom rewriters
+  - **Circuit Breaker**: Sliding window failure tracking with CLOSED/OPEN/HALF_OPEN states
+  - **Typed Exceptions**: `ProxyConnectionException` (502), `ProxyTimeoutException` (504), `ProxyCircuitOpenException` (503)
+  - **Recovery Integration**: `handleProxyExceptions()` for automatic error response handling
+  - JVM: Vert.x HttpClient with connection pooling and HTTP/2 support
+  - WasmJS/WasmWASI: Stub implementations (proxy requires server-side execution)
+
+- **Supabase Database Support** (`aether-db`): Use Supabase as a backend for the Aether ORM
+  - `SupabaseDriver`: Full DatabaseDriver implementation using PostgREST API
+  - `SupabaseTranslator`: Converts QueryAST to PostgREST query format
+  - Support for SELECT, INSERT, UPDATE, DELETE operations
+  - WHERE clauses with AND/OR/IN/IS_NULL/IS_NOT_NULL
+  - ORDER BY, LIMIT, OFFSET pagination
+  - JVM extension: `SupabaseDriver.fromEnvironment()` for easy configuration
+
+- **Firestore Database Support** (`aether-db`): Use Google Firestore as a backend for the Aether ORM
+  - `FirestoreDriver`: Full DatabaseDriver implementation using Firestore REST API
+  - `FirestoreTranslator`: Converts QueryAST to Firestore structuredQuery format
+  - Support for SELECT, INSERT, UPDATE, DELETE operations
+  - WHERE clauses with AND/OR/IN comparisons
+  - ORDER BY and LIMIT support
+  - JVM extension: `FirestoreDriver.fromEnvironment()` for easy configuration
+  - Helper methods: `createDocument()`, `getDocument()` for document-centric access
+
+- **HTTP Client Abstraction** (`aether-db`): Platform-agnostic HTTP client for database drivers
+  - `expect/actual` pattern for full KMP support
+  - JVM: Uses Java 11 HttpClient with virtual threads
+  - WasmJS: Uses browser/Node.js fetch API
+  - WasmWASI: Stub implementation (throws at runtime)
+
+- **Comprehensive Test Suite** for new database backends
+  - Unit tests for `SupabaseTranslator` and `FirestoreTranslator` (commonTest)
+  - Integration tests with WireMock HTTP mocking (jvmTest)
+  - Optional E2E tests against real services (enabled via environment variables)
+
+### Changed
+- `FirestoreDriver.buildQueryParams()`: Fixed API key not being added when query params are empty
+
+### Notes
+- Firestore has NoSQL limitations: JOINs, LIKE, DISTINCT, NOT operators are not supported
+- Supabase requires a PostgreSQL table schema; Firestore is schemaless
+
 ## [0.3.6.0] - 2026-01-03
 ### Fixed
 - **Vert.x body reading**: Set up body handlers SYNCHRONOUSLY in request handler before launching coroutine

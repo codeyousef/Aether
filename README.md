@@ -162,12 +162,68 @@ exchange.render {
 }
 ```
 
+### Database Backends
+
+Aether supports multiple database backends through pluggable drivers. Choose the backend that fits your deployment:
+
+#### PostgreSQL (Default)
+
+```kotlin
+// JVM with Vert.x Reactive Client
+val driver = VertxPgDriver.create(
+    host = "localhost",
+    port = 5432,
+    database = "mydb",
+    user = "postgres",
+    password = "secret"
+)
+DatabaseDriverRegistry.initialize(driver)
+```
+
+#### Supabase (PostgreSQL + REST API)
+
+Works on both JVM and Wasm platforms via PostgREST API:
+
+```kotlin
+val driver = SupabaseDriver.create(
+    projectUrl = "https://your-project.supabase.co",
+    apiKey = "your-anon-or-service-key"
+)
+DatabaseDriverRegistry.initialize(driver)
+
+// Your models work unchanged
+val users = User.objects.filter { it.active eq true }.toList()
+```
+
+#### Firestore (NoSQL)
+
+Works on both JVM and Wasm platforms via REST API:
+
+```kotlin
+// With API key (client-side)
+val driver = FirestoreDriver.create(
+    projectId = "your-project-id",
+    apiKey = "your-api-key"
+)
+
+// With OAuth token (server-side)
+val driver = FirestoreDriver.createWithToken(
+    projectId = "your-project-id",
+    accessToken = "your-oauth-token"
+)
+
+DatabaseDriverRegistry.initialize(driver)
+```
+
+> **Note:** Firestore is NoSQL - JOINs and LIKE queries are not supported. Use denormalized data patterns.
+
 ## Platform Support
 
 ### JVM
 
 - Uses Vert.x for HTTP server and reactive database client
 - Leverages Java 21 Virtual Threads for blocking I/O operations
+
 - PostgreSQL support via Vert.x Reactive PostgreSQL Client
 - SSR with automatic client hydration
 

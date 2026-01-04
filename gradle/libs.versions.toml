@@ -19,6 +19,7 @@ kotlinpoet = "1.18.1"
 ksp-api = "2.1.0-1.0.29"
 netty = "4.1.115.Final"
 bcrypt = "0.10.2"
+wiremock = "3.9.2"
 
 [libraries]
 # Kotlin Core
@@ -57,6 +58,7 @@ kotlin-wrappers-node = { module = "org.jetbrains.kotlin-wrappers:kotlin-node", v
 testcontainers-core = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+wiremock = { module = "org.wiremock:wiremock", version.ref = "wiremock" }
 
 # DateTime
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "datetime" }

@@ -12,7 +12,11 @@ kotlin {
         }
     }
     wasmJs {
-        browser()
+        browser {
+            testTask {
+                enabled = false  // Skip browser tests, use nodejs instead
+            }
+        }
         nodejs()
     }
     wasmWasi {

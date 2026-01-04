@@ -16,7 +16,11 @@ kotlin {
     }
 
     wasmJs {
-        browser()
+        browser {
+            testTask {
+                enabled = false  // Skip browser tests, use nodejs instead
+            }
+        }
         nodejs()
     }
 
@@ -30,6 +34,7 @@ kotlin {
         commonMain {
             dependencies {
                 implementation(project(":aether-core"))
+                implementation(project(":aether-signals"))
                 implementation(libs.kotlin.stdlib)
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization.core)
@@ -61,6 +66,8 @@ kotlin {
                 implementation(libs.logback.classic)
                 implementation(libs.testcontainers.core)
                 implementation(libs.testcontainers.postgresql)
+                implementation(libs.wiremock)
+                implementation(libs.mockk)
             }
         }
     }
