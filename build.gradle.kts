@@ -105,7 +105,7 @@ tasks.register("publishToCentralPortalManually") {
         bundleDir.deleteRecursively()
 
         // List of modules to publish
-        val modules = listOf("aether-core", "aether-db", "aether-web", "aether-ui", "aether-net", "aether-ksp", "aether-auth", "aether-forms", "aether-admin")
+        val modules = listOf("aether-core", "aether-signals", "aether-tasks", "aether-channels", "aether-db", "aether-web", "aether-ui", "aether-net", "aether-ksp", "aether-auth", "aether-forms", "aether-admin")
         // List of variants for each module
         val variants = listOf("", "-jvm", "-wasm-js", "-wasm-wasi") 
 

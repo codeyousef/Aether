@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0.1] - 2026-01-04
+### Fixed
+- **Publishing**: Added missing modules to Maven Central publish list
+  - `aether-signals`: Now published to Maven Central
+  - `aether-tasks`: Now published to Maven Central  
+  - `aether-channels`: Now published to Maven Central
+- **Multiplatform Compatibility**: Fixed `synchronized` and `Math` usage in common code
+  - Replaced `synchronized` with `Mutex.withLock` in Signal dispatch
+  - Replaced `Math.random()` with `kotlin.random.Random.nextDouble()`
+  - Replaced `Math.pow()` with `kotlin.math.pow()`
+- **Build**: Disabled wasmJs browser tests (use Node.js instead) to fix CI without Chrome
+
 ## [0.4.0.0] - 2026-01-04
 ### Added
 - **Aether Signals** (`aether-signals`): Django-style event dispatch system
