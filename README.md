@@ -22,6 +22,58 @@ Aether is designed to be a "colorless" framework that abstracts away the differe
 - **WebSocket Support**: Full-duplex WebSocket communication with DSL-based configuration
 - **KSP Migrations**: Kotlin Symbol Processing for automatic database schema migration generation
 
+## Quickstart
+
+**1. Add the dependency** (`build.gradle.kts`):
+
+```kotlin
+kotlin {
+    jvm()
+    sourceSets {
+        commonMain.dependencies {
+            implementation("codes.yousef.aether:aether-core:0.4.0")
+            implementation("codes.yousef.aether:aether-web:0.4.0")
+            implementation("codes.yousef.aether:aether-db:0.4.0")
+        }
+    }
+}
+```
+
+**2. Create your app** (`src/jvmMain/kotlin/Main.kt`):
+
+```kotlin
+import codes.yousef.aether.core.*
+import codes.yousef.aether.web.*
+
+fun main() {
+    val router = router {
+        get("/") { exchange ->
+            exchange.respondHtml("<h1>Hello, Aether!</h1>")
+        }
+        get("/api/hello") { exchange ->
+            exchange.respondJson(mapOf("message" to "Hello, World!"))
+        }
+    }
+
+    val pipeline = pipeline {
+        installRecovery()
+        installCallLogging()
+        use(router.asMiddleware())
+    }
+
+    AetherServer.start(port = 8080, pipeline = pipeline)
+}
+```
+
+**3. Run it:**
+
+```bash
+./gradlew run
+# Open http://localhost:8080
+```
+
+See [Full Documentation](docs/quickstart.md) for detailed setup instructions.
+
 ## Project Structure
 
 ```
@@ -251,68 +303,6 @@ The framework includes a pluggable network abstraction layer (`:aether-net`) tha
 - Future extensibility without breaking changes
 
 The transport layer provides a clean interface that can be implemented for different networking paradigms while keeping application code unchanged.
-
-## Development Roadmap
-
-### Phase 1: Foundation ✅
-- [x] Version catalog and build infrastructure
-- [x] Multi-module KMP project structure
-- [x] JVM, WasmJS, and WasmWASI targets
-
-### Phase 2: Core Kernel ✅
-- [x] AetherDispatcher with Virtual Threads
-- [x] Exchange abstraction
-- [x] Middleware pipeline
-- [x] Vert.x adapter
-
-### Phase 3: Data Plane ✅
-- [x] Query AST
-- [x] Model DSL
-- [x] DatabaseDriver interface
-- [x] VertxPgDriver
-- [x] HTTP driver for Wasm
-
-### Phase 4: Web Layer ✅
-- [x] Radix tree router
-- [x] Path parameter extraction
-- [x] JVM and Wasm adapters
-
-### Phase 5: UI Integration ✅
-- [x] Composable UI DSL
-- [x] JVM SSR engine
-- [x] CBOR serialization
-
-### Phase 6: Network Layer ✅
-- [x] NetworkTransport interface
-- [x] TCP implementation (JVM)
-- [x] UWW stubs (WASI)
-
-### Phase 7: Tooling ✅
-- [x] Gradle plugin
-- [x] CLI tool structure
-
-### Phase 8: Testing ✅
-- [x] Integration tests
-- [x] TestContainers setup
-
-### Phase 9: Security & Sessions ✅
-- [x] Session management (memory, database, Redis)
-- [x] CSRF protection middleware
-- [x] Authentication middleware (Basic, Bearer, JWT, API Key, Form)
-- [x] Authorization with role-based access control
-
-### Phase 10: Advanced Features ✅
-- [x] File upload handling with multipart parsing
-- [x] WebSocket support with DSL configuration
-- [x] KSP-based migration generation
-- [x] Alternative transport implementations (UDP, HTTP client)
-
-### Phase 11: Production Ready ✅
-- [x] Docker and Docker Compose configurations
-- [x] Kubernetes deployment manifests
-- [x] Nginx reverse proxy configuration
-- [x] Cloud deployment guides (AWS, GCP, Azure, DigitalOcean)
-- [x] Comprehensive E2E test suite
 
 ## Security Features
 

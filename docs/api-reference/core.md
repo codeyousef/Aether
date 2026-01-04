@@ -91,3 +91,163 @@ val appPipeline = pipeline {
     use(authMiddleware)
 }
 ```
+
+---
+
+## Rate Limit Middleware
+
+The rate limit middleware provides quota-based request limiting to protect your API from abuse.
+
+### Basic Usage
+
+```kotlin
+pipeline.installRateLimit {
+    quotaProvider = InMemoryQuotaProvider(
+        limit = 100,          // 100 requests
+        windowMillis = 60_000 // per minute
+    )
+    keyExtractor = { exchange ->
+        exchange.request.headers.get("X-API-Key") ?: exchange.request.remoteAddress
+    }
+}
+```
+
+### Configuration Options
+
+```kotlin
+pipeline.installRateLimit {
+    // Required: Quota provider
+    quotaProvider = InMemoryQuotaProvider(limit = 1000, windowMillis = 3600_000)
+    
+    // Extract key to identify the client (default: IP address)
+    keyExtractor = { exchange -> exchange.request.remoteAddress }
+    
+    // Cost per request (default: 1)
+    costFunction = { exchange ->
+        if (exchange.request.path.startsWith("/api/heavy/")) 10L else 1L
+    }
+    
+    // Paths to exclude from rate limiting
+    excludedPaths = setOf("/health", "/metrics")
+    excludedPathPrefixes = setOf("/public/", "/static/")
+    
+    // Bypass condition (e.g., for admin users)
+    bypassCondition = { exchange ->
+        exchange.attributes[UserKey]?.isAdmin == true
+    }
+    
+    // Response customization
+    statusCode = 429  // Too Many Requests (default)
+    errorMessage = "Rate limit exceeded"
+    includeHeaders = true  // X-RateLimit-* headers
+    
+    // Custom response headers
+    responseHeaders = { usage ->
+        mapOf("X-Credits-Remaining" to usage.remaining.toString())
+    }
+}
+```
+
+### Database-Backed Credits
+
+For persistent quota tracking:
+
+```kotlin
+pipeline.installRateLimitWithCredits(
+    getCredits = { userId -> userService.getCredits(userId) },
+    deductCredits = { userId, amount -> userService.deductCredits(userId, amount) }
+) {
+    keyExtractor = { exchange -> exchange.attributes[UserKey]?.id }
+}
+```
+
+### Response Headers
+
+When `includeHeaders = true`, these headers are added:
+- `X-RateLimit-Limit`: Total quota
+- `X-RateLimit-Remaining`: Remaining quota
+- `X-RateLimit-Reset`: Unix timestamp when quota resets
+
+---
+
+## HTTP Reverse Proxy
+
+The proxy middleware enables forwarding requests to upstream services with full streaming support.
+
+### Simple Proxy
+
+```kotlin
+// One-liner: forward entire request and response
+exchange.proxyTo("https://api.example.com/v1${exchange.request.path}")
+```
+
+### Proxy with Inspection
+
+```kotlin
+// Inspect response before forwarding
+val response = exchange.proxyRequest("https://api.example.com/v1/data")
+if (response.statusCode == 200) {
+    exchange.respondBytes(response.statusCode, response.contentType, response.body)
+} else {
+    exchange.internalError("Upstream error")
+}
+```
+
+### Proxy Middleware DSL
+
+```kotlin
+pipeline.installProxy {
+    // Route by path prefix
+    route("/api/users") {
+        target = "https://users-service.internal:8080"
+        stripPrefix = true  // /api/users/123 -> /123
+    }
+    
+    route("/api/orders") {
+        target = "https://orders-service.internal:8080"
+        
+        // Header management
+        addHeaders = mapOf("X-Internal-Token" to "secret")
+        removeHeaders = setOf("Cookie", "Authorization")
+        
+        // Path rewriting
+        pathRewriter = { path -> "/v2$path" }
+    }
+    
+    // Global settings
+    timeout = 30_000  // 30 seconds
+    includeForwardedHeaders = true  // X-Forwarded-For, X-Forwarded-Proto
+    
+    // Circuit breaker
+    circuitBreaker {
+        failureThreshold = 5
+        successThreshold = 2
+        timeout = 60_000  // Open state duration
+    }
+}
+```
+
+### Streaming Support
+
+The proxy supports true streaming for SSE and chunked responses:
+
+```kotlin
+route("/api/stream") {
+    target = "https://streaming-service.internal:8080"
+    streaming = true  // Enable Flow<ByteArray> streaming
+}
+```
+
+### Error Handling
+
+```kotlin
+pipeline.apply {
+    handleProxyExceptions()  // Automatic 502/503/504 responses
+    installProxy { ... }
+}
+```
+
+Exception types:
+- `ProxyConnectionException` → 502 Bad Gateway
+- `ProxyTimeoutException` → 504 Gateway Timeout
+- `ProxyCircuitOpenException` → 503 Service Unavailable
