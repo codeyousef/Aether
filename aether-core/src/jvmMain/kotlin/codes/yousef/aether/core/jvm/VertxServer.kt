@@ -100,7 +100,7 @@ class VertxServer(
             .listen()
             .coAwait()
 
-        logger.info("Vert.x server started on ${config.host}:${config.port}")
+        logger.info("Aether server started on ${config.host}:${config.port}")
     }
 
     /**
@@ -109,7 +109,7 @@ class VertxServer(
      */
     suspend fun stop() {
         server?.close()?.coAwait()
-        logger.info("Vert.x server stopped")
+        logger.info("Aether server stopped")
     }
 
     /**
@@ -118,7 +118,7 @@ class VertxServer(
     suspend fun close() {
         stop()
         vertx.close().coAwait()
-        logger.info("Vert.x instance closed")
+        logger.info("Aether server closed")
     }
 
     companion object {

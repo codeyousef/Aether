@@ -65,6 +65,8 @@ kotlin {
             dependencies {
                 implementation(libs.logback.classic)
                 implementation(libs.mockk)
+                implementation("org.junit.jupiter:junit-jupiter:5.10.1")
+                implementation(libs.kotlinx.coroutines.test)
             }
         }
     }

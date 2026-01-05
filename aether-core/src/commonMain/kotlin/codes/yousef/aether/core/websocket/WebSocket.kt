@@ -107,6 +107,17 @@ interface WebSocketSession {
     val attributes: MutableMap<String, Any?>
 
     /**
+     * Path parameters extracted from the WebSocket URL pattern.
+     * For example, if the route is "/ws/agent/:sessionId" and the path is "/ws/agent/123",
+     * pathParams will contain {"sessionId": "123"}.
+     */
+    val pathParams: Map<String, String>
+        get() {
+            @Suppress("UNCHECKED_CAST")
+            return attributes["_pathParams"] as? Map<String, String> ?: emptyMap()
+        }
+
+    /**
      * Whether the WebSocket connection is open.
      */
     val isOpen: Boolean

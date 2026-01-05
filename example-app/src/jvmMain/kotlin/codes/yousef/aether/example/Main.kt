@@ -406,8 +406,8 @@ fun main() = runBlocking(AetherDispatcher.dispatcher) {
                                 li { text("Express-style routing with Radix Tree for O(k) matching") }
                                 li { text("Pipeline middleware system") }
                                 li { text("UI DSL for SSR and UWW mode") }
-                                li { text("Built on Vert.x for high performance on JVM") }
-                                li { text("Virtual Threads support (Java 21+)") }
+                                li { text("High-performance async I/O with Virtual Threads (Java 21+)") }
+                                li { text("WebSocket support with session management") }
                             }
                         }
                         div {

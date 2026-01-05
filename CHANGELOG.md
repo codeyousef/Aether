@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.1.0] - 2026-01-05
+### Added
+- **Aether Start**: New `aetherStart {}` entry point for simplified server startup
+  - Supports both pipeline-based and router-based configuration
+  - **WebSocket Integration**: Automatically registers and handles WebSocket routes defined in the Router
+  - Automatic ASCII banner display on startup
+  - Graceful shutdown handling with "⚡ Shutting down Aether..." messages
+  - Replaces direct `VertxServer` usage in user code
+- **CLI**: Added `runserver` command (alias `run`) to start the development server
+- **CLI**: Added ASCII banner to help output and startup messages
+
+### Changed
+- **Branding**: Replaced Vert.x branding with Aether branding in customer-facing output
+  - Terminal output now shows "Aether Framework" instead of Vert.x messages
+  - Gradle tasks now described as "Run ... with Virtual Threads" instead of "Vert.x"
+  - Example app UI updated to highlight "Virtual Threads" instead of "Vert.x"
+- **Templates**: Updated `startproject` and Gradle plugin templates to use `aetherStart`
+- **Testing**: Added comprehensive E2E tests for `aetherStart` and WebSocket functionality
+
 ## [0.4.0.1] - 2026-01-04
 ### Fixed
 - **Publishing**: Added missing modules to Maven Central publish list

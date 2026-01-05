@@ -11,6 +11,7 @@ import kotlinx.coroutines.runBlocking
  * Aether CLI - Command line tools for the Aether framework.
  *
  * Available commands:
+ * - runserver: Start the development server
  * - migrate: Generate and apply database migrations
  * - init: Initialize a new Aether project
  * - startproject: Create a new Aether project structure
@@ -28,6 +29,7 @@ fun main(args: Array<String>) {
 
     try {
         when (command) {
+            "runserver", "run" -> handleRunServer(args.drop(1))
             "migrate" -> handleMigrate(args.drop(1))
             "init" -> handleInit(args.drop(1))
             "startproject" -> handleStartProject(args.drop(1))
@@ -47,6 +49,56 @@ fun main(args: Array<String>) {
         e.printStackTrace()
         exitProcess(1)
     }
+}
+
+/**
+ * Handles the 'runserver' command.
+ * Starts the Aether development server.
+ */
+private fun handleRunServer(args: List<String>) {
+    var port = 8080
+    var host = "0.0.0.0"
+
+    var i = 0
+    while (i < args.size) {
+        when (args[i]) {
+            "--port", "-p" -> if (i + 1 < args.size) port = args[++i].toIntOrNull() ?: 8080
+            "--host", "-h" -> if (i + 1 < args.size) host = args[++i]
+            "--help" -> {
+                println("""
+                    Usage: aether-cli runserver [options]
+                    
+                    Options:
+                      --port, -p <port>   Port to listen on (default: 8080)
+                      --host <host>       Host to bind to (default: 0.0.0.0)
+                      --help              Show this help message
+                      
+                    Examples:
+                      aether-cli runserver
+                      aether-cli runserver --port 3000
+                      aether-cli runserver --host 127.0.0.1 --port 8000
+                """.trimIndent())
+                return
+            }
+        }
+        i++
+    }
+
+    println("""
+       ___        __  __             
+      / _ | ___  / /_/ /  ___  ____  
+     / __ |/ -_)/ __/ _ \/ -_)/ __/  
+    /_/ |_|\__/ \__/_//_/\__//_/     
+    
+    ⚡ Starting Aether development server...
+    """.trimIndent())
+
+    val displayHost = if (host == "0.0.0.0") "localhost" else host
+    println("▸ Server: http://$displayHost:$port")
+    println("▸ Press Ctrl+C to stop")
+    println()
+    println("Note: This command looks for your Application.kt or Main.kt in the current project.")
+    println("      Run './gradlew run' or './gradlew aetherRunJvm' to start your application.")
 }
 
 /**
@@ -400,27 +452,16 @@ private fun handleStartProject(args: List<String>) {
     File(srcDir, "Main.kt").writeText("""
         package $projectName
 
-        import codes.yousef.aether.core.AetherDispatcher
-        import codes.yousef.aether.core.jvm.VertxServer
-        import codes.yousef.aether.core.jvm.VertxServerConfig
-        import codes.yousef.aether.core.pipeline.Pipeline
-        import codes.yousef.aether.web.router
-        import kotlinx.coroutines.runBlocking
+        import codes.yousef.aether.web.aetherStart
 
-        fun main() = runBlocking(AetherDispatcher.dispatcher) {
-            val router = router {
-                get("/") { exchange ->
-                    exchange.respondText("Hello, Aether!")
-                }
+        fun main() = aetherStart(port = 8080) {
+            get("/") { exchange ->
+                exchange.respondText("Hello, Aether!")
             }
-
-            val pipeline = Pipeline().apply {
-                use(router.asMiddleware())
+            
+            get("/health") { exchange ->
+                exchange.respondJson(mapOf("status" to "healthy"))
             }
-
-            val server = VertxServer(VertxServerConfig(8080), pipeline)
-            server.start()
-            println("Server started on http://localhost:8080")
         }
     """.trimIndent())
 
@@ -591,11 +632,17 @@ private fun handleInspectDb(args: List<String>) {
  */
 private fun printHelp() {
     println("""
+       ___        __  __             
+      / _ | ___  / /_/ /  ___  ____  
+     / __ |/ -_)/ __/ _ \/ -_)/ __/  
+    /_/ |_|\__/ \__/_//_/\__//_/     
+
         Aether CLI - Command line tools for the Aether framework
 
         Usage: aether-cli <command> [options]
 
         Commands:
+          runserver             Start the development server
           migrate               Manage database migrations
           init [directory]      Initialize a new Aether project
           startproject [name]   Create a new Aether project structure
@@ -605,6 +652,7 @@ private fun printHelp() {
           help                  Show this help message
 
         Examples:
+          aether-cli runserver --port 8080
           aether-cli startproject myproject
           aether-cli startapp blog
           aether-cli migrate --apply

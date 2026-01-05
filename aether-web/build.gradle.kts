@@ -50,6 +50,16 @@ kotlin {
             dependencies {
                 implementation(libs.vertx.core)
                 implementation(libs.vertx.web)
+                implementation(libs.vertx.kotlin.coroutines)
+            }
+        }
+
+        jvmTest {
+            dependencies {
+                implementation(libs.kotlin.test)
+                implementation(libs.kotlinx.coroutines.test)
+                implementation(libs.logback.classic)
+                implementation("org.junit.jupiter:junit-jupiter:5.10.1")
             }
         }
     }

@@ -88,17 +88,16 @@ abstract class AetherInitTask : DefaultTask() {
         if (!sampleApp.exists()) {
             sampleApp.parentFile.mkdirs()
             sampleApp.writeText("""
-                import codes.yousef.aether.core.Exchange
-                import codes.yousef.aether.web.router
+                import codes.yousef.aether.web.aetherStart
 
-                fun main() {
-                    val app = router {
-                        get("/") { exchange: Exchange ->
-                            exchange.respond("Hello, Aether!")
-                        }
+                fun main() = aetherStart(port = 8080) {
+                    get("/") { exchange ->
+                        exchange.respond("Hello, Aether!")
                     }
-
-                    println("Aether application started")
+                    
+                    get("/health") { exchange ->
+                        exchange.respondJson(mapOf("status" to "healthy"))
+                    }
                 }
             """.trimIndent())
             println("  Created: src/jvmMain/kotlin/Application.kt")
@@ -118,14 +117,21 @@ abstract class AetherInitTask : DefaultTask() {
 abstract class AetherRunJvmTask : JavaExec() {
     init {
         group = "aether"
-        description = "Run the Aether application on JVM with Vert.x"
+        description = "Run the Aether application on JVM with Virtual Threads"
     }
 
     @TaskAction
     override fun exec() {
         val extension = project.extensions.getByType(AetherExtension::class.java)
 
-        println("Starting Aether JVM server...")
+        println("""
+           ___        __  __             
+          / _ | ___  / /_/ /  ___  ____  
+         / __ |/ -_)/ __/ _ \/ -_)/ __/  
+        /_/ |_|\__/ \__/_//_/\__//_/     
+        
+        ⚡ Starting Aether JVM server...
+        """.trimIndent())
         println("  Port: ${extension.jvmPort}")
         println("  Environment: ${extension.environment}")
         println("  Hot Reload: ${extension.enableHotReload}")
