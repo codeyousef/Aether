@@ -40,6 +40,21 @@ interface Principal {
      * Check if the principal has all of the specified roles.
      */
     fun hasAllRoles(vararg roles: String): Boolean = roles.all { it in this.roles }
+
+    /**
+     * Check if the principal has a specific permission.
+     */
+    fun hasPermission(permission: String): Boolean = false
+
+    /**
+     * Check if the principal has any of the specified permissions.
+     */
+    fun hasAnyPermission(vararg permissions: String): Boolean = permissions.any { hasPermission(it) }
+
+    /**
+     * Check if the principal has all of the specified permissions.
+     */
+    fun hasAllPermissions(vararg permissions: String): Boolean = permissions.all { hasPermission(it) }
 }
 
 /**
@@ -50,11 +65,14 @@ data class UserPrincipal(
     override val id: String,
     override val name: String,
     override val roles: Set<String> = emptySet(),
+    val permissions: Set<String> = emptySet(),
     private val _attributes: Map<String, String> = emptyMap()
 ) : Principal {
     @Suppress("UNCHECKED_CAST")
     override val attributes: Map<String, Any?>
         get() = _attributes as Map<String, Any?>
+
+    override fun hasPermission(permission: String): Boolean = permission in permissions
 }
 
 /**

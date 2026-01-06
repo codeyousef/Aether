@@ -36,6 +36,7 @@ import kotlinx.coroutines.runBlocking
  * @param host The host/bind address (default: 0.0.0.0)
  * @param showBanner Whether to display the Aether startup banner
  * @param pipeline Optional pre-configured pipeline for middleware
+ * @param ssl Optional SSL configuration
  * @param routing DSL block for defining routes
  */
 fun aetherStart(
@@ -43,13 +44,14 @@ fun aetherStart(
     host: String = "0.0.0.0",
     showBanner: Boolean = true,
     pipeline: Pipeline = Pipeline(),
+    ssl: SslConfig? = null,
     routing: Router.() -> Unit
 ) {
     val router = router(routing)
-    val config = AetherServerConfig(host = host, port = port)
+    val config = AetherServerConfig(host = host, port = port, ssl = ssl)
 
     if (showBanner) {
-        printAetherBanner(host, port, router.getWebSocketRoutes().size)
+        printAetherBanner(host, port, router.getWebSocketRoutes().size, ssl?.enabled == true)
     }
 
     runBlocking(AetherDispatcher.dispatcher) {
@@ -92,18 +94,20 @@ fun aetherStart(
  * @param host The host/bind address (default: 0.0.0.0)
  * @param showBanner Whether to display the Aether startup banner
  * @param pipeline Optional pre-configured pipeline for middleware
+ * @param ssl Optional SSL configuration
  */
 fun aetherStart(
     router: Router,
     port: Int = 8080,
     host: String = "0.0.0.0",
     showBanner: Boolean = true,
-    pipeline: Pipeline = Pipeline()
+    pipeline: Pipeline = Pipeline(),
+    ssl: SslConfig? = null
 ) {
-    val config = AetherServerConfig(host = host, port = port)
+    val config = AetherServerConfig(host = host, port = port, ssl = ssl)
 
     if (showBanner) {
-        printAetherBanner(host, port, router.getWebSocketRoutes().size)
+        printAetherBanner(host, port, router.getWebSocketRoutes().size, ssl?.enabled == true)
     }
 
     runBlocking(AetherDispatcher.dispatcher) {
@@ -129,9 +133,10 @@ fun aetherStart(
 /**
  * Prints the Aether startup banner to the console.
  */
-private fun printAetherBanner(host: String, port: Int, wsRouteCount: Int) {
+private fun printAetherBanner(host: String, port: Int, wsRouteCount: Int, isSsl: Boolean = false) {
     val displayHost = if (host == "0.0.0.0") "localhost" else host
     val wsInfo = if (wsRouteCount > 0) " ($wsRouteCount WebSocket routes)" else ""
+    val protocol = if (isSsl) "https" else "http"
 
     val banner = """
     
@@ -141,11 +146,10 @@ private fun printAetherBanner(host: String, port: Int, wsRouteCount: Int) {
     /_/ |_|\__/ \__/_//_/\__//_/     
     
     ⚡ Aether Framework
-    ▸ Server:    http://$displayHost:$port$wsInfo
+    ▸ Server:    $protocol://$displayHost:$port$wsInfo
     ▸ Runtime:   JVM (Virtual Threads)
     ▸ Docs:      https://aether.codes
     
     """.trimIndent()
     println(banner)
 }
-

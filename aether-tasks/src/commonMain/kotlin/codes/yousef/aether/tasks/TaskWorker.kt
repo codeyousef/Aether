@@ -287,19 +287,3 @@ class TaskWorker(
     }
 }
 
-// Atomic extension
-private fun kotlinx.atomicfu.AtomicInt.incrementAndGet(): Int {
-    var current: Int
-    do {
-        current = value
-    } while (!compareAndSet(current, current + 1))
-    return current + 1
-}
-
-private fun kotlinx.atomicfu.AtomicInt.decrementAndGet(): Int {
-    var current: Int
-    do {
-        current = value
-    } while (!compareAndSet(current, current - 1))
-    return current - 1
-}

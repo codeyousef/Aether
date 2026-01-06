@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.2.0] - 2026-01-06
+### Added
+- **Authentication**: Added comprehensive RBAC support with `User`, `Groups`, and `Permissions`
+- **Testing**: Added End-to-End (E2E) tests for authentication flow and RBAC verification
+- **JWT for Wasm**: Full `JwtService` implementation for WasmJS and WasmWasi targets
+  - Pure Kotlin SHA-256 and HMAC-SHA256 implementation (`Sha256`, `HmacSha256`)
+  - Base64URL encoding/decoding for JWT serialization (`Base64Url`)
+  - `PureJwt` object for cross-platform token generation and verification
+  - HS256 algorithm support matching JVM implementation
+  - Cross-platform tests for cryptographic primitives
+
+### Fixed
+- **Authentication**: Fixed unchecked cast warnings in `AbstractUser`
+- **Networking**: Updated `RouterServer` to use modern Vert.x `setKeyCertOptions` for SSL configuration, replacing deprecated methods
+- **Core**: Fixed various deprecation warnings in `StreamingProxyClient` and `VertxWebSocket`
+
 ## [0.4.1.0] - 2026-01-05
 ### Added
 - **Aether Start**: New `aetherStart {}` entry point for simplified server startup

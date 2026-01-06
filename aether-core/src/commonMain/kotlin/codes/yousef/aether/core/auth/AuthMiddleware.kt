@@ -3,6 +3,7 @@ package codes.yousef.aether.core.auth
 import codes.yousef.aether.core.AttributeKey
 import codes.yousef.aether.core.Exchange
 import codes.yousef.aether.core.pipeline.Middleware
+import codes.yousef.aether.core.pipeline.Pipeline
 
 /**
  * Attribute key for accessing the principal from an Exchange.
@@ -122,7 +123,38 @@ class AuthorizationMiddleware(
 }
 
 /**
- * Extension function to get the principal from an Exchange.
+ * Authorization middleware that requires specific permissions.
+ */
+class PermissionAuthorizationMiddleware(
+    private val requiredPermissions: Set<String>,
+    private val requireAll: Boolean = true,
+    private val errorMessage: String = "Permission denied"
+) {
+    /**
+     * Create the middleware function.
+     */
+    fun asMiddleware(): Middleware = { exchange, next ->
+        val principal = exchange.attributes.get(PrincipalAttributeKey)
+
+        if (principal == null) {
+            exchange.unauthorized("Authentication required")
+        } else {
+            val hasAccess = if (requireAll) {
+                principal.hasAllPermissions(*requiredPermissions.toTypedArray())
+            } else {
+                principal.hasAnyPermission(*requiredPermissions.toTypedArray())
+            }
+
+            if (hasAccess) {
+                next()
+            } else {
+                exchange.forbidden(errorMessage)
+            }
+        }
+    }
+}
+
+/**
  * Returns null if not authenticated.
  */
 fun Exchange.principal(): Principal? = attributes.get(PrincipalAttributeKey)
@@ -146,19 +178,25 @@ fun Exchange.hasRole(role: String): Boolean = principal()?.hasRole(role) == true
 /**
  * Extension function to check if the principal has any of the specified roles.
  */
-fun Exchange.hasAnyRole(vararg roles: String): Boolean = 
+fun Exchange.hasAnyRole(vararg roles: String): Boolean =
     principal()?.hasAnyRole(*roles) == true
 
 /**
  * Extension function to check if the principal has all of the specified roles.
  */
-fun Exchange.hasAllRoles(vararg roles: String): Boolean = 
+fun Exchange.hasAllRoles(vararg roles: String): Boolean =
     principal()?.hasAllRoles(*roles) == true
+
+/**
+ * Extension function to check if the principal has a specific permission.
+ */
+fun Exchange.hasPermission(permission: String): Boolean =
+    principal()?.hasPermission(permission) == true
 
 /**
  * Install authentication middleware on a Pipeline.
  */
-fun codes.yousef.aether.core.pipeline.Pipeline.installAuthentication(
+fun Pipeline.installAuthentication(
     vararg providers: AuthenticationProvider,
     config: AuthConfig = AuthConfig()
 ) {
@@ -169,12 +207,24 @@ fun codes.yousef.aether.core.pipeline.Pipeline.installAuthentication(
 /**
  * Install authorization middleware on a Pipeline.
  */
-fun codes.yousef.aether.core.pipeline.Pipeline.installAuthorization(
+fun Pipeline.installAuthorization(
     vararg roles: String,
     requireAll: Boolean = false,
     errorMessage: String = "Access denied"
 ) {
     val middleware = AuthorizationMiddleware(roles.toSet(), requireAll, errorMessage)
+    use(middleware.asMiddleware())
+}
+
+/**
+ * Install permission authorization middleware on a Pipeline.
+ */
+fun Pipeline.installPermissionAuthorization(
+    vararg permissions: String,
+    requireAll: Boolean = true,
+    errorMessage: String = "Permission denied"
+) {
+    val middleware = PermissionAuthorizationMiddleware(permissions.toSet(), requireAll, errorMessage)
     use(middleware.asMiddleware())
 }
 
@@ -205,3 +255,27 @@ fun requireRoles(vararg roles: String, requireAll: Boolean = false): Middleware 
         exchange.forbidden("Access denied")
     }
 }
+
+/**
+ * Create a middleware that requires specific permissions.
+ */
+fun requirePermissions(vararg permissions: String, requireAll: Boolean = true): Middleware = { exchange, next ->
+    val principal = exchange.principal()
+
+    if (principal == null) {
+        exchange.unauthorized("Authentication required")
+    } else {
+        val hasAccess = if (requireAll) {
+            principal.hasAllPermissions(*permissions)
+        } else {
+            principal.hasAnyPermission(*permissions)
+        }
+
+        if (hasAccess) {
+            next()
+        } else {
+            exchange.forbidden("Permission denied")
+        }
+    }
+}
+

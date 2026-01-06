@@ -1,3 +1,5 @@
+@file:OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
@@ -6,9 +8,14 @@ plugins {
 kotlin {
     jvm {
         compilations.all {
-            compilerOptions.configure {
-                jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+            compileTaskProvider.configure {
+                compilerOptions {
+                    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+                }
             }
+        }
+        testRuns["test"].executionTask.configure {
+            useJUnitPlatform()
         }
     }
     wasmJs {
@@ -28,12 +35,26 @@ kotlin {
             dependencies {
                 implementation(project(":aether-core"))
                 implementation(project(":aether-db"))
+                implementation(libs.kotlinx.serialization.json)
             }
         }
-        
+
+        commonTest {
+            dependencies {
+                implementation(libs.kotlin.test)
+            }
+        }
+
         jvmMain {
             dependencies {
                 implementation(libs.bcrypt)
+                implementation(libs.java.jwt)
+            }
+        }
+
+        jvmTest {
+            dependencies {
+
             }
         }
     }

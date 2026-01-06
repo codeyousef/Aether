@@ -38,6 +38,7 @@ interface Session {
     /**
      * Get a value from the session with a specific type.
      */
+    @Suppress("UNCHECKED_CAST")
     fun <T> getTyped(key: String): T? = get(key) as? T
 
     /**
