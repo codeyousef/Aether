@@ -1,0 +1,808 @@
+Initialized native services in: /home/yousef/.gradle/native
+Initialized jansi services in: /home/yousef/.gradle/native
+Received JVM installation metadata from '/usr/lib/jvm/java-17-openjdk': {JAVA_HOME=/usr/lib/jvm/java-17-openjdk, JAVA_VERSION=17.0.17, JAVA_VENDOR=Arch Linux, RUNTIME_NAME=OpenJDK Runtime Environment, RUNTIME_VERSION=17.0.17+10, VM_NAME=OpenJDK 64-Bit Server VM, VM_VERSION=17.0.17+10, VM_VENDOR=Arch Linux, OS_ARCH=amd64}
+Found daemon DaemonInfo{pid=20401, address=[2935cd48-da07-471a-92e6-080e8aa1416f port:35265, addresses:[/127.0.0.1]], state=Idle, lastBusy=1767683583079, context=DefaultDaemonContext[uid=cef086e7-ea39-4d10-ad06-3530adb53175,javaHome=/home/yousef/.jdks/corretto-21.0.9,daemonRegistryDir=/home/yousef/.gradle/daemon,pid=20401,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,daemonOpts=--add-opens=java.base/java.util=ALL-UNNAMED,--add-opens=java.base/java.lang=ALL-UNNAMED,--add-opens=java.base/java.lang.invoke=ALL-UNNAMED,--add-opens=java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens=java.base/java.nio.charset=ALL-UNNAMED,--add-opens=java.base/java.net=ALL-UNNAMED,--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED,-Xmx4g,-Dfile.encoding=UTF-8,-Duser.country=US,-Duser.language=en,-Duser.variant]} however its context does not match the desired criteria.
+Java home is different.
+Wanted: DefaultDaemonContext[uid=null,javaHome=/usr/lib/jvm/java-17-openjdk,daemonRegistryDir=/home/yousef/.gradle/daemon,pid=22958,idleTimeout=null,priority=NORMAL,applyInstrumentationAgent=true,daemonOpts=--add-opens=java.base/java.util=ALL-UNNAMED,--add-opens=java.base/java.lang=ALL-UNNAMED,--add-opens=java.base/java.lang.invoke=ALL-UNNAMED,--add-opens=java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens=java.base/java.nio.charset=ALL-UNNAMED,--add-opens=java.base/java.net=ALL-UNNAMED,--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED,-Xmx4g,-Dfile.encoding=UTF-8,-Duser.country=US,-Duser.language=en,-Duser.variant]
+Actual: DefaultDaemonContext[uid=cef086e7-ea39-4d10-ad06-3530adb53175,javaHome=/home/yousef/.jdks/corretto-21.0.9,daemonRegistryDir=/home/yousef/.gradle/daemon,pid=20401,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,daemonOpts=--add-opens=java.base/java.util=ALL-UNNAMED,--add-opens=java.base/java.lang=ALL-UNNAMED,--add-opens=java.base/java.lang.invoke=ALL-UNNAMED,--add-opens=java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens=java.base/java.nio.charset=ALL-UNNAMED,--add-opens=java.base/java.net=ALL-UNNAMED,--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED,-Xmx4g,-Dfile.encoding=UTF-8,-Duser.country=US,-Duser.language=en,-Duser.variant]
+
+  Looking for a different daemon...
+The client will now receive all logging from the daemon (pid: 19864). The daemon log file: /home/yousef/.gradle/daemon/8.5/daemon-19864.out.log
+Starting 3rd build in daemon [uptime: 11 mins 24.334 secs, performance: 100%, GC rate: 0.00/s, heap usage: 0% of 4 GiB]
+Using 8 worker leases.
+Now considering [/home/yousef/Projects/kmp/Aether] as hierarchies to watch
+Watching the file system is configured to be enabled if available
+File system watching is active
+Starting Build
+Settings evaluated using settings file '/home/yousef/Projects/kmp/Aether/settings.gradle.kts'.
+Skipping generation of dependency accessors for libs as it is up-to-date.
+Type-safe project accessors is an incubating feature.
+Skipping generation of project accessors as it is up-to-date.
+Projects loaded. Root project using build file '/home/yousef/Projects/kmp/Aether/build.gradle.kts'.
+Included projects: [root project 'aether', project ':aether-admin', project ':aether-auth', project ':aether-channels', project ':aether-cli', project ':aether-core', project ':aether-db', project ':aether-forms', project ':aether-ksp', project ':aether-net', project ':aether-plugin', project ':aether-signals', project ':aether-tasks', project ':aether-ui', project ':aether-web', project ':example-app']
+
+> Configure project :
+Evaluating root project 'aether' using build file '/home/yousef/Projects/kmp/Aether/build.gradle.kts'.
+Caching disabled for Kotlin DSL accessors for root project 'aether' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for root project 'aether' as it is up-to-date.
+
+> Configure project :aether-admin
+Evaluating project ':aether-admin' using build file '/home/yousef/Projects/kmp/Aether/aether-admin/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle85 variant
+Caching disabled for Kotlin DSL accessors for project ':aether-admin' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':aether-admin' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+[KOTLIN] Storing cached files in /home/yousef/.gradle
+[KOTLIN] Storing cached files in /home/yousef/.gradle
+[KOTLIN] Storing cached files in /home/yousef/.gradle
+[KOTLIN] Storing cached files in /home/yousef/.gradle
+
+> Configure project :aether-auth
+Evaluating project ':aether-auth' using build file '/home/yousef/Projects/kmp/Aether/aether-auth/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle85 variant
+Caching disabled for Kotlin DSL accessors for project ':aether-auth' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':aether-auth' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+
+> Configure project :aether-channels
+Evaluating project ':aether-channels' using build file '/home/yousef/Projects/kmp/Aether/aether-channels/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle85 variant
+Caching disabled for Kotlin DSL accessors for project ':aether-channels' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':aether-channels' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+
+> Configure project :aether-cli
+Evaluating project ':aether-cli' using build file '/home/yousef/Projects/kmp/Aether/aether-cli/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle85 variant
+Caching disabled for Kotlin DSL accessors for project ':aether-cli' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':aether-cli' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+w: 'java' Gradle plugin is not compatible with 'org.jetbrains.kotlin.multiplatform' plugin.
+
+Consider adding a new subproject with 'java' plugin where the KMP project is added as a dependency.
+
+w: 'application' (also applies 'java' plugin) Gradle plugin is not compatible with 'org.jetbrains.kotlin.multiplatform' plugin.
+
+Consider adding a new subproject with 'application' plugin where the KMP project is added as a dependency.
+
+
+> Configure project :aether-core
+Evaluating project ':aether-core' using build file '/home/yousef/Projects/kmp/Aether/aether-core/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle85 variant
+Caching disabled for Kotlin DSL accessors for project ':aether-core' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':aether-core' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+
+> Configure project :aether-db
+Evaluating project ':aether-db' using build file '/home/yousef/Projects/kmp/Aether/aether-db/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle85 variant
+Caching disabled for Kotlin DSL accessors for project ':aether-db' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':aether-db' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+
+> Configure project :aether-forms
+Evaluating project ':aether-forms' using build file '/home/yousef/Projects/kmp/Aether/aether-forms/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle85 variant
+Caching disabled for Kotlin DSL accessors for project ':aether-forms' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':aether-forms' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+
+> Configure project :aether-ksp
+Evaluating project ':aether-ksp' using build file '/home/yousef/Projects/kmp/Aether/aether-ksp/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle85 variant
+Caching disabled for Kotlin DSL accessors for project ':aether-ksp' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':aether-ksp' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+
+> Configure project :aether-net
+Evaluating project ':aether-net' using build file '/home/yousef/Projects/kmp/Aether/aether-net/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle85 variant
+Caching disabled for Kotlin DSL accessors for project ':aether-net' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':aether-net' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+
+> Configure project :aether-plugin
+Evaluating project ':aether-plugin' using build file '/home/yousef/Projects/kmp/Aether/aether-plugin/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle85 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+WARNING: Unsupported Kotlin plugin version.
+The `embedded-kotlin` and `kotlin-dsl` plugins rely on features of Kotlin `1.9.20` that might work differently than in the requested version `2.1.0`.
+file or directory '/home/yousef/Projects/kmp/Aether/aether-plugin/src/main/java', not found
+Caching disabled for Kotlin DSL accessors for project ':aether-plugin' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':aether-plugin' as it is up-to-date.
+
+> Configure project :aether-signals
+Evaluating project ':aether-signals' using build file '/home/yousef/Projects/kmp/Aether/aether-signals/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle85 variant
+Caching disabled for Kotlin DSL accessors for project ':aether-signals' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':aether-signals' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+
+> Configure project :aether-tasks
+Evaluating project ':aether-tasks' using build file '/home/yousef/Projects/kmp/Aether/aether-tasks/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle85 variant
+Caching disabled for Kotlin DSL accessors for project ':aether-tasks' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':aether-tasks' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+
+> Configure project :aether-ui
+Evaluating project ':aether-ui' using build file '/home/yousef/Projects/kmp/Aether/aether-ui/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle85 variant
+Caching disabled for Kotlin DSL accessors for project ':aether-ui' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':aether-ui' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+
+> Configure project :aether-web
+Evaluating project ':aether-web' using build file '/home/yousef/Projects/kmp/Aether/aether-web/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle85 variant
+Caching disabled for Kotlin DSL accessors for project ':aether-web' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':aether-web' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+
+> Configure project :example-app
+Evaluating project ':example-app' using build file '/home/yousef/Projects/kmp/Aether/example-app/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle85 variant
+Caching disabled for Kotlin DSL accessors for project ':example-app' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':example-app' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+w: 'java' Gradle plugin is not compatible with 'org.jetbrains.kotlin.multiplatform' plugin.
+
+Consider adding a new subproject with 'java' plugin where the KMP project is added as a dependency.
+
+w: 'application' (also applies 'java' plugin) Gradle plugin is not compatible with 'org.jetbrains.kotlin.multiplatform' plugin.
+
+Consider adding a new subproject with 'application' plugin where the KMP project is added as a dependency.
+
+All projects evaluated.
+Task path ':example-app:jvmTest' matched project ':example-app'
+Task name matched 'jvmTest'
+Selected primary task 'jvmTest' from project :example-app
+Tasks to be executed: [task ':aether-admin:checkKotlinGradlePluginConfigurationErrors', task ':aether-auth:checkKotlinGradlePluginConfigurationErrors', task ':aether-core:checkKotlinGradlePluginConfigurationErrors', task ':aether-core:compileKotlinJvm', task ':aether-core:jvmProcessResources', task ':aether-core:jvmMainClasses', task ':aether-core:jvmJar', task ':aether-db:checkKotlinGradlePluginConfigurationErrors', task ':aether-signals:checkKotlinGradlePluginConfigurationErrors', task ':aether-signals:compileKotlinJvm', task ':aether-signals:jvmProcessResources', task ':aether-signals:jvmMainClasses', task ':aether-signals:jvmJar', task ':aether-db:compileKotlinJvm', task ':aether-db:jvmProcessResources', task ':aether-db:jvmMainClasses', task ':aether-db:jvmJar', task ':aether-auth:compileKotlinJvm', task ':aether-auth:jvmProcessResources', task ':aether-auth:jvmMainClasses', task ':aether-auth:jvmJar', task ':aether-forms:checkKotlinGradlePluginConfigurationErrors', task ':aether-ui:checkKotlinGradlePluginConfigurationErrors', task ':aether-ui:compileKotlinJvm', task ':aether-ui:jvmProcessResources', task ':aether-ui:jvmMainClasses', task ':aether-ui:jvmJar', task ':aether-forms:compileKotlinJvm', task ':aether-forms:jvmProcessResources', task ':aether-forms:jvmMainClasses', task ':aether-forms:jvmJar', task ':aether-web:checkKotlinGradlePluginConfigurationErrors', task ':aether-web:compileKotlinJvm', task ':aether-web:jvmProcessResources', task ':aether-web:jvmMainClasses', task ':aether-web:jvmJar', task ':aether-admin:compileKotlinJvm', task ':aether-admin:jvmProcessResources', task ':aether-admin:jvmMainClasses', task ':aether-admin:jvmJar', task ':aether-channels:checkKotlinGradlePluginConfigurationErrors', task ':aether-channels:compileKotlinJvm', task ':aether-channels:jvmProcessResources', task ':aether-channels:jvmMainClasses', task ':aether-channels:jvmJar', task ':aether-tasks:checkKotlinGradlePluginConfigurationErrors', task ':aether-tasks:compileKotlinJvm', task ':aether-tasks:jvmProcessResources', task ':aether-tasks:jvmMainClasses', task ':aether-tasks:jvmJar', task ':example-app:checkKotlinGradlePluginConfigurationErrors', task ':example-app:compileKotlinJvm', task ':example-app:compileJava', task ':example-app:jvmProcessResources', task ':example-app:jvmMainClasses', task ':example-app:jvmJar', task ':example-app:processResources', task ':example-app:classes', task ':example-app:compileTestKotlinJvm', task ':example-app:compileTestJava', task ':example-app:jvmTestProcessResources', task ':example-app:jvmTestClasses', task ':example-app:jvmTest']
+Tasks that were excluded: []
+Resolve mutations for :aether-admin:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker,5,main]) started.
+:aether-admin:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker,5,main]) started.
+
+> Task :aether-admin:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':aether-admin:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :aether-auth:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker,5,main]) started.
+:aether-auth:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker,5,main]) started.
+
+> Task :aether-auth:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':aether-auth:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :aether-core:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker,5,main]) started.
+:aether-core:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker,5,main]) started.
+
+> Task :aether-core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':aether-core:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :aether-core:compileKotlinJvm (Thread[Execution worker,5,main]) started.
+:aether-core:compileKotlinJvm (Thread[Execution worker,5,main]) started.
+
+> Task :aether-core:compileKotlinJvm UP-TO-DATE
+Transforming vertx-lang-kotlin-coroutines-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-coroutines-core-jvm-1.9.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-cbor-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-json-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-core-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-datetime-jvm-0.6.2.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-jdk8-1.8.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-jdk7-1.8.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-2.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-core-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming slf4j-api-2.0.16.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming java-jwt-4.4.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming annotations-23.0.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming atomicfu-jvm-0.26.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-handler-proxy-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-http2-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-http-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-resolver-dns-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-handler-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-transport-native-unix-common-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-socks-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-dns-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-transport-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-buffer-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-resolver-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-common-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming jackson-core-2.16.1.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Caching disabled for task ':aether-core:compileKotlinJvm' because:
+  Build cache is disabled
+Skipping task ':aether-core:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :aether-core:jvmProcessResources (Thread[Execution worker,5,main]) started.
+:aether-core:jvmProcessResources (Thread[Execution worker,5,main]) started.
+
+> Task :aether-core:jvmProcessResources NO-SOURCE
+Skipping task ':aether-core:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :aether-core:jvmMainClasses (Thread[Execution worker,5,main]) started.
+:aether-core:jvmMainClasses (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-core:jvmMainClasses UP-TO-DATE
+Skipping task ':aether-core:jvmMainClasses' as it has no actions.
+Resolve mutations for :aether-core:jvmJar (Thread[Execution worker Thread 4,5,main]) started.
+:aether-core:jvmJar (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-core:jvmJar UP-TO-DATE
+Caching disabled for task ':aether-core:jvmJar' because:
+  Build cache is disabled
+Skipping task ':aether-core:jvmJar' as it is up-to-date.
+work action resolve aether-core-jvm.jar (project :aether-core) (Thread[Execution worker Thread 4,5,main]) started.
+Resolve mutations for :aether-db:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 4,5,main]) started.
+:aether-db:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-db:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':aether-db:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :aether-signals:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 4,5,main]) started.
+:aether-signals:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-signals:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':aether-signals:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :aether-signals:compileKotlinJvm (Thread[Execution worker Thread 4,5,main]) started.
+:aether-signals:compileKotlinJvm (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-signals:compileKotlinJvm UP-TO-DATE
+Transforming kotlinx-coroutines-core-jvm-1.9.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-2.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming annotations-23.0.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming atomicfu-jvm-0.26.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Caching disabled for task ':aether-signals:compileKotlinJvm' because:
+  Build cache is disabled
+Skipping task ':aether-signals:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :aether-signals:jvmProcessResources (Thread[Execution worker Thread 4,5,main]) started.
+:aether-signals:jvmProcessResources (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-signals:jvmProcessResources NO-SOURCE
+Skipping task ':aether-signals:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :aether-signals:jvmMainClasses (Thread[Execution worker Thread 4,5,main]) started.
+:aether-signals:jvmMainClasses (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-signals:jvmMainClasses UP-TO-DATE
+Skipping task ':aether-signals:jvmMainClasses' as it has no actions.
+Resolve mutations for :aether-signals:jvmJar (Thread[Execution worker Thread 4,5,main]) started.
+:aether-signals:jvmJar (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-signals:jvmJar UP-TO-DATE
+Caching disabled for task ':aether-signals:jvmJar' because:
+  Build cache is disabled
+Skipping task ':aether-signals:jvmJar' as it is up-to-date.
+work action resolve aether-signals-jvm.jar (project :aether-signals) (Thread[Execution worker Thread 4,5,main]) started.
+Resolve mutations for :aether-db:compileKotlinJvm (Thread[Execution worker Thread 4,5,main]) started.
+:aether-db:compileKotlinJvm (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-db:compileKotlinJvm UP-TO-DATE
+Transforming aether-core-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-signals-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-lang-kotlin-coroutines-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-coroutines-core-jvm-1.9.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-json-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-core-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-datetime-jvm-0.6.2.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-jdk8-1.8.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-jdk7-1.8.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-2.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-pg-client-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-sql-client-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming HikariCP-6.2.1.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming postgresql-42.7.4.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming slf4j-api-2.0.16.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming annotations-23.0.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-core-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-handler-proxy-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-http2-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-http-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-resolver-dns-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-handler-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-transport-native-unix-common-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-socks-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-dns-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-transport-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-buffer-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-resolver-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-common-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming jackson-core-2.16.1.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Caching disabled for task ':aether-db:compileKotlinJvm' because:
+  Build cache is disabled
+Skipping task ':aether-db:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :aether-db:jvmProcessResources (Thread[Execution worker Thread 4,5,main]) started.
+:aether-db:jvmProcessResources (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-db:jvmProcessResources NO-SOURCE
+Skipping task ':aether-db:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :aether-db:jvmMainClasses (Thread[Execution worker Thread 4,5,main]) started.
+:aether-db:jvmMainClasses (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-db:jvmMainClasses UP-TO-DATE
+Skipping task ':aether-db:jvmMainClasses' as it has no actions.
+Resolve mutations for :aether-db:jvmJar (Thread[Execution worker Thread 4,5,main]) started.
+:aether-db:jvmJar (Thread[Execution worker Thread 5,5,main]) started.
+
+> Task :aether-db:jvmJar UP-TO-DATE
+Caching disabled for task ':aether-db:jvmJar' because:
+  Build cache is disabled
+Skipping task ':aether-db:jvmJar' as it is up-to-date.
+work action resolve aether-db-jvm.jar (project :aether-db) (Thread[Execution worker Thread 5,5,main]) started.
+Resolve mutations for :aether-auth:compileKotlinJvm (Thread[Execution worker Thread 5,5,main]) started.
+:aether-auth:compileKotlinJvm (Thread[Execution worker Thread 5,5,main]) started.
+
+> Task :aether-auth:compileKotlinJvm UP-TO-DATE
+Transforming kotlinx-serialization-core-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-json-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-2.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-core-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-db-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming bcrypt-0.10.2.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming java-jwt-4.4.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming annotations-13.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming bytes-1.5.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Caching disabled for task ':aether-auth:compileKotlinJvm' because:
+  Build cache is disabled
+Skipping task ':aether-auth:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :aether-auth:jvmProcessResources (Thread[Execution worker Thread 5,5,main]) started.
+:aether-auth:jvmProcessResources (Thread[Execution worker Thread 5,5,main]) started.
+
+> Task :aether-auth:jvmProcessResources NO-SOURCE
+Skipping task ':aether-auth:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :aether-auth:jvmMainClasses (Thread[Execution worker Thread 5,5,main]) started.
+:aether-auth:jvmMainClasses (Thread[Execution worker Thread 5,5,main]) started.
+
+> Task :aether-auth:jvmMainClasses UP-TO-DATE
+Skipping task ':aether-auth:jvmMainClasses' as it has no actions.
+Resolve mutations for :aether-auth:jvmJar (Thread[Execution worker Thread 5,5,main]) started.
+:aether-auth:jvmJar (Thread[Execution worker Thread 5,5,main]) started.
+
+> Task :aether-auth:jvmJar UP-TO-DATE
+Caching disabled for task ':aether-auth:jvmJar' because:
+  Build cache is disabled
+Skipping task ':aether-auth:jvmJar' as it is up-to-date.
+work action resolve aether-auth-jvm.jar (project :aether-auth) (Thread[Execution worker Thread 5,5,main]) started.
+Resolve mutations for :aether-forms:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 5,5,main]) started.
+:aether-forms:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 5,5,main]) started.
+
+> Task :aether-forms:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':aether-forms:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :aether-ui:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 5,5,main]) started.
+:aether-ui:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 5,5,main]) started.
+
+> Task :aether-ui:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':aether-ui:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :aether-ui:compileKotlinJvm (Thread[Execution worker Thread 5,5,main]) started.
+:aether-ui:compileKotlinJvm (Thread[Execution worker Thread 5,5,main]) started.
+
+> Task :aether-ui:compileKotlinJvm UP-TO-DATE
+Transforming aether-core-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-coroutines-core-jvm-1.9.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-cbor-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-core-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-2.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming slf4j-api-2.0.16.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming annotations-23.0.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Caching disabled for task ':aether-ui:compileKotlinJvm' because:
+  Build cache is disabled
+Skipping task ':aether-ui:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :aether-ui:jvmProcessResources (Thread[Execution worker Thread 5,5,main]) started.
+:aether-ui:jvmProcessResources (Thread[Execution worker Thread 5,5,main]) started.
+
+> Task :aether-ui:jvmProcessResources NO-SOURCE
+Skipping task ':aether-ui:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :aether-ui:jvmMainClasses (Thread[Execution worker Thread 5,5,main]) started.
+:aether-ui:jvmMainClasses (Thread[Execution worker Thread 5,5,main]) started.
+
+> Task :aether-ui:jvmMainClasses UP-TO-DATE
+Skipping task ':aether-ui:jvmMainClasses' as it has no actions.
+Resolve mutations for :aether-ui:jvmJar (Thread[Execution worker Thread 5,5,main]) started.
+:aether-ui:jvmJar (Thread[Execution worker Thread 5,5,main]) started.
+
+> Task :aether-ui:jvmJar UP-TO-DATE
+Caching disabled for task ':aether-ui:jvmJar' because:
+  Build cache is disabled
+Skipping task ':aether-ui:jvmJar' as it is up-to-date.
+work action resolve aether-ui-jvm.jar (project :aether-ui) (Thread[Execution worker Thread 5,5,main]) started.
+Resolve mutations for :aether-forms:compileKotlinJvm (Thread[Execution worker Thread 5,5,main]) started.
+:aether-forms:compileKotlinJvm (Thread[Execution worker Thread 5,5,main]) started.
+
+> Task :aether-forms:compileKotlinJvm UP-TO-DATE
+Transforming kotlin-stdlib-2.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-core-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-ui-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming annotations-13.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Caching disabled for task ':aether-forms:compileKotlinJvm' because:
+  Build cache is disabled
+Skipping task ':aether-forms:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :aether-forms:jvmProcessResources (Thread[Execution worker Thread 5,5,main]) started.
+:aether-forms:jvmProcessResources (Thread[Execution worker Thread 5,5,main]) started.
+
+> Task :aether-forms:jvmProcessResources NO-SOURCE
+Skipping task ':aether-forms:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :aether-forms:jvmMainClasses (Thread[Execution worker Thread 5,5,main]) started.
+:aether-forms:jvmMainClasses (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :aether-forms:jvmMainClasses UP-TO-DATE
+Skipping task ':aether-forms:jvmMainClasses' as it has no actions.
+Resolve mutations for :aether-forms:jvmJar (Thread[Execution worker Thread 6,5,main]) started.
+:aether-forms:jvmJar (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :aether-forms:jvmJar UP-TO-DATE
+Caching disabled for task ':aether-forms:jvmJar' because:
+  Build cache is disabled
+Skipping task ':aether-forms:jvmJar' as it is up-to-date.
+work action resolve aether-forms-jvm.jar (project :aether-forms) (Thread[Execution worker Thread 6,5,main]) started.
+Resolve mutations for :aether-web:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 4,5,main]) started.
+:aether-web:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-web:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':aether-web:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :aether-web:compileKotlinJvm (Thread[Execution worker Thread 4,5,main]) started.
+:aether-web:compileKotlinJvm (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-web:compileKotlinJvm UP-TO-DATE
+Transforming aether-core-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-lang-kotlin-coroutines-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-coroutines-core-jvm-1.9.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-json-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-core-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-jdk8-1.8.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-jdk7-1.8.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-2.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-web-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-web-common-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-auth-common-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-bridge-common-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-core-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming annotations-23.0.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-handler-proxy-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-http2-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-http-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-resolver-dns-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-handler-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-transport-native-unix-common-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-socks-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-dns-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-transport-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-buffer-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-resolver-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-common-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming jackson-core-2.16.1.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Caching disabled for task ':aether-web:compileKotlinJvm' because:
+  Build cache is disabled
+Skipping task ':aether-web:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :aether-web:jvmProcessResources (Thread[Execution worker Thread 4,5,main]) started.
+:aether-web:jvmProcessResources (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-web:jvmProcessResources NO-SOURCE
+Skipping task ':aether-web:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :aether-web:jvmMainClasses (Thread[Execution worker Thread 4,5,main]) started.
+:aether-web:jvmMainClasses (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-web:jvmMainClasses UP-TO-DATE
+Skipping task ':aether-web:jvmMainClasses' as it has no actions.
+Resolve mutations for :aether-web:jvmJar (Thread[Execution worker Thread 4,5,main]) started.
+:aether-web:jvmJar (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :aether-web:jvmJar UP-TO-DATE
+Caching disabled for task ':aether-web:jvmJar' because:
+  Build cache is disabled
+Skipping task ':aether-web:jvmJar' as it is up-to-date.
+work action resolve aether-web-jvm.jar (project :aether-web) (Thread[Execution worker Thread 4,5,main]) started.
+Resolve mutations for :aether-admin:compileKotlinJvm (Thread[Execution worker,5,main]) started.
+:aether-admin:compileKotlinJvm (Thread[Execution worker,5,main]) started.
+
+> Task :aether-admin:compileKotlinJvm UP-TO-DATE
+Transforming aether-auth-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-forms-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-2.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-core-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-db-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-web-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-ui-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming annotations-13.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Caching disabled for task ':aether-admin:compileKotlinJvm' because:
+  Build cache is disabled
+Skipping task ':aether-admin:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :aether-admin:jvmProcessResources (Thread[Execution worker,5,main]) started.
+:aether-admin:jvmProcessResources (Thread[Execution worker Thread 7,5,main]) started.
+
+> Task :aether-admin:jvmProcessResources NO-SOURCE
+Skipping task ':aether-admin:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :aether-admin:jvmMainClasses (Thread[Execution worker Thread 7,5,main]) started.
+:aether-admin:jvmMainClasses (Thread[Execution worker Thread 7,5,main]) started.
+
+> Task :aether-admin:jvmMainClasses UP-TO-DATE
+Skipping task ':aether-admin:jvmMainClasses' as it has no actions.
+Resolve mutations for :aether-admin:jvmJar (Thread[Execution worker Thread 7,5,main]) started.
+:aether-admin:jvmJar (Thread[Execution worker Thread 7,5,main]) started.
+
+> Task :aether-admin:jvmJar UP-TO-DATE
+Caching disabled for task ':aether-admin:jvmJar' because:
+  Build cache is disabled
+Skipping task ':aether-admin:jvmJar' as it is up-to-date.
+work action resolve aether-admin-jvm.jar (project :aether-admin) (Thread[Execution worker Thread 7,5,main]) started.
+Resolve mutations for :aether-channels:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 4,5,main]) started.
+:aether-channels:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :aether-channels:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':aether-channels:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :aether-channels:compileKotlinJvm (Thread[Execution worker Thread 6,5,main]) started.
+:aether-channels:compileKotlinJvm (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :aether-channels:compileKotlinJvm UP-TO-DATE
+Transforming aether-core-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-coroutines-core-jvm-1.9.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-json-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-core-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-datetime-jvm-0.6.2.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-2.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming slf4j-api-2.0.16.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming annotations-23.0.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming atomicfu-jvm-0.26.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Caching disabled for task ':aether-channels:compileKotlinJvm' because:
+  Build cache is disabled
+Skipping task ':aether-channels:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :aether-channels:jvmProcessResources (Thread[Execution worker Thread 6,5,main]) started.
+:aether-channels:jvmProcessResources (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :aether-channels:jvmProcessResources NO-SOURCE
+Skipping task ':aether-channels:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :aether-channels:jvmMainClasses (Thread[Execution worker Thread 6,5,main]) started.
+:aether-channels:jvmMainClasses (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :aether-channels:jvmMainClasses UP-TO-DATE
+Skipping task ':aether-channels:jvmMainClasses' as it has no actions.
+Resolve mutations for :aether-channels:jvmJar (Thread[Execution worker Thread 6,5,main]) started.
+:aether-channels:jvmJar (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :aether-channels:jvmJar UP-TO-DATE
+Caching disabled for task ':aether-channels:jvmJar' because:
+  Build cache is disabled
+Skipping task ':aether-channels:jvmJar' as it is up-to-date.
+work action resolve aether-channels-jvm.jar (project :aether-channels) (Thread[Execution worker Thread 6,5,main]) started.
+Resolve mutations for :aether-tasks:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 6,5,main]) started.
+:aether-tasks:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :aether-tasks:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':aether-tasks:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :aether-tasks:compileKotlinJvm (Thread[Execution worker Thread 6,5,main]) started.
+:aether-tasks:compileKotlinJvm (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :aether-tasks:compileKotlinJvm UP-TO-DATE
+Transforming aether-core-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-db-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-signals-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-coroutines-core-jvm-1.9.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-json-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-core-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-datetime-jvm-0.6.2.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-2.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming slf4j-api-2.0.16.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming annotations-23.0.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming atomicfu-jvm-0.26.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Caching disabled for task ':aether-tasks:compileKotlinJvm' because:
+  Build cache is disabled
+Skipping task ':aether-tasks:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :aether-tasks:jvmProcessResources (Thread[Execution worker Thread 6,5,main]) started.
+:aether-tasks:jvmProcessResources (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :aether-tasks:jvmProcessResources NO-SOURCE
+Skipping task ':aether-tasks:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :aether-tasks:jvmMainClasses (Thread[Execution worker Thread 6,5,main]) started.
+:aether-tasks:jvmMainClasses (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :aether-tasks:jvmMainClasses UP-TO-DATE
+Skipping task ':aether-tasks:jvmMainClasses' as it has no actions.
+Resolve mutations for :aether-tasks:jvmJar (Thread[Execution worker Thread 6,5,main]) started.
+:aether-tasks:jvmJar (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :aether-tasks:jvmJar UP-TO-DATE
+Caching disabled for task ':aether-tasks:jvmJar' because:
+  Build cache is disabled
+Skipping task ':aether-tasks:jvmJar' as it is up-to-date.
+work action resolve aether-tasks-jvm.jar (project :aether-tasks) (Thread[Execution worker Thread 6,5,main]) started.
+Resolve mutations for :example-app:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 6,5,main]) started.
+:example-app:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :example-app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':example-app:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :example-app:compileKotlinJvm (Thread[Execution worker Thread 6,5,main]) started.
+:example-app:compileKotlinJvm (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :example-app:compileKotlinJvm UP-TO-DATE
+Transforming aether-auth-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-forms-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-admin-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-coroutines-core-jvm-1.9.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-core-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-json-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-2.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-core-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-db-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-web-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-ui-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-signals-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-tasks-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-channels-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-core-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming logback-classic-1.5.12.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming annotations-23.0.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-handler-proxy-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-http2-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-http-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-resolver-dns-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-handler-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-transport-native-unix-common-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-socks-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-dns-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-transport-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-buffer-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-resolver-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-common-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming jackson-core-2.16.1.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming logback-core-1.5.12.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming slf4j-api-2.0.15.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Caching disabled for task ':example-app:compileKotlinJvm' because:
+  Build cache is disabled
+Skipping task ':example-app:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :example-app:compileJava (Thread[Execution worker Thread 6,5,main]) started.
+:example-app:compileJava (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :example-app:compileJava NO-SOURCE
+Skipping task ':example-app:compileJava' as it has no source files and no previous output files.
+Resolve mutations for :example-app:jvmProcessResources (Thread[Execution worker Thread 6,5,main]) started.
+:example-app:jvmProcessResources (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :example-app:jvmProcessResources UP-TO-DATE
+Caching disabled for task ':example-app:jvmProcessResources' because:
+  Build cache is disabled
+Skipping task ':example-app:jvmProcessResources' as it is up-to-date.
+Resolve mutations for :example-app:jvmMainClasses (Thread[Execution worker Thread 6,5,main]) started.
+:example-app:jvmMainClasses (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :example-app:jvmMainClasses UP-TO-DATE
+Skipping task ':example-app:jvmMainClasses' as it has no actions.
+Resolve mutations for :example-app:jvmJar (Thread[Execution worker Thread 6,5,main]) started.
+:example-app:jvmJar (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :example-app:jvmJar UP-TO-DATE
+Caching disabled for task ':example-app:jvmJar' because:
+  Build cache is disabled
+Skipping task ':example-app:jvmJar' as it is up-to-date.
+Resolve mutations for :example-app:processResources (Thread[Execution worker Thread 6,5,main]) started.
+:example-app:processResources (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :example-app:processResources SKIPPED
+Skipping task ':example-app:processResources' as task onlyIf 'Task is enabled' is false.
+Resolve mutations for :example-app:classes (Thread[Execution worker Thread 6,5,main]) started.
+:example-app:classes (Thread[Execution worker Thread 6,5,main]) started.
+
+> Task :example-app:classes UP-TO-DATE
+Skipping task ':example-app:classes' as it has no actions.
+Resolve mutations for :example-app:compileTestKotlinJvm (Thread[Execution worker Thread 3,5,main]) started.
+:example-app:compileTestKotlinJvm (Thread[Execution worker Thread 3,5,main]) started.
+
+> Task :example-app:compileTestKotlinJvm UP-TO-DATE
+Transforming main with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-auth-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-forms-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-admin-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-test-junit5-2.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-test-2.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-lang-kotlin-coroutines-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-coroutines-core-jvm-1.9.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-core-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlinx-serialization-json-jvm-1.7.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-jdk8-1.8.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-jdk7-1.8.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-2.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-core-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-db-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-web-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-ui-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-signals-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-tasks-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming aether-channels-jvm-0.4.1.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-web-client-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-junit5-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-uri-template-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-web-common-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-auth-common-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming vertx-core-4.5.11.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming logback-classic-1.5.12.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming junit-jupiter-params-5.10.1.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming junit-jupiter-api-5.10.1.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming junit-platform-commons-1.10.1.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming junit-jupiter-5.10.1.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming junit-jupiter-1.20.4.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming postgresql-1.20.4.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming jdbc-1.20.4.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming database-commons-1.20.4.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming testcontainers-1.20.4.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-handler-proxy-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-http2-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-http-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming duct-tape-1.0.8.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming annotations-23.0.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-resolver-dns-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-handler-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-socks-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-dns-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-codec-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-transport-native-unix-common-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-transport-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-buffer-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-resolver-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming netty-common-4.1.115.Final.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming docker-java-api-3.4.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming jackson-annotations-2.16.1.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming jackson-core-2.16.1.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming logback-core-1.5.12.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming docker-java-transport-zerodep-3.4.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming slf4j-api-2.0.15.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming junit-4.13.2.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming commons-compress-1.24.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming opentest4j-1.3.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming apiguardian-api-1.1.2.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming hamcrest-core-1.3.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming docker-java-transport-3.4.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Transforming jna-5.13.0.jar with BuildToolsApiClasspathEntrySnapshotTransform
+Caching disabled for task ':example-app:compileTestKotlinJvm' because:
+  Build cache is disabled
+Skipping task ':example-app:compileTestKotlinJvm' as it is up-to-date.
+Resolve mutations for :example-app:compileTestJava (Thread[Execution worker Thread 3,5,main]) started.
+:example-app:compileTestJava (Thread[Execution worker Thread 3,5,main]) started.
+
+> Task :example-app:compileTestJava NO-SOURCE
+Skipping task ':example-app:compileTestJava' as it has no source files and no previous output files.
+Resolve mutations for :example-app:jvmTestProcessResources (Thread[Execution worker Thread 3,5,main]) started.
+:example-app:jvmTestProcessResources (Thread[Execution worker Thread 3,5,main]) started.
+
+> Task :example-app:jvmTestProcessResources UP-TO-DATE
+Caching disabled for task ':example-app:jvmTestProcessResources' because:
+  Build cache is disabled
+Skipping task ':example-app:jvmTestProcessResources' as it is up-to-date.
+Resolve mutations for :example-app:jvmTestClasses (Thread[Execution worker Thread 3,5,main]) started.
+:example-app:jvmTestClasses (Thread[Execution worker Thread 3,5,main]) started.
+
+> Task :example-app:jvmTestClasses UP-TO-DATE
+Skipping task ':example-app:jvmTestClasses' as it has no actions.
+Resolve mutations for :example-app:jvmTest (Thread[Execution worker Thread 3,5,main]) started.
+:example-app:jvmTest (Thread[Execution worker Thread 3,5,main]) started.
+
+> Task :example-app:jvmTest UP-TO-DATE
+Caching disabled for task ':example-app:jvmTest' because:
+  Build cache is disabled
+Skipping task ':example-app:jvmTest' as it is up-to-date.
+
+BUILD SUCCESSFUL in 2s
+26 actionable tasks: 26 up-to-date
