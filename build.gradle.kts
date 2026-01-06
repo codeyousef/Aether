@@ -178,7 +178,7 @@ tasks.register("publishToCentralPortalManually") {
                  ?: System.getenv("signingPassword")
                  ?: throw GradleException("signingPassword not found")
 
-            exec {
+            providers.exec {
                 commandLine(
                     "bash",
                     signScript.absolutePath,
@@ -194,7 +194,7 @@ tasks.register("publishToCentralPortalManually") {
         val zipFile = file("${layout.buildDirectory.get()}/central-portal-bundle.zip")
         if (zipFile.exists()) zipFile.delete()
 
-        exec {
+        providers.exec {
             workingDir = bundleDir
             commandLine("zip", "-r", zipFile.absolutePath, ".")
         }
@@ -205,7 +205,7 @@ tasks.register("publishToCentralPortalManually") {
         val userPassBase64 = java.util.Base64.getEncoder().encodeToString(userPass.toByteArray())
 
         // Upload using curl
-        exec {
+        providers.exec {
             commandLine(
                 "curl",
                 "--request", "POST",
