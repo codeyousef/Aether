@@ -200,21 +200,37 @@ tasks.register("publishToCentralPortalManually") {
         }
 
         println("🚀 Uploading to Central Portal...")
-        // Base64 encode credentials
+        // Base64 encode credentials for Basic Auth
         val userPass = "$username:$password"
         val userPassBase64 = java.util.Base64.getEncoder().encodeToString(userPass.toByteArray())
 
-        // Upload using curl
-        providers.exec {
+        // Upload using curl with proper Basic Auth and response capture
+        val responseFile = file("${layout.buildDirectory.get()}/central-portal-response.txt")
+        val exitCode = providers.exec {
             commandLine(
                 "curl",
                 "--request", "POST",
                 "--url", "https://central.sonatype.com/api/v1/publisher/upload?publishingType=AUTOMATIC",
-                "--header", "Authorization: Bearer $userPassBase64",
-                "--form", "bundle=@${zipFile.absolutePath}"
+                "--header", "Authorization: UserToken $userPassBase64",
+                "--form", "bundle=@${zipFile.absolutePath}",
+                "--fail-with-body",
+                "--silent",
+                "--show-error",
+                "--write-out", "%{http_code}",
+                "--output", responseFile.absolutePath
             )
+            isIgnoreExitValue = true
+        }.result.get().exitValue
+
+        val response = if (responseFile.exists()) responseFile.readText() else ""
+
+        if (exitCode != 0) {
+            println("❌ Upload failed with exit code $exitCode")
+            println("Response: $response")
+            throw GradleException("Failed to upload to Maven Central. Exit code: $exitCode, Response: $response")
         }
         
+        println("📋 Response: $response")
         println("✅ Upload complete!")
     }
 }
