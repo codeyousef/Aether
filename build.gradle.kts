@@ -33,8 +33,8 @@ allprojects {
     version = rootProject.version
 
     repositories {
-        google()
         mavenCentral()
+        google()
     }
 }
 
