@@ -246,7 +246,31 @@ tasks.register("publishToCentralPortalManually") {
         if (response.isNotEmpty()) {
             println("📋 Deployment ID: $response")
             println("🔗 Check status at: https://central.sonatype.com/publishing/deployments")
+
+            // Check deployment status
+            println("⏳ Checking deployment status...")
+            val statusFile = file("${layout.buildDirectory.get()}/central-portal-status.txt")
+            providers.exec {
+                commandLine(
+                    "bash", "-c",
+                    """
+                    sleep 5
+                    curl --request POST \
+                        --url "https://central.sonatype.com/api/v1/publisher/status?id=$response" \
+                        --header "Authorization: UserToken $userPassBase64" \
+                        --silent \
+                        --show-error \
+                        --output "${statusFile.absolutePath}"
+                    """.trimIndent()
+                )
+                isIgnoreExitValue = true
+            }
+            val status = if (statusFile.exists()) statusFile.readText().trim() else "Unable to fetch status"
+            println("📋 Deployment Status: $status")
+        } else {
+            println("⚠️ No deployment ID returned. Check https://central.sonatype.com/publishing/deployments manually.")
         }
         println("✅ Upload complete! Artifacts submitted for publishing.")
+        println("📝 Note: It may take several minutes for artifacts to appear on Maven Central after validation.")
     }
 }
