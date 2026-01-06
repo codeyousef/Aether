@@ -206,31 +206,47 @@ tasks.register("publishToCentralPortalManually") {
 
         // Upload using curl with proper Basic Auth and response capture
         val responseFile = file("${layout.buildDirectory.get()}/central-portal-response.txt")
-        val exitCode = providers.exec {
+        val httpCodeFile = file("${layout.buildDirectory.get()}/central-portal-httpcode.txt")
+
+        val execResult = providers.exec {
             commandLine(
-                "curl",
-                "--request", "POST",
-                "--url", "https://central.sonatype.com/api/v1/publisher/upload?publishingType=AUTOMATIC",
-                "--header", "Authorization: UserToken $userPassBase64",
-                "--form", "bundle=@${zipFile.absolutePath}",
-                "--fail-with-body",
-                "--silent",
-                "--show-error",
-                "--write-out", "%{http_code}",
-                "--output", responseFile.absolutePath
+                "bash", "-c",
+                """
+                HTTP_CODE=${'$'}(curl --request POST \
+                    --url "https://central.sonatype.com/api/v1/publisher/upload?publishingType=AUTOMATIC" \
+                    --header "Authorization: UserToken $userPassBase64" \
+                    --form "bundle=@${zipFile.absolutePath}" \
+                    --silent \
+                    --show-error \
+                    --write-out "%{http_code}" \
+                    --output "${responseFile.absolutePath}")
+                echo "${'$'}HTTP_CODE" > "${httpCodeFile.absolutePath}"
+                if [ "${'$'}HTTP_CODE" -ge 200 ] && [ "${'$'}HTTP_CODE" -lt 300 ]; then
+                    exit 0
+                else
+                    exit 1
+                fi
+                """.trimIndent()
             )
             isIgnoreExitValue = true
-        }.result.get().exitValue
+        }
 
-        val response = if (responseFile.exists()) responseFile.readText() else ""
+        val exitCode = execResult.result.get().exitValue
+        val response = if (responseFile.exists()) responseFile.readText().trim() else ""
+        val httpCode = if (httpCodeFile.exists()) httpCodeFile.readText().trim() else "unknown"
+
+        println("📋 HTTP Status Code: $httpCode")
+        println("📋 Response Body: $response")
 
         if (exitCode != 0) {
             println("❌ Upload failed with exit code $exitCode")
-            println("Response: $response")
-            throw GradleException("Failed to upload to Maven Central. Exit code: $exitCode, Response: $response")
+            throw GradleException("Failed to upload to Maven Central. HTTP Code: $httpCode, Response: $response")
         }
         
-        println("📋 Response: $response")
-        println("✅ Upload complete!")
+        if (response.isNotEmpty()) {
+            println("📋 Deployment ID: $response")
+            println("🔗 Check status at: https://central.sonatype.com/publishing/deployments")
+        }
+        println("✅ Upload complete! Artifacts submitted for publishing.")
     }
 }
