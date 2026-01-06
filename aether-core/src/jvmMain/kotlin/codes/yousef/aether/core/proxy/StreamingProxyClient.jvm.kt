@@ -2,18 +2,13 @@ package codes.yousef.aether.core.proxy
 
 import io.vertx.core.Vertx
 import io.vertx.core.buffer.Buffer
-import io.vertx.core.http.HttpClient
-import io.vertx.core.http.HttpClientOptions
-import io.vertx.core.http.HttpClientRequest
-import io.vertx.core.http.HttpClientResponse
-import io.vertx.core.http.HttpMethod
+import io.vertx.core.http.*
 import io.vertx.kotlin.coroutines.coAwait
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import java.net.URI
 import java.net.ConnectException
 import java.net.SocketTimeoutException
+import java.net.URI
 import java.util.concurrent.TimeoutException
 import javax.net.ssl.SSLException
 import kotlin.time.Duration
@@ -35,7 +30,7 @@ actual class StreamingProxyClient actual constructor(
             maxWaitQueueSize = 1000
             isKeepAlive = true
             isPipelining = false  // Safer for proxying
-            isTryUseCompression = false  // Don't modify encoding for proxy
+            isDecompressionSupported = false  // Don't modify encoding for proxy
             isTrustAll = false
             // Note: Vert.x HttpClient doesn't follow redirects by default
         }
@@ -49,7 +44,7 @@ actual class StreamingProxyClient actual constructor(
             maxWaitQueueSize = 1000
             isKeepAlive = true
             isPipelining = false
-            isTryUseCompression = false
+            isDecompressionSupported = false
             isTrustAll = false
             isSsl = true
             // Note: Vert.x HttpClient doesn't follow redirects by default
@@ -117,6 +112,7 @@ actual class StreamingProxyClient actual constructor(
         val clientRequest: HttpClientRequest = client.request(method, port, host, path).coAwait()
         
         // Set timeout
+        @Suppress("DEPRECATION")
         clientRequest.setTimeout(timeout.inWholeMilliseconds)
         
         // Copy headers
@@ -128,13 +124,15 @@ actual class StreamingProxyClient actual constructor(
         val channel = kotlinx.coroutines.channels.Channel<ByteArray>(kotlinx.coroutines.channels.Channel.UNLIMITED)
         var responseRef: HttpClientResponse? = null
         var requestError: Throwable? = null
-        
+        val responseDeferred = kotlinx.coroutines.CompletableDeferred<HttpClientResponse>()
+
         // Set up response handler on the request BEFORE sending
         clientRequest.response { ar ->
             if (ar.succeeded()) {
                 val resp = ar.result()
                 responseRef = resp
-                
+                responseDeferred.complete(resp)
+
                 // Set up body handlers immediately
                 resp.handler { buffer ->
                     channel.trySend(buffer.bytes)
@@ -149,6 +147,7 @@ actual class StreamingProxyClient actual constructor(
                 }
             } else {
                 requestError = ar.cause()
+                responseDeferred.completeExceptionally(ar.cause())
                 channel.close(ar.cause())
             }
         }
@@ -174,12 +173,13 @@ actual class StreamingProxyClient actual constructor(
             clientRequest.end().coAwait()
         }
         
-        // Wait for response headers (poll until responseRef is set)
-        // Use a simple suspending wait pattern
-        while (responseRef == null && !channel.isClosedForReceive) {
-            kotlinx.coroutines.delay(1)
+        // Wait for response headers
+        try {
+            responseDeferred.await()
+        } catch (_: Exception) {
+            // Error will be handled by requestError check below
         }
-        
+
         // Check if there was an error
         requestError?.let { error ->
             // Check if this is a timeout exception

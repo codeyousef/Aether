@@ -15,42 +15,46 @@ import codes.yousef.aether.db.eq
 abstract class AbstractUser<T : AbstractUser<T>> : BaseEntity<T>() {
     private val userModel: UserModel<T> get() = getModel() as UserModel<T>
 
+    @Suppress("UNCHECKED_CAST")
+    private val self: T
+        get() = this as T
+
     var id: Long?
-        get() = userModel.id.getValue(this as T)
-        set(value) = userModel.id.setValue(this as T, value)
+        get() = userModel.id.getValue(self)
+        set(value) = userModel.id.setValue(self, value)
 
     var username: String?
-        get() = userModel.username.getValue(this as T)
-        set(value) = userModel.username.setValue(this as T, value)
+        get() = userModel.username.getValue(self)
+        set(value) = userModel.username.setValue(self, value)
 
     var password: String?
-        get() = userModel.password.getValue(this as T)
-        set(value) = userModel.password.setValue(this as T, value)
+        get() = userModel.password.getValue(self)
+        set(value) = userModel.password.setValue(self, value)
 
     var email: String?
-        get() = userModel.email.getValue(this as T)
-        set(value) = userModel.email.setValue(this as T, value)
+        get() = userModel.email.getValue(self)
+        set(value) = userModel.email.setValue(self, value)
 
     var isActive: Boolean?
-        get() = userModel.isActive.getValue(this as T)
-        set(value) = userModel.isActive.setValue(this as T, value)
+        get() = userModel.isActive.getValue(self)
+        set(value) = userModel.isActive.setValue(self, value)
 
     var isStaff: Boolean?
-        get() = userModel.isStaff.getValue(this as T)
-        set(value) = userModel.isStaff.setValue(this as T, value)
+        get() = userModel.isStaff.getValue(self)
+        set(value) = userModel.isStaff.setValue(self, value)
 
     var isSuperuser: Boolean?
-        get() = userModel.isSuperuser.getValue(this as T)
-        set(value) = userModel.isSuperuser.setValue(this as T, value)
+        get() = userModel.isSuperuser.getValue(self)
+        set(value) = userModel.isSuperuser.setValue(self, value)
 
     var lastLogin: Long?
-        get() = userModel.lastLogin.getValue(this as T)
-        set(value) = userModel.lastLogin.setValue(this as T, value)
+        get() = userModel.lastLogin.getValue(self)
+        set(value) = userModel.lastLogin.setValue(self, value)
 
     var dateJoined: Long?
-        get() = userModel.dateJoined.getValue(this as T)
-        set(value) = userModel.dateJoined.setValue(this as T, value)
-        
+        get() = userModel.dateJoined.getValue(self)
+        set(value) = userModel.dateJoined.setValue(self, value)
+
     /**
      * Check if user has a specific permission.
      * Checks both direct user permissions and permissions inherited from groups.
@@ -60,12 +64,12 @@ abstract class AbstractUser<T : AbstractUser<T>> : BaseEntity<T>() {
         if (isActive != true) return false
         
         // Check direct permissions
-        if (userModel.userPermissions.query(this as T).filter(Permissions.codename eq codename).exists()) {
+        if (userModel.userPermissions.query(self).filter(Permissions.codename eq codename).exists()) {
             return true
         }
         
         // Check group permissions
-        val groups = userModel.groups.query(this as T).toList()
+        val groups = userModel.groups.query(self).toList()
         for (group in groups) {
             if (Groups.permissions.query(group).filter(Permissions.codename eq codename).exists()) {
                 return true

@@ -141,6 +141,7 @@ class VertxWebSocketServer(
      * Handle a WebSocket upgrade request.
      * Returns true if the request was handled, false otherwise.
      */
+    @Suppress("DEPRECATION")
     suspend fun handleUpgrade(
         socket: ServerWebSocket,
         scope: CoroutineScope

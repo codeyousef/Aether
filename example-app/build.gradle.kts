@@ -1,61 +1,45 @@
 plugins {
-    alias(libs.plugins.kotlin.multiplatform)
+    kotlin("jvm")
     alias(libs.plugins.kotlin.serialization)
     application
 }
 
 kotlin {
-    jvm {
-        compilations.all {
-            compilerOptions.configure {
-                jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
-            }
-        }
-        withJava()
-        testRuns["test"].executionTask.configure {
-            useJUnitPlatform()
-        }
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
     }
+}
 
-    jvmToolchain(21)
+dependencies {
+    implementation(project(":aether-core"))
+    implementation(project(":aether-db"))
+    implementation(project(":aether-web"))
+    implementation(project(":aether-ui"))
+    implementation(project(":aether-auth"))
+    implementation(project(":aether-forms"))
+    implementation(project(":aether-admin"))
+    implementation(project(":aether-signals"))
+    implementation(project(":aether-tasks"))
+    implementation(project(":aether-channels"))
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.serialization.json)
 
-    sourceSets {
-        commonMain {
-            dependencies {
-                implementation(project(":aether-core"))
-                implementation(project(":aether-db"))
-                implementation(project(":aether-web"))
-                implementation(project(":aether-ui"))
-                implementation(project(":aether-auth"))
-                implementation(project(":aether-forms"))
-                implementation(project(":aether-admin"))
-                implementation(project(":aether-signals"))
-                implementation(project(":aether-tasks"))
-                implementation(project(":aether-channels"))
-                implementation(libs.kotlinx.coroutines.core)
-                implementation(libs.kotlinx.serialization.json)
-            }
-        }
+    implementation(libs.vertx.core)
+    implementation(libs.logback.classic)
 
-        val jvmMain by getting {
-            dependencies {
-                implementation(libs.vertx.core)
-                implementation(libs.logback.classic)
-            }
-        }
+    testImplementation(libs.kotlin.test)
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
+    testImplementation(libs.testcontainers.core)
+    testImplementation(libs.testcontainers.postgresql)
+    testImplementation("org.testcontainers:junit-jupiter:1.20.4")
+    testImplementation(libs.netty.codec.http)
+    testImplementation(libs.vertx.kotlin.coroutines)
+    testImplementation("io.vertx:vertx-web-client:4.5.11")
+    testImplementation("io.vertx:vertx-junit5:4.5.11")
+}
 
-        val jvmTest by getting {
-            dependencies {
-                implementation(libs.kotlin.test)
-                implementation("org.junit.jupiter:junit-jupiter:5.10.1")
-                implementation(libs.testcontainers.core)
-                implementation(libs.testcontainers.postgresql)
-                implementation("org.testcontainers:junit-jupiter:1.20.4")
-                implementation(libs.netty.codec.http)
-                implementation(libs.vertx.kotlin.coroutines)
-            }
-        }
-    }
+tasks.test {
+    useJUnitPlatform()
 }
 
 application {

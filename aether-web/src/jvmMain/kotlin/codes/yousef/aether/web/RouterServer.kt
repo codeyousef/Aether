@@ -9,6 +9,8 @@ import codes.yousef.aether.core.jvm.createVertxExchangeWithBody
 import io.vertx.core.Vertx
 import io.vertx.core.http.HttpServer
 import io.vertx.core.http.HttpServerOptions
+import io.vertx.core.net.PemKeyCertOptions
+import io.vertx.core.net.SelfSignedCertificate
 import io.vertx.kotlin.coroutines.coAwait
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -26,7 +28,18 @@ data class AetherServerConfig(
     val maxHeaderSize: Int = 8192,
     val maxChunkSize: Int = 8192,
     val maxInitialLineLength: Int = 4096,
-    val webSocket: WebSocketConfig = WebSocketConfig()
+    val webSocket: WebSocketConfig = WebSocketConfig(),
+    val ssl: SslConfig? = null
+)
+
+/**
+ * Configuration for SSL/TLS.
+ */
+data class SslConfig(
+    val enabled: Boolean = true,
+    val keyPath: String? = null,
+    val certPath: String? = null,
+    val selfSigned: Boolean = false
 )
 
 /**
@@ -90,6 +103,21 @@ class AetherServer(
             .setMaxChunkSize(config.maxChunkSize)
             .setMaxInitialLineLength(config.maxInitialLineLength)
 
+        if (config.ssl?.enabled == true) {
+            options.isSsl = true
+            if (config.ssl.selfSigned) {
+                val certificate = SelfSignedCertificate.create()
+                options.keyCertOptions = certificate.keyCertOptions()
+                options.trustOptions = certificate.trustOptions()
+            } else if (config.ssl.keyPath != null && config.ssl.certPath != null) {
+                options.setKeyCertOptions(
+                    PemKeyCertOptions()
+                        .setKeyPath(config.ssl.keyPath)
+                        .setCertPath(config.ssl.certPath)
+                )
+            }
+        }
+
         server = vertx.createHttpServer(options)
             .webSocketHandler { ws ->
                 // Handle WebSocket upgrade requests
@@ -109,6 +137,7 @@ class AetherServer(
                             } ?: emptyMap()
 
                             // Accept the connection and handle it
+                            @Suppress("DEPRECATION")
                             ws.accept()
 
                             val session = codes.yousef.aether.core.websocket.VertxWebSocketSession(ws, scope)
@@ -118,11 +147,13 @@ class AetherServer(
                             handleWebSocketSession(session, handler)
                         } else {
                             // No handler found, reject the connection
+                            @Suppress("DEPRECATION")
                             ws.reject(404)
                         }
                     } catch (e: Exception) {
                         logger.error("Error handling WebSocket upgrade", e)
                         try {
+                            @Suppress("DEPRECATION")
                             ws.reject(500)
                         } catch (_: Exception) {
                             // Ignore rejection errors
@@ -356,4 +387,3 @@ class AetherServerBuilder {
         return AetherServer(config, r, pipeline)
     }
 }
-

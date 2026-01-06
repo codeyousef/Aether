@@ -1,0 +1,37 @@
+Type-safe project accessors is an incubating feature.
+
+> Configure project :aether-cli
+w: 'java' Gradle plugin is not compatible with 'org.jetbrains.kotlin.multiplatform' plugin.
+
+Consider adding a new subproject with 'java' plugin where the KMP project is added as a dependency.
+
+w: 'application' (also applies 'java' plugin) Gradle plugin is not compatible with 'org.jetbrains.kotlin.multiplatform' plugin.
+
+Consider adding a new subproject with 'application' plugin where the KMP project is added as a dependency.
+
+
+> Configure project :aether-plugin
+WARNING: Unsupported Kotlin plugin version.
+The `embedded-kotlin` and `kotlin-dsl` plugins rely on features of Kotlin `1.9.20` that might work differently than in the requested version `2.1.0`.
+
+> Configure project :example-app
+w: 'java' Gradle plugin is not compatible with 'org.jetbrains.kotlin.multiplatform' plugin.
+
+Consider adding a new subproject with 'java' plugin where the KMP project is added as a dependency.
+
+w: 'application' (also applies 'java' plugin) Gradle plugin is not compatible with 'org.jetbrains.kotlin.multiplatform' plugin.
+
+Consider adding a new subproject with 'application' plugin where the KMP project is added as a dependency.
+
+
+> Task :aether-auth:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :aether-core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :aether-core:compileKotlinWasmJs UP-TO-DATE
+> Task :aether-db:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :aether-signals:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :aether-signals:compileKotlinWasmJs UP-TO-DATE
+> Task :aether-db:compileKotlinWasmJs UP-TO-DATE
+> Task :aether-auth:compileKotlinWasmJs UP-TO-DATE
+
+BUILD SUCCESSFUL in 1s
+4 actionable tasks: 4 up-to-date

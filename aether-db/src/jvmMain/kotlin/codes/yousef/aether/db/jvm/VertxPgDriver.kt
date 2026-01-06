@@ -5,8 +5,8 @@ import codes.yousef.aether.core.pipeline.QueryLogContext
 import codes.yousef.aether.core.pipeline.QueryLogEntry
 import io.vertx.core.Vertx
 import io.vertx.kotlin.coroutines.coAwait
+import io.vertx.pgclient.PgBuilder
 import io.vertx.pgclient.PgConnectOptions
-import io.vertx.pgclient.PgPool
 import io.vertx.sqlclient.PoolOptions
 import io.vertx.sqlclient.SqlClient
 import io.vertx.sqlclient.Tuple
@@ -201,7 +201,12 @@ class VertxPgDriver(
             val poolOptions = PoolOptions()
                 .setMaxSize(maxPoolSize)
 
-            val pool = PgPool.pool(vertx, connectOptions, poolOptions)
+            val pool = PgBuilder
+                .pool()
+                .with(poolOptions)
+                .connectingTo(connectOptions)
+                .using(vertx)
+                .build()
             return VertxPgDriver(pool)
         }
 

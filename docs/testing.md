@@ -6,6 +6,8 @@ Aether is designed to be testable. You can write unit tests for your logic and i
 
 Since most logic resides in `commonMain`, you can use standard `kotlin.test` assertions.
 
+Aether apps are easy to test using standard tools like JUnit and MockK.
+
 ### Testing Handlers
 
 You can mock the `Exchange` object to test handlers in isolation.
@@ -24,6 +26,26 @@ fun testHelloHandler() = runTest {
     assertEquals("Hello", exchange.response.bodyString)
 }
 ```
+
+## End-to-End (E2E) Testing
+
+For integration testing, you can spin up a real server instance within your test suite.
+
+```kotlin
+@Test
+fun testServer() {
+    val server = VertxServer.create(port = 0) {
+        it.respond("OK")
+    }
+    runBlocking {
+        server.start()
+        // Use an HTTP client to test endpoints
+        server.stop()
+    }
+}
+```
+
+Using `testcontainers` is recommended for testing with real database backends.
 
 ## Integration Testing
 

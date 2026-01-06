@@ -1,33 +1,22 @@
 plugins {
-    alias(libs.plugins.kotlin.multiplatform)
+    kotlin("jvm")
     alias(libs.plugins.ksp)
     application
 }
 
 kotlin {
-    jvm {
-        compilations.all {
-            compilerOptions.configure {
-                jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
-            }
-        }
-        withJava()
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
     }
+}
 
-    jvmToolchain(21)
-
-    sourceSets {
-        val jvmMain by getting {
-            dependencies {
-                implementation(project(":aether-core"))
-                implementation(project(":aether-db"))
-                implementation(libs.kotlin.stdlib)
-                implementation(libs.kotlinx.coroutines.core)
-                implementation(libs.kotlinx.serialization.json)
-                implementation(libs.vertx.pg.client)
-            }
-        }
-    }
+dependencies {
+    implementation(project(":aether-core"))
+    implementation(project(":aether-db"))
+    implementation(libs.kotlin.stdlib)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.vertx.pg.client)
 }
 
 application {
