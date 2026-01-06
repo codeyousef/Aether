@@ -199,6 +199,13 @@ tasks.register("publishToCentralPortalManually") {
             commandLine("zip", "-r", zipFile.absolutePath, ".")
         }
 
+        // Print bundle contents for debugging
+        println("📋 Bundle contents:")
+        providers.exec {
+            commandLine("unzip", "-l", zipFile.absolutePath)
+        }
+        println("📋 Bundle size: ${zipFile.length() / 1024} KB")
+
         println("🚀 Uploading to Central Portal...")
         // Base64 encode credentials for Basic Auth
         val userPass = "$username:$password"
@@ -216,14 +223,19 @@ tasks.register("publishToCentralPortalManually") {
                     --url "https://central.sonatype.com/api/v1/publisher/upload?publishingType=AUTOMATIC" \
                     --header "Authorization: UserToken $userPassBase64" \
                     --form "bundle=@${zipFile.absolutePath}" \
-                    --silent \
-                    --show-error \
                     --write-out "%{http_code}" \
-                    --output "${responseFile.absolutePath}")
+                    --output "${responseFile.absolutePath}" \
+                    2>"${layout.buildDirectory.get()}/central-portal-curl-stderr.txt")
                 echo "${'$'}HTTP_CODE" > "${httpCodeFile.absolutePath}"
+                echo "HTTP Code: ${'$'}HTTP_CODE"
+                echo "Response:"
+                cat "${responseFile.absolutePath}" || echo "(empty)"
+                echo ""
                 if [ "${'$'}HTTP_CODE" -ge 200 ] && [ "${'$'}HTTP_CODE" -lt 300 ]; then
                     exit 0
                 else
+                    echo "Curl stderr:"
+                    cat "${layout.buildDirectory.get()}/central-portal-curl-stderr.txt" || echo "(empty)"
                     exit 1
                 fi
                 """.trimIndent()
