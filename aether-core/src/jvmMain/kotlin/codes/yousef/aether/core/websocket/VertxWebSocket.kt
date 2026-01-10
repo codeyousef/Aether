@@ -1,7 +1,6 @@
 package codes.yousef.aether.core.websocket
 
 import io.vertx.core.Vertx
-import io.vertx.core.http.HttpServer
 import io.vertx.core.http.ServerWebSocket
 import io.vertx.kotlin.coroutines.coAwait
 import kotlinx.coroutines.CoroutineScope
@@ -9,7 +8,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.launch
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -57,7 +56,12 @@ class VertxWebSocketSession(
         socket.closeHandler {
             _isOpen = false
             scope.launch {
-                incomingChannel.send(WebSocketMessage.Close(socket.closeStatusCode().toInt(), socket.closeReason() ?: ""))
+                incomingChannel.send(
+                    WebSocketMessage.Close(
+                        socket.closeStatusCode()?.toInt() ?: 1000,
+                        socket.closeReason() ?: ""
+                    )
+                )
                 incomingChannel.close()
             }
         }

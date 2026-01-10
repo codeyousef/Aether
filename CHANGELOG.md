@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2.2] - 2026-01-10
+
+### Fixed
+
+- **WebSocket**: Fixed NullPointerException in `VertxWebSocket` when a WebSocket closes without a status code
+  - Added null-safe handling for `closeStatusCode()` with default to 1000 (normal closure)
+
 ## [0.4.2.1] - 2026-01-06
 ### Fixed
 - **Publishing**: Improved Maven Central publish task with better HTTP status tracking and bundle debugging
