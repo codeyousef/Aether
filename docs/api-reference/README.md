@@ -60,7 +60,8 @@ Aether supports multiple Kotlin targets:
 
 ### Version History
 
-- **0.5.0** — gRPC support (gRPC-Web, Connect protocol, code-first proto generation), UserContext, AuthStrategy
+- **0.5.0.2** — GrpcHttpHandler, GrpcMiddleware, Pipeline.installGrpc() DSL
+- **0.5.0.0** — gRPC support (gRPC-Web, Connect protocol, code-first proto generation), UserContext, AuthStrategy
 - **0.4.0** — Signals, Tasks, Channels, Admin Widgets, Rate Limit Middleware
 - **0.3.1** — HTTP Proxy Middleware, Circuit Breaker
 - **0.3.0** — Supabase & Firestore drivers, Admin improvements

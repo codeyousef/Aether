@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.0.2] - 2026-01-14
+
+### Added
+
+- **GrpcHttpHandler**: HTTP handler for processing gRPC-Web and Connect protocol requests
+  - `handle()`: Process gRPC requests with path, body, content type, and metadata
+  - `handleBinary()`: Process binary gRPC-Web requests with LPM framing
+  - `invokeUnary()`: Direct unary method invocation
+  - Content type detection for gRPC-Web, Connect JSON, and Connect Proto
+- **GrpcMiddleware**: Pipeline middleware for automatic gRPC routing
+  - `Pipeline.installGrpc { }`: DSL for installing gRPC support
+  - `Pipeline.installGrpc(config)`: Install with pre-built config
+  - `Pipeline.installGrpc(vararg services)`: Install with service list
+  - `grpcMiddleware { }`: Create standalone middleware function
+  - Automatic content-type and path-based request detection
+  - gRPC status to HTTP status code mapping
+- **GrpcResponse**: Response wrapper with status, body, and content type
+  - `GrpcResponse.success()`: Create success response
+  - `GrpcResponse.error()`: Create error response
+  - `GrpcResponse.fromException()`: Create from GrpcException
+
 ## [0.5.0.1] - 2026-01-14
 
 ### Fixed

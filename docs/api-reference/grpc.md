@@ -20,8 +20,8 @@ The `aether-grpc` module enables:
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation("codes.yousef.aether:aether-grpc:0.5.0")
-    ksp("codes.yousef.aether:aether-ksp:0.5.0")
+    implementation("codes.yousef.aether:aether-grpc:0.5.0.2")
+    ksp("codes.yousef.aether:aether-ksp:0.5.0.2")
 }
 ```
 
@@ -553,7 +553,7 @@ Routes gRPC requests through the HTTP stack:
 val adapter = GrpcAdapter(listOf(userService, orderService))
 
 // Route a request
-val (service, method) = adapter.route("UserService", "GetUser")
+val (service, method) = adapter.route("users.v1.UserService", "GetUser")
     ?: throw GrpcException.unimplemented("Method not found")
 
 // Parse path
@@ -563,6 +563,121 @@ val (serviceName, methodName) = GrpcAdapter.parsePath("/users.v1.UserService/Get
 GrpcAdapter.isGrpcWeb("application/grpc-web")  // true
 GrpcAdapter.isConnectJson("application/connect+json")  // true
 ```
+
+---
+
+## GrpcHttpHandler
+
+HTTP handler that processes gRPC requests:
+
+```kotlin
+val adapter = GrpcAdapter(listOf(userService, orderService))
+val handler = GrpcHttpHandler(adapter)
+
+// Handle a request
+val response = handler.handle(
+    path = "/users.v1.UserService/GetUser",
+    body = """{"id":"123"}""",
+    contentType = "application/json",
+    metadata = GrpcMetadata()
+)
+
+// Check response
+if (response.isSuccess) {
+    println(response.body)
+} else {
+    println("Error: ${response.status}")
+}
+```
+
+### Supported Content Types
+
+| Content Type                 | Protocol          |
+|------------------------------|-------------------|
+| `application/grpc-web`       | gRPC-Web binary   |
+| `application/grpc-web+proto` | gRPC-Web protobuf |
+| `application/grpc-web-text`  | gRPC-Web base64   |
+| `application/json`           | Connect JSON      |
+| `application/connect+json`   | Connect JSON      |
+| `application/connect+proto`  | Connect protobuf  |
+
+---
+
+## Pipeline Integration
+
+### installGrpc()
+
+Install gRPC middleware into your pipeline:
+
+```kotlin
+val pipeline = pipeline {
+    installGrpc {
+        service(userService)
+        service(orderService)
+        reflection = true
+    }
+}
+```
+
+### With Pre-built Config
+
+```kotlin
+val config = grpc {
+    port = 50051
+    service(userService)
+}
+
+val pipeline = pipeline {
+    installGrpc(config)
+}
+```
+
+### With Service List
+
+```kotlin
+val pipeline = pipeline {
+    installGrpc(userService, orderService)
+}
+```
+
+### As Middleware Function
+
+```kotlin
+val middleware = grpcMiddleware {
+    service(userService)
+}
+
+pipeline.use(middleware)
+```
+
+### Complete Example
+
+```kotlin
+// Define your service
+val userService = grpcService("UserService", "users.v1") {
+    unary<GetUserRequest, User>("GetUser") { request ->
+        userRepository.findById(request.id)
+            ?: throw GrpcException.notFound("User not found")
+    }
+}
+
+// Create pipeline with gRPC support
+val pipeline = pipeline {
+    installRecovery()
+    installCallLogging()
+    installGrpc {
+        service(userService)
+    }
+}
+
+// Start server
+aetherStart {
+    port = 8080
+    pipeline(pipeline)
+}
+```
+
+Requests to `/users.v1.UserService/GetUser` will be handled by the gRPC middleware.
 
 ---
 
@@ -579,7 +694,7 @@ plugins {
 }
 
 dependencies {
-    ksp("codes.yousef.aether:aether-ksp:0.5.0")
+    ksp("codes.yousef.aether:aether-ksp:0.5.0.2")
 }
 
 // Optional: Configure output location

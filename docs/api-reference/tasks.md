@@ -11,7 +11,7 @@ Background tasks allow you to defer expensive operations (sending emails, proces
 
 ```kotlin
 // build.gradle.kts
-implementation("codes.yousef.aether:aether-tasks:0.4.0.1")
+implementation("codes.yousef.aether:aether-tasks:0.5.0.2")
 ```
 
 ## Basic Usage

@@ -11,7 +11,7 @@ Signals allow certain senders to notify a set of receivers that some action has 
 
 ```kotlin
 // build.gradle.kts
-implementation("codes.yousef.aether:aether-signals:0.4.0.1")
+implementation("codes.yousef.aether:aether-signals:0.5.0.2")
 ```
 
 ## Basic Usage

@@ -11,7 +11,7 @@ Channels enable you to organize WebSocket connections into groups and broadcast 
 
 ```kotlin
 // build.gradle.kts
-implementation("codes.yousef.aether:aether-channels:0.4.0.1")
+implementation("codes.yousef.aether:aether-channels:0.5.0.2")
 ```
 
 ## Basic Usage
