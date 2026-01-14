@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.0.1] - 2026-01-14
+
+### Fixed
+
+- **Publishing**: Added `aether-grpc` module to Maven Central publish list
+
 ## [0.5.0.0] - 2026-01-14
 
 ### Added
