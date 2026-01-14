@@ -22,6 +22,7 @@ kotlin {
             dependencies {
                 implementation(project(":aether-db"))
                 implementation(project(":aether-tasks"))
+                implementation(project(":aether-grpc"))
                 implementation(libs.ksp.api)
                 implementation(libs.kotlinpoet)
                 implementation(libs.kotlinpoet.ksp)

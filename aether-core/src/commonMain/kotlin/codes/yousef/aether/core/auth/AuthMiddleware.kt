@@ -2,8 +2,10 @@ package codes.yousef.aether.core.auth
 
 import codes.yousef.aether.core.AttributeKey
 import codes.yousef.aether.core.Exchange
+import codes.yousef.aether.core.context.UserContext
 import codes.yousef.aether.core.pipeline.Middleware
 import codes.yousef.aether.core.pipeline.Pipeline
+import kotlinx.coroutines.withContext
 
 /**
  * Attribute key for accessing the principal from an Exchange.
@@ -48,9 +50,12 @@ class AuthenticationMiddleware(
 
             when (authResult) {
                 is AuthResult.Success -> {
-                    // Store principal in attributes
+                    // Store principal in attributes (for backward compatibility)
                     exchange.attributes.put(PrincipalAttributeKey, authResult.principal)
-                    next()
+                    // Propagate principal via coroutine context for suspend function access
+                    withContext(UserContext(authResult.principal)) {
+                        next()
+                    }
                 }
                 is AuthResult.Failure -> {
                     // Authentication failed

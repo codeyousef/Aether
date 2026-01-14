@@ -12,13 +12,15 @@ Aether is designed as a "Write Once, Deploy Anywhere" framework, leveraging Kotl
 
 ## Module Structure
 
-*   **`aether-core`**: The brain. Contains the `Exchange`, `Pipeline`, and platform-agnostic `Dispatcher`.
+* **`aether-core`**: The brain. Contains the `Exchange`, `Pipeline`, `UserContext`, and platform-agnostic `Dispatcher`.
 *   **`aether-web`**: The router. Implements a Radix Tree for O(k) route matching.
 *   **`aether-db`**: The data layer. A Django-style ORM that builds a Query AST.
+* **`aether-grpc`**: The RPC layer. Code-first gRPC with gRPC-Web, Connect protocol, and native HTTP/2 support.
 *   **`aether-ui`**: The view layer. A Composable DSL for Server-Side Rendering (SSR).
 *   **`aether-forms`**: The validation layer. Handles HTML form generation and data cleaning.
 *   **`aether-admin`**: The administration layer. Provides an auto-generated CRUD interface for models.
 *   **`aether-net`**: The transport layer. Abstracts TCP/UDP/WebSocket connections.
+* **`aether-ksp`**: The code generation layer. KSP processors for tasks, migrations, and proto generation.
 
 ## The Request Lifecycle
 
@@ -47,3 +49,53 @@ Aether DB does not simply concatenate SQL strings.
 2.  **Query DSL**: You write type-safe queries (`Users.filter(...)`).
 3.  **AST Construction**: The framework builds an Abstract Syntax Tree of the query.
 4.  **Driver Translation**: The active `DatabaseDriver` translates the AST into the specific SQL dialect (PostgreSQL, SQLite, etc.) or even an HTTP request (for Wasm clients talking to a data API).
+
+## gRPC Architecture
+
+Aether supports multi-protocol RPC with a code-first approach:
+
+### Protocol Support
+
+| Protocol    | Transport          | Platforms       |
+|-------------|--------------------|-----------------|
+| gRPC-Web    | HTTP/1.1 or HTTP/2 | All (JVM, Wasm) |
+| Connect     | HTTP/1.1 or HTTP/2 | All (JVM, Wasm) |
+| Native gRPC | HTTP/2             | JVM only        |
+
+### Dual-Mode Operation
+
+* **Adapter Mode**: Routes gRPC-Web and Connect protocol requests through the existing HTTP infrastructure. Works on all
+  platforms including Wasm.
+* **Native Mode**: Uses a dedicated HTTP/2 gRPC server (Netty on JVM) for full gRPC feature support including trailers
+  and flow control.
+
+The `GrpcMode.BEST_AVAILABLE` setting automatically selects native mode on JVM and adapter mode elsewhere.
+
+### Code-First Proto Generation
+
+Instead of writing `.proto` files manually, you define services in Kotlin:
+
+```kotlin
+@AetherMessage
+data class User(@ProtoField(1) val id: String, @ProtoField(2) val name: String)
+
+@AetherService
+interface UserService {
+    @AetherRpc
+    suspend fun getUser(request: GetUserRequest): User
+}
+```
+
+The KSP processor generates equivalent `.proto` files for interoperability with other languages.
+
+### Unified Authentication
+
+Authentication works identically for REST and gRPC through `UserContext`:
+
+```kotlin
+// Works in both REST handlers and gRPC methods
+val user = currentUser()  // Returns Principal from coroutine context
+```
+
+The `AuthMiddleware` (REST) and gRPC interceptors both propagate the authenticated principal via Kotlin's
+`CoroutineContext`, enabling seamless auth across protocols.

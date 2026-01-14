@@ -1,2 +1,3 @@
 codes.yousef.aether.ksp.MigrationProcessorProvider
 codes.yousef.aether.ksp.TaskProcessorProvider
+codes.yousef.aether.ksp.ProtoProcessorProvider

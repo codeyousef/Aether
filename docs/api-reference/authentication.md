@@ -1,6 +1,6 @@
 # Authentication API
 
-Aether provides a modular authentication system.
+Aether provides a modular authentication system that works across REST and gRPC.
 
 ## AuthMiddleware
 
@@ -113,3 +113,159 @@ if (user.hasPermission("blog.create_post")) {
 ### Middleware Integration
 
 RBAC is often used in checking access rights within handlers or middleware after authentication has established the principal.
+
+## UserContext
+
+`UserContext` propagates the authenticated principal through Kotlin's coroutine context, enabling unified authentication
+for REST and gRPC.
+
+### Accessing the Current User
+
+```kotlin
+// In any suspend function (REST handler, gRPC method, etc.)
+suspend fun handleRequest() {
+    // Get current user (nullable)
+    val user: Principal? = currentUser()
+
+    // Require authenticated user (throws if not authenticated)
+    val user: Principal = requireUser()
+
+    // Check authentication status
+    if (isAuthenticated()) {
+        // User is logged in
+    }
+
+    // Check roles
+    if (hasRole("admin")) {
+        // User has admin role
+    }
+}
+```
+
+### How It Works
+
+The `AuthMiddleware` automatically wraps authenticated requests with `UserContext`:
+
+```kotlin
+// Internal implementation
+when (val result = provider.authenticate(exchange)) {
+    is AuthResult.Success -> {
+        withContext(UserContext(result.principal)) {
+            next()  // Handler runs with UserContext available
+        }
+    }
+    // ...
+}
+```
+
+This allows any code running within the request to access the authenticated user without passing it explicitly.
+
+## AuthStrategy
+
+`AuthStrategy` provides protocol-agnostic authentication that works for both REST (via headers) and gRPC (via metadata).
+
+### Interface
+
+```kotlin
+interface AuthStrategy {
+    suspend fun authenticate(credential: String): AuthResult
+    suspend fun authenticateOrNoCredentials(credential: String?): AuthResult
+}
+```
+
+### Built-in Strategies
+
+#### BearerTokenStrategy
+
+For JWT and other bearer tokens:
+
+```kotlin
+val strategy = BearerTokenStrategy { token ->
+    // Verify and decode the token
+    jwtService.verify(token)?.let { claims ->
+        UserPrincipal(
+            id = claims.subject,
+            name = claims["name"] as String,
+            roles = claims["roles"] as Set<String>
+        )
+    }
+}
+
+// Extract token from Authorization header
+val token = strategy.extractToken("Bearer eyJhbGc...")  // Returns "eyJhbGc..."
+
+// Authenticate from header directly
+val result = strategy.authenticateFromHeader("Bearer eyJhbGc...")
+```
+
+#### ApiKeyStrategy
+
+For API key authentication:
+
+```kotlin
+val strategy = ApiKeyStrategy { apiKey ->
+    apiKeyRepository.findByKey(apiKey)?.let { key ->
+        ApiKeyPrincipal(
+            id = key.id,
+            name = key.name,
+            roles = key.scopes.toSet()
+        )
+    }
+}
+```
+
+#### BasicAuthStrategy
+
+For HTTP Basic authentication:
+
+```kotlin
+val strategy = BasicAuthStrategy { username, password ->
+    userService.verifyCredentials(username, password)?.let { user ->
+        UserPrincipal(id = user.id, name = user.name, roles = user.roles)
+    }
+}
+```
+
+#### CompositeAuthStrategy
+
+Combines multiple strategies (tries each in order):
+
+```kotlin
+val strategy = CompositeAuthStrategy(
+    listOf(
+        bearerStrategy,   // Try JWT first
+        apiKeyStrategy,   // Then API key
+        basicStrategy     // Finally basic auth
+    )
+)
+
+// Returns Success if any strategy succeeds
+// Returns NoCredentials if all return NoCredentials
+// Returns Failure if any returns Failure
+```
+
+### Using with gRPC
+
+```kotlin
+grpc {
+    intercept { call, next ->
+        val authHeader = call.metadata["authorization"]
+        val result = bearerStrategy.authenticateFromHeader(authHeader)
+
+        when (result) {
+            is AuthResult.Success -> {
+                withContext(UserContext(result.principal)) {
+                    next(call)
+                }
+            }
+            is AuthResult.NoCredentials -> {
+                // Allow unauthenticated access or throw
+                next(call)
+            }
+            is AuthResult.Failure -> {
+                throw GrpcException.unauthenticated("Invalid credentials")
+            }
+        }
+    }
+}
+```

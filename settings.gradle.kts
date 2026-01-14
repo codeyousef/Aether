@@ -32,5 +32,6 @@ include(
     ":aether-auth",
     ":aether-forms",
     ":aether-admin",
+    ":aether-grpc",
     ":example-app"
 )

@@ -1,5 +1,79 @@
 # Changelog
 
+## [0.5.0.0] - 2026-01-14
+
+### Added
+
+- **Aether gRPC** (`aether-grpc`): Multi-protocol gRPC support with code-first approach
+    - **gRPC-Web Support**: Browser-compatible gRPC over HTTP/1.1
+    - **Connect Protocol**: JSON-based gRPC alternative for web clients
+    - **Native HTTP/2 gRPC**: Full gRPC support on JVM with Netty
+    - `GrpcMode`: BEST_AVAILABLE (auto), ADAPTER_ONLY (all platforms), NATIVE_ONLY (JVM)
+
+- **gRPC Status & Exceptions**
+    - `GrpcStatus`: All 17 standard gRPC status codes (OK, CANCELLED, UNKNOWN, etc.)
+    - `GrpcException`: Rich exception with factory methods (`notFound()`, `invalidArgument()`, etc.)
+    - `GrpcMetadata`: Case-insensitive key-value storage for headers/trailers
+
+- **Code-First Proto Generation** (KSP)
+    - `@AetherMessage`: Mark data classes as proto messages
+    - `@ProtoField(id, deprecated, json)`: Specify field numbers with options
+    - `@AetherService`: Mark interfaces as gRPC services
+    - `@AetherRpc(name, deprecated)`: Define RPC methods
+    - `KotlinToProtoMapper`: Automatic type mapping (Int→int32, List→repeated, etc.)
+    - `ProtoGenerator`: Generates valid `.proto` files from Kotlin code
+    - `ProtoProcessor`: KSP processor for automatic proto generation
+
+- **gRPC DSL Configuration**
+    - `grpc { }` DSL block for server configuration
+    - `GrpcConfig`: Port, mode, reflection, interceptors, message size, keepalive
+    - `GrpcConfigBuilder`: Fluent builder with inline service definitions
+    - `GrpcInterceptor`: Middleware for gRPC calls
+
+- **gRPC Service Definition**
+    - `GrpcServiceDefinition`: Service descriptor with method registry
+    - `grpcService("name", "package") { }`: DSL for defining services
+    - `unary<Req, Resp>("Method") { }`: Unary RPC handler
+    - `serverStreaming<Req, Resp>("Method") { }`: Server streaming handler
+    - `clientStreaming<Req, Resp>("Method") { }`: Client streaming handler
+    - `bidiStreaming<Req, Resp>("Method") { }`: Bidirectional streaming handler
+
+- **Streaming Support** with Kotlin Flow
+    - `ServerStreamingHandler<TReq, TResp>`: Server-to-client streaming
+    - `ClientStreamingHandler<TReq, TResp>`: Client-to-server streaming
+    - `BiDirectionalStreamingHandler<TReq, TResp>`: Full duplex streaming
+    - `LpmCodec`: Length-Prefixed Message framing for gRPC wire format
+    - `SseCodec`: Server-Sent Events for HTTP/1.1 streaming
+
+- **gRPC Infrastructure**
+    - `GrpcAdapter`: Routes gRPC-Web/Connect requests through HTTP stack
+    - `GrpcMethodType`: UNARY, SERVER_STREAMING, CLIENT_STREAMING, BIDI_STREAMING
+    - `GrpcMethodDescriptor`: Method metadata (name, types, streaming flags)
+    - `GrpcServiceDescriptor`: Service metadata with method registry
+
+- **Unified Authentication** (`aether-core`)
+    - `UserContext`: CoroutineContext element for auth propagation
+    - `currentUser()`: Get authenticated Principal from coroutine context
+    - `requireUser()`: Get Principal or throw if not authenticated
+    - `isAuthenticated()`: Check if user is authenticated
+    - `hasRole(role)`: Check if user has a specific role
+    - `AuthStrategy`: Protocol-agnostic authentication interface
+    - `BearerTokenStrategy`: JWT/Bearer token authentication
+    - `ApiKeyStrategy`: API key authentication
+    - `BasicAuthStrategy`: HTTP Basic authentication
+    - `CompositeAuthStrategy`: Try multiple strategies in order
+
+### Changed
+
+- `AuthMiddleware`: Now propagates `UserContext` via `withContext()` for coroutine-based auth
+- `aether-ksp`: Added dependency on `aether-grpc` for proto annotations
+
+### Notes
+
+- gRPC-Web and Connect protocol work on all platforms (JVM, WasmJS, WasmWasi)
+- Native HTTP/2 gRPC requires JVM with Netty (use `GrpcMode.NATIVE_ONLY`)
+- Proto generation requires KSP plugin in your build configuration
+
 ## [0.4.2.2] - 2026-01-10
 
 ### Fixed
