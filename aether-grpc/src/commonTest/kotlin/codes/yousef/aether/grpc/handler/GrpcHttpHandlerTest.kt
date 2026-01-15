@@ -5,6 +5,7 @@ import codes.yousef.aether.grpc.GrpcStatus
 import codes.yousef.aether.grpc.adapter.GrpcAdapter
 import codes.yousef.aether.grpc.service.grpcService
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.Serializable
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -149,6 +150,128 @@ class GrpcHttpHandlerTest {
         )
 
         assertEquals("application/connect+json", response.contentType)
+    }
+}
+
+/**
+ * Tests for complex type serialization/deserialization in GrpcHttpHandler.
+ * This verifies the fix for the bug where raw JSON strings were passed
+ * to handlers instead of being deserialized to typed objects.
+ */
+class GrpcHttpHandlerComplexTypeTest {
+
+    @Serializable
+    data class StatusRequest(
+        val serviceName: String,
+        val includeDetails: Boolean = false
+    )
+
+    @Serializable
+    data class StatusResponse(
+        val serviceName: String,
+        val status: String,
+        val healthy: Boolean
+    )
+
+    @Serializable
+    data class UserRequest(val id: Int, val name: String)
+
+    @Serializable
+    data class UserResponse(val id: Int, val name: String, val greeting: String)
+
+    private val complexService = grpcService("StatusService", "health.v1") {
+        unary<StatusRequest, StatusResponse>("GetStatus") { request ->
+            // This handler expects a properly deserialized StatusRequest object
+            StatusResponse(
+                serviceName = request.serviceName,
+                status = if (request.includeDetails) "OK with details" else "OK",
+                healthy = true
+            )
+        }
+        unary<UserRequest, UserResponse>("GreetUser") { request ->
+            // This handler expects a properly deserialized UserRequest object
+            UserResponse(
+                id = request.id,
+                name = request.name,
+                greeting = "Hello, ${request.name}!"
+            )
+        }
+    }
+
+    private val adapter = GrpcAdapter(listOf(complexService))
+    private val handler = GrpcHttpHandler(adapter)
+
+    @Test
+    fun `deserializes complex request type from JSON`() = runTest {
+        val response = handler.invokeUnary(
+            serviceName = "health.v1.StatusService",
+            methodName = "GetStatus",
+            requestBody = """{"serviceName":"my-service","includeDetails":true}""",
+            contentType = "application/json"
+        )
+
+        assertEquals(GrpcStatus.OK, response.status)
+        assertTrue(response.body.contains("my-service"))
+        assertTrue(response.body.contains("OK with details"))
+        assertTrue(response.body.contains("healthy"))
+    }
+
+    @Test
+    fun `deserializes request with default values`() = runTest {
+        val response = handler.invokeUnary(
+            serviceName = "health.v1.StatusService",
+            methodName = "GetStatus",
+            requestBody = """{"serviceName":"test-service"}""",
+            contentType = "application/json"
+        )
+
+        assertEquals(GrpcStatus.OK, response.status)
+        assertTrue(response.body.contains("test-service"))
+        // includeDetails defaults to false, so status should be "OK" not "OK with details"
+        assertTrue(response.body.contains(""""status":"OK""""))
+    }
+
+    @Test
+    fun `handles nested request fields correctly`() = runTest {
+        val response = handler.invokeUnary(
+            serviceName = "health.v1.StatusService",
+            methodName = "GreetUser",
+            requestBody = """{"id":42,"name":"Alice"}""",
+            contentType = "application/json"
+        )
+
+        assertEquals(GrpcStatus.OK, response.status)
+        assertTrue(response.body.contains("42"))
+        assertTrue(response.body.contains("Alice"))
+        assertTrue(response.body.contains("Hello, Alice!"))
+    }
+
+    @Test
+    fun `serializes complex response type to JSON`() = runTest {
+        val response = handler.invokeUnary(
+            serviceName = "health.v1.StatusService",
+            methodName = "GetStatus",
+            requestBody = """{"serviceName":"json-test","includeDetails":false}""",
+            contentType = "application/json"
+        )
+
+        assertEquals(GrpcStatus.OK, response.status)
+        // Verify the response is properly serialized JSON
+        assertTrue(response.body.contains(""""serviceName":"json-test""""))
+        assertTrue(response.body.contains(""""healthy":true"""))
+    }
+
+    @Test
+    fun `handles full request-response cycle via handle method`() = runTest {
+        val response = handler.handle(
+            path = "/health.v1.StatusService/GetStatus",
+            body = """{"serviceName":"handle-test","includeDetails":true}""",
+            contentType = "application/json"
+        )
+
+        assertEquals(GrpcStatus.OK, response.status)
+        assertTrue(response.body.contains("handle-test"))
+        assertTrue(response.body.contains("OK with details"))
     }
 }
 

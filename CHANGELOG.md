@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0.3] - 2026-01-15
+
+### Fixed
+
+- **GrpcHttpHandler**: Fixed JSON deserialization bug where raw JSON strings were passed to handlers instead of typed
+  objects
+    - Added `KSerializer` storage to `GrpcMethod` interface and all method types (`UnaryMethod`,
+      `ServerStreamingMethod`, etc.)
+    - Updated `handleUnary()` to use `kotlinx.serialization` for proper request/response serialization
+    - Fixes `ClassCastException: class java.lang.String cannot be cast to class [ProtoType]` errors
+
 ## [0.5.0.2] - 2026-01-14
 
 ### Added

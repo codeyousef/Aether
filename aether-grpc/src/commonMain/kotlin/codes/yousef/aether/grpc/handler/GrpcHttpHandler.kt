@@ -175,9 +175,12 @@ class GrpcHttpHandler(
         val unaryMethod = method as? UnaryMethod<*, *>
             ?: throw GrpcException.internal("Expected unary method")
 
-        // Deserialize request - for now using simple string handling
-        // In a full implementation, this would use kotlinx.serialization with reified types
-        val request = deserializeRequest(body, contentType)
+        // Deserialize request using the method's request serializer
+        val request = deserializeRequest(
+            body,
+            contentType,
+            unaryMethod.requestSerializer as kotlinx.serialization.KSerializer<Any?>
+        )
 
         // Invoke the method
         val response = try {
@@ -189,8 +192,12 @@ class GrpcHttpHandler(
             throw GrpcException.internal(e.message ?: "Method invocation failed")
         }
 
-        // Serialize response
-        val responseBody = serializeResponse(response, contentType)
+        // Serialize response using the method's response serializer
+        val responseBody = serializeResponse(
+            response,
+            contentType,
+            unaryMethod.responseSerializer as kotlinx.serialization.KSerializer<Any?>
+        )
         return GrpcResponse.success(responseBody, normalizeContentType(contentType))
     }
 
@@ -231,32 +238,37 @@ class GrpcHttpHandler(
         emit(sseCodec.formatEvent("""{"error":"Streaming not fully implemented"}""", "error"))
     }
 
-    private fun deserializeRequest(body: String, contentType: String): Any? {
-        // Simple deserialization - in production would use kotlinx.serialization
+    private fun <T> deserializeRequest(
+        body: String,
+        contentType: String,
+        serializer: kotlinx.serialization.KSerializer<T>
+    ): T {
         return when {
             isConnectJson(contentType) || contentType.contains("json") -> {
-                // Remove quotes for simple string types
-                body.trim().removeSurrounding("\"")
+                json.decodeFromString(serializer, body)
             }
 
-            else -> body
+            else -> {
+                // For non-JSON content types, try JSON parsing anyway as fallback
+                json.decodeFromString(serializer, body)
+            }
         }
     }
 
-    private fun serializeResponse(response: Any?, contentType: String): String {
-        // Simple serialization - in production would use kotlinx.serialization
+    private fun <T> serializeResponse(
+        response: T,
+        contentType: String,
+        serializer: kotlinx.serialization.KSerializer<T>
+    ): String {
         return when {
             isConnectJson(contentType) || contentType.contains("json") -> {
-                when (response) {
-                    is String -> "\"$response\""
-                    is Number -> response.toString()
-                    is Boolean -> response.toString()
-                    null -> "null"
-                    else -> "\"$response\""
-                }
+                json.encodeToString(serializer, response)
             }
 
-            else -> response?.toString() ?: ""
+            else -> {
+                // For non-JSON content types, use JSON as fallback
+                json.encodeToString(serializer, response)
+            }
         }
     }
 
