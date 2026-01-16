@@ -4,14 +4,12 @@ import codes.yousef.aether.grpc.GrpcException
 import codes.yousef.aether.grpc.GrpcMetadata
 import codes.yousef.aether.grpc.GrpcStatus
 import codes.yousef.aether.grpc.adapter.GrpcAdapter
-import codes.yousef.aether.grpc.service.GrpcMethod
-import codes.yousef.aether.grpc.service.GrpcMethodType
-import codes.yousef.aether.grpc.service.GrpcServiceDefinition
-import codes.yousef.aether.grpc.service.UnaryMethod
+import codes.yousef.aether.grpc.service.*
 import codes.yousef.aether.grpc.streaming.LpmCodec
 import codes.yousef.aether.grpc.streaming.SseCodec
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 
 /**
@@ -206,13 +204,56 @@ class GrpcHttpHandler(
         body: String,
         contentType: String
     ): GrpcResponse {
-        // For server streaming over HTTP/1.1, we'd return SSE
-        // This is a simplified implementation
-        throw GrpcException.unimplemented("Server streaming requires SSE transport")
+        // For server streaming over HTTP/1.1, clients must use SSE transport
+        throw GrpcException.unimplemented("Server streaming requires SSE transport (Accept: text/event-stream)")
     }
 
     /**
-     * Create a Flow of SSE events for server streaming.
+     * Handle server streaming method, returning a Flow of SSE-formatted events.
+     *
+     * This method enables HTTP/1.1 clients to receive streaming responses via
+     * Server-Sent Events (SSE). Each response item from the stream is serialized
+     * as JSON and formatted as an SSE event.
+     *
+     * @param serviceName The full service name (e.g., "package.ServiceName")
+     * @param methodName The method name
+     * @param requestBody The serialized request body (JSON)
+     * @param contentType The content type of the request
+     * @return Flow of SSE event strings
+     */
+    @Suppress("UNCHECKED_CAST")
+    fun handleServerStreamingSSE(
+        serviceName: String,
+        methodName: String,
+        requestBody: String,
+        contentType: String
+    ): Flow<String> = flow {
+        val (_, method) = routeMethod(serviceName, methodName)
+
+        val streamingMethod = method as? ServerStreamingMethod<*, *>
+            ?: throw GrpcException.internal("Expected server streaming method")
+
+        // Deserialize request using the method's request serializer
+        val request = json.decodeFromString(
+            streamingMethod.requestSerializer as KSerializer<Any?>,
+            requestBody
+        )
+
+        // Get the response Flow from the handler
+        val responseFlow = (streamingMethod as ServerStreamingMethod<Any?, Any?>).invoke(request)
+
+        // Stream each item as an SSE event
+        responseFlow.collect { item ->
+            val jsonData = json.encodeToString(
+                streamingMethod.elementResponseSerializer as KSerializer<Any?>,
+                item
+            )
+            emit(sseCodec.formatEvent(data = jsonData))
+        }
+    }
+
+    /**
+     * Create a Flow of SSE events for server streaming (by path).
      *
      * @param path The request path
      * @param body The request body
@@ -233,9 +274,8 @@ class GrpcHttpHandler(
             throw GrpcException.invalidArgument("Method is not server streaming")
         }
 
-        // This would need proper implementation with reified types
-        // For now, emit a placeholder
-        emit(sseCodec.formatEvent("""{"error":"Streaming not fully implemented"}""", "error"))
+        // Delegate to the main SSE handler
+        handleServerStreamingSSE(serviceName, methodName, body, contentType).collect { emit(it) }
     }
 
     private fun <T> deserializeRequest(

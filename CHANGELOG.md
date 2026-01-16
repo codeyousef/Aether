@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.1.0] - 2026-01-16
+
+### Added
+
+- **gRPC SSE Streaming**: Server-Sent Events (SSE) transport for server-streaming gRPC methods over HTTP/1.1
+    - `GrpcHttpHandler.handleServerStreamingSSE()`: Returns a `Flow<String>` of SSE-formatted events
+    - SSE transport detection via `Accept: text/event-stream` header or `?transport=sse` query parameter
+    - Proper SSE headers: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`
+    - Error handling with SSE `event: error` type for graceful failure reporting
+    - Each stream item serialized as JSON in SSE `data:` field with proper `\n\n` terminators
+
 ## [0.5.0.3] - 2026-01-15
 
 ### Fixed

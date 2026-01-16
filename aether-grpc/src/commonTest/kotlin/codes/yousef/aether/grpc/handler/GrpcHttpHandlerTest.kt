@@ -4,6 +4,8 @@ import codes.yousef.aether.grpc.GrpcException
 import codes.yousef.aether.grpc.GrpcStatus
 import codes.yousef.aether.grpc.adapter.GrpcAdapter
 import codes.yousef.aether.grpc.service.grpcService
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.Serializable
 import kotlin.test.Test
@@ -304,5 +306,151 @@ class GrpcResponseTest {
 
         assertEquals(GrpcStatus.PERMISSION_DENIED, response.status)
         assertTrue(response.body.contains("Access denied"))
+    }
+}
+
+/**
+ * Tests for server streaming SSE support in GrpcHttpHandler.
+ */
+class GrpcHttpHandlerStreamingTest {
+
+    @Serializable
+    data class StreamRequest(val count: Int)
+
+    @Serializable
+    data class StreamItem(val index: Int, val message: String)
+
+    private val streamingService = grpcService("StreamService", "stream.v1") {
+        serverStreaming<StreamRequest, StreamItem>("GetItems") { request ->
+            flow {
+                repeat(request.count) { i ->
+                    emit(StreamItem(i, "Item $i"))
+                }
+            }
+        }
+        serverStreaming<StreamRequest, StreamItem>("GetItemsEmpty") { _ ->
+            flow { }
+        }
+        serverStreaming<StreamRequest, StreamItem>("GetItemsError") { _ ->
+            flow {
+                emit(StreamItem(0, "First item"))
+                throw GrpcException.invalidArgument("Simulated error")
+            }
+        }
+    }
+
+    private val adapter = GrpcAdapter(listOf(streamingService))
+    private val handler = GrpcHttpHandler(adapter)
+
+    @Test
+    fun `streams SSE events for server streaming method`() = runTest {
+        val events = handler.handleServerStreamingSSE(
+            serviceName = "stream.v1.StreamService",
+            methodName = "GetItems",
+            requestBody = """{"count":3}""",
+            contentType = "application/json"
+        ).toList()
+
+        assertEquals(3, events.size)
+        // Verify SSE format
+        assertTrue(events[0].contains("data:"))
+        assertTrue(events[0].contains("index"))
+        assertTrue(events[0].contains("\"index\":0"))
+        assertTrue(events[0].endsWith("\n\n"))
+
+        assertTrue(events[1].contains("\"index\":1"))
+        assertTrue(events[2].contains("\"index\":2"))
+    }
+
+    @Test
+    fun `returns empty for empty streaming response`() = runTest {
+        val events = handler.handleServerStreamingSSE(
+            serviceName = "stream.v1.StreamService",
+            methodName = "GetItemsEmpty",
+            requestBody = """{"count":0}""",
+            contentType = "application/json"
+        ).toList()
+
+        assertEquals(0, events.size)
+    }
+
+    @Test
+    fun `streams single item correctly`() = runTest {
+        val events = handler.handleServerStreamingSSE(
+            serviceName = "stream.v1.StreamService",
+            methodName = "GetItems",
+            requestBody = """{"count":1}""",
+            contentType = "application/json"
+        ).toList()
+
+        assertEquals(1, events.size)
+        assertTrue(events[0].contains("data:"))
+        assertTrue(events[0].contains("\"index\":0"))
+        assertTrue(events[0].contains("\"message\":\"Item 0\""))
+    }
+
+    @Test
+    fun `throws exception for non-streaming method`() = runTest {
+        val unaryService = grpcService("UnaryService", "unary.v1") {
+            unary<String, String>("Echo") { it }
+        }
+        val unaryAdapter = GrpcAdapter(listOf(unaryService))
+        val unaryHandler = GrpcHttpHandler(unaryAdapter)
+
+        val exception = assertFailsWith<GrpcException> {
+            unaryHandler.handleServerStreamingSSE(
+                serviceName = "unary.v1.UnaryService",
+                methodName = "Echo",
+                requestBody = """"test"""",
+                contentType = "application/json"
+            ).toList()
+        }
+        assertEquals(GrpcStatus.INTERNAL, exception.status)
+    }
+
+    @Test
+    fun `serverStreamingEvents works with path format`() = runTest {
+        val events = handler.serverStreamingEvents(
+            path = "/stream.v1.StreamService/GetItems",
+            body = """{"count":2}""",
+            contentType = "application/json"
+        ).toList()
+
+        assertEquals(2, events.size)
+        assertTrue(events[0].contains("\"index\":0"))
+        assertTrue(events[1].contains("\"index\":1"))
+    }
+
+    @Test
+    fun `serverStreamingEvents throws for invalid path`() = runTest {
+        val exception = assertFailsWith<GrpcException> {
+            handler.serverStreamingEvents(
+                path = "/invalid",
+                body = "{}",
+                contentType = "application/json"
+            ).toList()
+        }
+        assertEquals(GrpcStatus.INVALID_ARGUMENT, exception.status)
+    }
+
+    @Test
+    fun `serverStreamingEvents throws for non-streaming method`() = runTest {
+        val mixedService = grpcService("MixedService", "mixed.v1") {
+            unary<String, String>("Echo") { it }
+            serverStreaming<StreamRequest, StreamItem>("Stream") { request ->
+                flow { repeat(request.count) { emit(StreamItem(it, "Item")) } }
+            }
+        }
+        val mixedAdapter = GrpcAdapter(listOf(mixedService))
+        val mixedHandler = GrpcHttpHandler(mixedAdapter)
+
+        val exception = assertFailsWith<GrpcException> {
+            mixedHandler.serverStreamingEvents(
+                path = "/mixed.v1.MixedService/Echo",
+                body = """"test"""",
+                contentType = "application/json"
+            ).toList()
+        }
+        assertEquals(GrpcStatus.INVALID_ARGUMENT, exception.status)
     }
 }

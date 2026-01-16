@@ -8,7 +8,9 @@ import codes.yousef.aether.grpc.dsl.GrpcConfig
 import codes.yousef.aether.grpc.dsl.GrpcConfigBuilder
 import codes.yousef.aether.grpc.dsl.grpc
 import codes.yousef.aether.grpc.handler.GrpcHttpHandler
+import codes.yousef.aether.grpc.service.GrpcMethodType
 import codes.yousef.aether.grpc.service.GrpcServiceDefinition
+import codes.yousef.aether.grpc.streaming.SseCodec
 
 /**
  * Middleware that handles gRPC-Web and Connect protocol requests.
@@ -23,6 +25,7 @@ class GrpcMiddleware(
 ) : Middleware {
     private val adapter = GrpcAdapter(config.services)
     private val handler = GrpcHttpHandler(adapter)
+    private val sseCodec = SseCodec()
 
     override suspend fun invoke(exchange: Exchange, next: suspend () -> Unit) {
         val contentType = exchange.request.headers["Content-Type"]
@@ -34,7 +37,40 @@ class GrpcMiddleware(
             return
         }
 
-        // Handle the gRPC request
+        // Parse path to get service and method names
+        val pathParts = path.trimStart('/').split('/')
+        if (pathParts.size != 2) {
+            next()
+            return
+        }
+        val serviceName = pathParts[0]
+        val methodName = pathParts[1]
+
+        // Check if this is a server streaming method with SSE transport
+        try {
+            val (_, method) = handler.routeMethod(serviceName, methodName)
+
+            if (method.descriptor.type == GrpcMethodType.SERVER_STREAMING) {
+                if (!shouldUseSSE(exchange)) {
+                    // Return error: SSE transport required for streaming
+                    exchange.response.statusCode = 501
+                    exchange.response.setHeader("Content-Type", "application/json")
+                    exchange.response.setHeader("grpc-status", GrpcStatus.UNIMPLEMENTED.code.toString())
+                    exchange.response.write("""{"error":"Server streaming requires SSE transport (Accept: text/event-stream)"}""")
+                    exchange.response.end()
+                    return
+                }
+
+                // Handle SSE streaming
+                val requestBody = exchange.request.bodyText()
+                handleSSEStreaming(exchange, serviceName, methodName, requestBody, contentType ?: "application/json")
+                return
+            }
+        } catch (_: GrpcException) {
+            // Method not found, fall through to normal handling which will return proper error
+        }
+
+        // Handle the gRPC request (unary or non-SSE)
         val requestBody = exchange.request.bodyText()
         val grpcResponse = handler.handle(
             path = path,
@@ -56,6 +92,57 @@ class GrpcMiddleware(
         exchange.response.statusCode = httpStatus
         exchange.response.write(grpcResponse.body)
         exchange.response.end()
+    }
+
+    /**
+     * Check if the client wants SSE transport.
+     */
+    private fun shouldUseSSE(exchange: Exchange): Boolean {
+        // Check Accept header for SSE
+        val accept = exchange.request.headers["Accept"]
+        if (accept?.contains("text/event-stream") == true) return true
+
+        // Check query parameter for SSE transport
+        val transport = exchange.request.queryParameter("transport")
+        if (transport == "sse") return true
+
+        return false
+    }
+
+    /**
+     * Handle server streaming with SSE transport.
+     */
+    private suspend fun handleSSEStreaming(
+        exchange: Exchange,
+        serviceName: String,
+        methodName: String,
+        body: String,
+        contentType: String
+    ) {
+        // Set SSE response headers
+        exchange.response.statusCode = 200
+        exchange.response.setHeader("Content-Type", SseCodec.CONTENT_TYPE)
+        exchange.response.setHeader("Cache-Control", "no-cache")
+        exchange.response.setHeader("Connection", "keep-alive")
+        exchange.response.setHeader("grpc-status", GrpcStatus.OK.code.toString())
+
+        try {
+            handler.handleServerStreamingSSE(serviceName, methodName, body, contentType)
+                .collect { event ->
+                    exchange.response.write(event)
+                }
+            exchange.response.end()
+        } catch (e: GrpcException) {
+            // Send error as final SSE event
+            val errorJson = """{"error":"${e.message?.replace("\"", "\\\"")}","code":"${e.status.name}"}"""
+            exchange.response.write(sseCodec.formatEvent(errorJson, "error"))
+            exchange.response.end()
+        } catch (e: Exception) {
+            // Send generic error as final SSE event
+            val errorJson = """{"error":"${e.message?.replace("\"", "\\\"") ?: "Internal error"}","code":"INTERNAL"}"""
+            exchange.response.write(sseCodec.formatEvent(errorJson, "error"))
+            exchange.response.end()
+        }
     }
 
     private fun isGrpcRequest(contentType: String?, path: String): Boolean {
