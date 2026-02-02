@@ -1,0 +1,437 @@
+# Aether Framework - Full Documentation
+
+> A Django-like Kotlin Multiplatform framework for JVM (Vert.x + Virtual Threads) and Wasm (Cloudflare/Browser).
+
+## Architecture Overview
+
+Aether is a "colorless" framework that abstracts away platform differences via expect/actual declarations, enabling developers to write application logic once and deploy anywhere.
+
+### Platform Support
+
+- **JVM**: Vert.x HTTP server, Java 21 Virtual Threads, Reactive PostgreSQL
+- **WasmJS**: Browser and Cloudflare Workers, event loop concurrency
+- **WasmWASI**: WASI runtime support, pluggable transport layer
+
+### Module Structure
+
+| Module | Purpose |
+|--------|---------|
+| aether-core | Exchange, Pipeline, Dispatcher - foundation |
+| aether-web | Radix tree router, path parameter extraction |
+| aether-db | Django-style ORM, QueryAST, database drivers |
+| aether-signals | Event system (preSave, postSave, etc.) |
+| aether-tasks | Background job queue with KSP code generation |
+| aether-channels | WebSocket pub/sub groups |
+| aether-auth | Authentication providers (Basic, Bearer, JWT, API Key, Form) |
+| aether-ui | Composable UI DSL, SSR + CBOR serialization |
+| aether-net | Transport abstraction (TCP, future protocols) |
+| aether-ksp | Database migration generation |
+| aether-forms | Form handling and validation |
+| aether-admin | Admin panel generation |
+| aether-grpc | gRPC support with DSL, adapters, and code-first proto gen |
+| aether-cli | Command-line tools |
+| aether-plugin | Gradle plugin |
+
+### Source Set Structure
+
+```
+src/
+├── commonMain/kotlin/codes/yousef/aether/[module]/  # Shared code
+├── jvmMain/kotlin/                                   # JVM (Vert.x, Virtual Threads)
+├── wasmJsMain/kotlin/                               # Browser/Cloudflare Workers
+└── wasmWasiMain/kotlin/                             # WASI runtime
+```
+
+### Key expect/actual Declarations
+
+```kotlin
+// commonMain - expect declaration
+expect object AetherDispatcher { val dispatcher: CoroutineDispatcher }
+
+// jvmMain - actual with Virtual Threads
+actual object AetherDispatcher {
+    actual val dispatcher = Executors.newVirtualThreadPerTaskExecutor().asCoroutineDispatcher()
+}
+```
+
+Platform-specific implementations:
+- `AetherDispatcher` - JVM uses Virtual Threads, Wasm uses event loop
+- `TcpTransport` - JVM uses Vert.x NetServer, Wasm provides stubs
+- `renderToHtml()` - Platform-specific SSR
+- `LoggerFactory` - Platform logging
+
+## Getting Started
+
+### Prerequisites
+
+- JDK 21 or later
+- Kotlin 2.1.0 or later
+- PostgreSQL (for JVM deployment)
+
+### Dependencies
+
+```kotlin
+kotlin {
+    jvm()
+    sourceSets {
+        commonMain.dependencies {
+            implementation("codes.yousef.aether:aether-core:0.4.0")
+            implementation("codes.yousef.aether:aether-web:0.4.0")
+            implementation("codes.yousef.aether:aether-db:0.4.0")
+        }
+    }
+}
+```
+
+### Basic Application
+
+```kotlin
+import codes.yousef.aether.core.*
+import codes.yousef.aether.web.*
+
+fun main() {
+    val router = router {
+        get("/") { exchange ->
+            exchange.respondHtml("<h1>Hello, Aether!</h1>")
+        }
+        get("/api/hello") { exchange ->
+            exchange.respondJson(mapOf("message" to "Hello, World!"))
+        }
+    }
+
+    val pipeline = pipeline {
+        installRecovery()
+        installCallLogging()
+        use(router.asMiddleware())
+    }
+
+    AetherServer.start(port = 8080, pipeline = pipeline)
+}
+```
+
+## Core Concepts
+
+### Exchange
+
+The `Exchange` interface represents an HTTP request-response cycle with a unified API across platforms:
+
+```kotlin
+exchange.respond(200, "Hello, World!")
+exchange.respondJson(data = mapOf("message" to "Hello"))
+exchange.respondHtml("<h1>Hello</h1>")
+```
+
+### Routing
+
+Type-safe DSL with radix tree routing (O(k) where k = path length):
+
+```kotlin
+val router = router {
+    get("/") { exchange ->
+        exchange.respond(200, "Home")
+    }
+
+    get("/users/:id") { exchange ->
+        val id = exchange.pathParamInt("id")
+        // Handle user by ID
+    }
+
+    post("/users") { exchange ->
+        val body = exchange.body<CreateUserRequest>()
+        // Create user
+    }
+}
+```
+
+### Models (Active Record ORM)
+
+Django-inspired model system with automatic query building:
+
+```kotlin
+object Users : Model<User>() {
+    override val tableName = "users"
+    val id = integer("id", primaryKey = true, autoIncrement = true)
+    val username = varchar("username", maxLength = 100)
+    val email = varchar("email", maxLength = 255)
+
+    override fun create(row: Row): User {
+        return User(
+            id = row.getInt("id")!!,
+            username = row.getString("username")!!,
+            email = row.getString("email")!!
+        )
+    }
+}
+
+// Usage
+val user = User.findById(1)
+user?.username = "newname"
+user?.save()
+
+val users = User.objects.filter { it.active eq true }.toList()
+```
+
+### Middleware Pipeline
+
+Composable middleware for request/response processing:
+
+```kotlin
+val pipeline = Pipeline().apply {
+    installRecovery()           // Error handling
+    installCallLogging()        // Request logging
+    installContentNegotiation() // Content type detection
+    use(router.asMiddleware())
+}
+```
+
+### UI DSL (Server-Side Rendering)
+
+Composable DSL for HTML rendering with CBOR serialization support:
+
+```kotlin
+exchange.render {
+    element("html") {
+        head {
+            title("My App")
+        }
+        body {
+            h1 { text("Welcome") }
+            div("container") {
+                p { text("Hello, World!") }
+            }
+        }
+    }
+}
+```
+
+## Database Drivers
+
+### PostgreSQL (JVM)
+
+Vert.x Reactive PostgreSQL Client:
+
+```kotlin
+val driver = VertxPgDriver.create(
+    host = "localhost",
+    port = 5432,
+    database = "mydb",
+    user = "postgres",
+    password = "secret"
+)
+DatabaseDriverRegistry.initialize(driver)
+```
+
+### Supabase (JVM + Wasm)
+
+PostgREST API driver:
+
+```kotlin
+val driver = SupabaseDriver.create(
+    projectUrl = "https://your-project.supabase.co",
+    apiKey = "your-anon-or-service-key"
+)
+DatabaseDriverRegistry.initialize(driver)
+```
+
+### Firestore (JVM + Wasm)
+
+REST API driver (NoSQL - no JOINs/LIKE):
+
+```kotlin
+val driver = FirestoreDriver.create(
+    projectId = "your-project-id",
+    apiKey = "your-api-key"
+)
+DatabaseDriverRegistry.initialize(driver)
+```
+
+## Security Features
+
+### Session Management
+
+```kotlin
+val pipeline = Pipeline().apply {
+    installSessions(InMemorySessionStore(), SessionConfig(
+        cookieName = "AETHER_SESSION",
+        maxAge = 3600L,
+        secure = true,
+        httpOnly = true,
+        sameSite = SameSite.STRICT
+    ))
+}
+
+// In handlers
+val session = exchange.session
+session["user"] = "john"
+val user = session["user"]
+exchange.invalidateSession()
+```
+
+### CSRF Protection
+
+```kotlin
+val pipeline = Pipeline().apply {
+    installCsrf(CsrfConfig(
+        tokenLength = 32,
+        headerName = "X-CSRF-Token"
+    ))
+}
+
+// In templates
+exchange.render {
+    form(action = "/submit", method = "POST") {
+        csrfInput(exchange)
+        // form fields...
+    }
+}
+```
+
+### Authentication
+
+```kotlin
+val authConfig = AuthenticationConfig().apply {
+    providers["basic"] = BasicAuthProvider { credentials ->
+        if (validateUser(credentials.username, credentials.password)) {
+            AuthResult.Success(Principal.User(credentials.username, setOf("user")))
+        } else {
+            AuthResult.Failure("Invalid credentials")
+        }
+    }
+    providers["jwt"] = JwtAuthProvider(jwtConfig)
+}
+
+val pipeline = Pipeline().apply {
+    installAuthentication(authConfig) {
+        excludePaths.add("/public")
+    }
+    installAuthorization(AuthorizationConfig().apply {
+        rules["/admin"] = AuthorizationRule(requiredRoles = setOf("admin"))
+    })
+}
+```
+
+## File Uploads
+
+```kotlin
+router {
+    post("/upload") { exchange ->
+        val file = exchange.file("document")
+        if (file != null) {
+            saveFile(file)
+            exchange.respond(200, "Uploaded: ${file.filename}")
+        }
+    }
+
+    post("/multi-upload") { exchange ->
+        val files = exchange.files("attachments")
+        files.forEach { saveFile(it) }
+        exchange.respond(200, "Uploaded ${files.size} files")
+    }
+}
+```
+
+## WebSocket Support
+
+```kotlin
+val wsConfig = webSocket {
+    path("/ws/chat") {
+        onConnect { session ->
+            broadcast("User joined")
+        }
+        onMessage { session, message ->
+            when (message) {
+                is WebSocketMessage.Text -> broadcast(message.data)
+                is WebSocketMessage.Binary -> session.send(message.data)
+            }
+        }
+        onClose { session, code, reason ->
+            broadcast("User left")
+        }
+    }
+}
+
+val wsServer = VertxWebSocketServer(vertx, 8080, wsConfig)
+wsServer.start()
+```
+
+## Database Migrations
+
+KSP-based automatic migration generation:
+
+```kotlin
+@AetherModel
+object Users : Model<User>() {
+    override val tableName = "users"
+
+    @PrimaryKey(autoIncrement = true)
+    val id = integer("id")
+
+    @Column(maxLength = 100)
+    @Index(unique = true)
+    val username = varchar("username", maxLength = 100)
+
+    @Column(maxLength = 255)
+    val email = varchar("email", maxLength = 255)
+}
+
+// Generated migration
+val migration = migration("002", "Add users table") {
+    createTable("users") {
+        column("id", "SERIAL", primaryKey = true)
+        column("username", "VARCHAR(100)", nullable = false)
+        column("email", "VARCHAR(255)", nullable = false)
+    }
+    createIndex("idx_users_username", "users", listOf("username"), unique = true)
+}
+```
+
+## Key Technical Decisions
+
+1. **Virtual Threads (Loom)** - JVM handlers run on `Executors.newVirtualThreadPerTaskExecutor()`, allowing blocking I/O
+2. **QueryAST** - SQL queries are AST, not strings; translated per-driver (enables HTTP driver for Wasm)
+3. **Radix Tree Routing** - O(k) path matching where k = path length
+4. **DatabaseDriverRegistry** - Global singleton for driver access
+5. **CBOR Serialization** - UI trees can be serialized for transport
+
+## Build Commands
+
+```bash
+./gradlew build                              # Full build all targets
+./gradlew :aether-core:jvmTest               # Run single module's JVM tests
+./gradlew :example-app:run                   # Run example app (requires PostgreSQL)
+./gradlew :example-app:test                  # Integration tests with TestContainers
+./gradlew check -x wasmJsBrowserTest -x :example-app:test  # CI-style test run
+./gradlew publishToMavenLocal                # Publish to local Maven for testing
+```
+
+## Testing
+
+- Integration tests use TestContainers for PostgreSQL
+- JUnit 5 platform with `@TestInstance(PER_CLASS)` for database state
+- Target JVM 21
+
+## Production Deployment
+
+### Docker
+
+```bash
+docker build -t aether-app:latest -f docs/deployment/Dockerfile .
+cd docs/deployment
+docker compose up -d
+```
+
+### Kubernetes
+
+```bash
+kubectl apply -f docs/deployment/kubernetes/
+kubectl -n aether get pods
+```
+
+## Package Naming
+
+All code follows `codes.yousef.aether.[module]` hierarchy.
+
+## Links
+
+- Repository: https://github.com/yousef-codes/aether
+- Maven: codes.yousef.aether

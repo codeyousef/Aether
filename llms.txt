@@ -1,0 +1,70 @@
+# Aether Framework
+
+> A Django-like Kotlin Multiplatform framework for JVM (Vert.x + Virtual Threads) and Wasm (Cloudflare/Browser).
+
+## Overview
+
+Aether is a "colorless" framework that abstracts platform differences via expect/actual declarations, enabling write-once-deploy-anywhere web applications.
+
+## Key Features
+
+- **Multiplatform**: JVM, WasmJS (Browser/Cloudflare Workers), WasmWASI
+- **Virtual Threads**: Java 21 Loom for high-performance concurrent handling
+- **Type-Safe Routing**: Radix tree router with O(k) path matching
+- **Active Record ORM**: Django-inspired models with QueryAST (not string SQL)
+- **Middleware Pipeline**: Composable request/response processing
+- **SSR + Hydration**: Server-side rendering with CBOR serialization
+- **Authentication**: Basic, Bearer, JWT, API Key, Form providers
+- **WebSocket Support**: Full-duplex with pub/sub channels
+- **gRPC Support**: DSL, adapters, and code-first proto generation
+
+## Modules
+
+| Module | Purpose |
+|--------|---------|
+| aether-core | Exchange, Pipeline, Dispatcher foundation |
+| aether-web | Radix tree router, path parameters |
+| aether-db | ORM, QueryAST, database drivers |
+| aether-auth | Authentication providers |
+| aether-ui | Composable UI DSL, SSR |
+| aether-grpc | gRPC with DSL and proto generation |
+| aether-channels | WebSocket pub/sub groups |
+| aether-tasks | Background job queue with KSP |
+| aether-signals | Event system (preSave, postSave) |
+| aether-forms | Form handling and validation |
+| aether-admin | Admin panel generation |
+| aether-net | Transport abstraction |
+| aether-ksp | Migration generation |
+| aether-cli | Command-line tools |
+| aether-plugin | Gradle plugin |
+
+## Database Drivers
+
+- **PostgreSQL** (JVM): Vert.x Reactive Client
+- **Supabase**: PostgREST API (JVM + Wasm)
+- **Firestore**: REST API (JVM + Wasm, NoSQL)
+
+## Quick Example
+
+```kotlin
+val router = router {
+    get("/users/:id") { exchange ->
+        val id = exchange.pathParamInt("id")
+        exchange.respondJson(User.findById(id))
+    }
+}
+
+val pipeline = pipeline {
+    installRecovery()
+    installCallLogging()
+    use(router.asMiddleware())
+}
+
+AetherServer.start(port = 8080, pipeline = pipeline)
+```
+
+## Links
+
+- Full documentation: llms-full.txt
+- Repository: https://github.com/yousef-codes/aether
+- Package: codes.yousef.aether
