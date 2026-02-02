@@ -48,3 +48,17 @@ out/
 local.properties
 .github/copilot-instructions.md
 docs/private
+
+# Claude Code
+CLAUDE.md
+.claude/*
+!.claude/skills/
+
+# LLM context files
+llms.txt
+llms-full.txt
+
+# Test output logs
+*_log.txt
+*_output.txt
+output.txt
