@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { waitForIdentityHydration } from '../support/live-authority.js';
 
 test.describe('passkey-first example shell', () => {
   test('navigates from the landing page to the accessible identity UI', async ({ page }) => {
@@ -44,6 +45,7 @@ test.describe('passkey-first example shell', () => {
 
   test('keeps sign-in keyboard reachable while unnamed registration is disabled', async ({ page }) => {
     await page.goto('/identity');
+    await waitForIdentityHydration(page);
 
     await page.getByRole('textbox', { name: 'Passkey name', exact: true }).focus();
     await page.keyboard.press('Tab');
