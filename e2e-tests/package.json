@@ -1,0 +1,24 @@
+{
+  "name": "aether-identity-e2e",
+  "version": "0.6.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test tests/config/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "test:browser": "node scripts/check-prerequisites.mjs browser && playwright test --project=chromium-ui --project=firefox-ui --project=webkit-ui",
+    "test:browser:chromium": "node scripts/check-prerequisites.mjs browser && playwright test --project=chromium-ui",
+    "test:live": "node scripts/run-live.mjs live",
+    "test:release": "node scripts/run-live.mjs release",
+    "test:all": "npm run test && npm run typecheck && npm run test:browser",
+    "install:browsers": "playwright install chromium firefox webkit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.0",
+    "@types/node": "22.15.3",
+    "typescript": "5.9.3"
+  }
+}

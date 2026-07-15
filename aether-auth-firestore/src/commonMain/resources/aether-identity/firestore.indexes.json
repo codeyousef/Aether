@@ -1,0 +1,192 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "credentials",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "state", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "state", "order": "ASCENDING" },
+        { "fieldPath": "lastUsedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "memberships",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "organizationId", "order": "ASCENDING" },
+        { "fieldPath": "state", "order": "ASCENDING" },
+        { "fieldPath": "role", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "memberships",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "organizationId", "order": "ASCENDING" },
+        { "fieldPath": "state", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "federationProviderControls",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "organizationId", "order": "ASCENDING" },
+        { "fieldPath": "state", "order": "ASCENDING" },
+        { "fieldPath": "providerId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "recoveryCodes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "generation", "order": "DESCENDING" },
+        { "fieldPath": "state", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "auditEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "organizationId", "order": "ASCENDING" },
+        { "fieldPath": "occurredAt", "order": "DESCENDING" },
+        { "fieldPath": "entityId", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "auditEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "occurredAt", "order": "ASCENDING" },
+        { "fieldPath": "entityId", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "bootstrap",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "users",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "credentials",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sessions",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "organizations",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "memberships",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "invitations",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "serviceIdentities",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "serviceCredentials",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "externalIdentities",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "federationProviderControls",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "challenges",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "recoveryCodes",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "deviceGrants",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "deviceTokenFamilies",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "deviceAccessTokens",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "deviceRefreshTokens",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "replayReceipts",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "auditEvents",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "scimGroups",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "scimReceipts",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "scimBatchReceipts",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "unique",
+      "fieldPath": "payload",
+      "indexes": []
+    }
+  ]
+}

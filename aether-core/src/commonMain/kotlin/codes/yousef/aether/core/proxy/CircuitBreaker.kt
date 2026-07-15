@@ -3,9 +3,9 @@ package codes.yousef.aether.core.proxy
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.reentrantLock
 import kotlinx.atomicfu.locks.withLock
-import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
+import kotlin.time.Clock
 import kotlin.time.Duration
+import kotlin.time.Instant
 
 /**
  * Thread-safe circuit breaker implementation with sliding window failure tracking.

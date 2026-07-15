@@ -14,6 +14,10 @@ interface Exchange {
     val response: Response
     val attributes: Attributes
 
+    /** Direct connection metadata supplied by the request adapter. */
+    val connection: RequestConnection
+        get() = request.connection
+
     /**
      * Send a plain text response.
      */

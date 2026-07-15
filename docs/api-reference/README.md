@@ -9,7 +9,7 @@ This section provides detailed API documentation for each module in the Aether f
 | [Core](core.md)                             | Exchange interface, Pipeline middleware system, Rate Limit & Proxy |
 | [Routing](routing.md)                       | Radix tree router, path parameters, route groups                   |
 | [Database](database.md)                     | ORM, Models, QueryAST, PostgreSQL/Supabase/Firestore drivers       |
-| [Authentication](authentication.md)         | Session management, JWT, OAuth2, TOTP, UserContext                 |
+| [Authentication](authentication.md)         | Passkey-first identity, organizations, opaque sessions and guards  |
 | [Session Management](session-management.md) | Cookie and token-based sessions                                    |
 | [Network](network.md)                       | TCP/UDP transport abstractions                                     |
 | [WebSockets](websockets.md)                 | Real-time bidirectional communication                              |
@@ -46,7 +46,7 @@ This section provides detailed API documentation for each module in the Aether f
 - **Background jobs**: See [Tasks](tasks.md) for async job processing
 - **Real-time messaging**: See [Channels](channels.md) for WebSocket pub/sub
 - **gRPC services**: See [gRPC](grpc.md) for code-first gRPC support
-- **Auth context**: See [UserContext](authentication.md#usercontext) for coroutine-based auth
+- **Identity context**: See [request context and guards](authentication.md#request-context-and-guards)
 
 ### Platform Targets
 
@@ -58,8 +58,13 @@ Aether supports multiple Kotlin targets:
 | wasmJs | Cloudflare Workers, browser-based apps |
 | wasmWasi | Edge computing, serverless functions |
 
+The broad wasmWasi target is experimental for the `0.6.0.0` Identity authority. Production
+identity deployment remains blocked until a combined Kotlin guest + WIT OpenSSL crypto +
+`wasi:http` host gate passes; see [Identity deployment](../identity/deployment.md#release-verification).
+
 ### Version History
 
+- **0.6.0.0 (unreleased; publish-blocked)** — Breaking passkey-first identity platform and storage-neutral adapters
 - **0.5.0.2** — GrpcHttpHandler, GrpcMiddleware, Pipeline.installGrpc() DSL
 - **0.5.0.0** — gRPC support (gRPC-Web, Connect protocol, code-first proto generation), UserContext, AuthStrategy
 - **0.4.0** — Signals, Tasks, Channels, Admin Widgets, Rate Limit Middleware

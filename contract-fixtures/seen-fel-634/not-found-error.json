@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "not_found",
+    "message": "The requested identity resource was not found",
+    "requestId": "req_018f47d28d4d7abc",
+    "retryable": false
+  }
+}

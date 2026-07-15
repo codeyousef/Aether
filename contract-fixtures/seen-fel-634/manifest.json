@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "identityRelease": "0.6.0.0",
+  "consumerIssue": "FEL-634",
+  "files": [
+    "passkey-registration-start.json",
+    "passkey-authentication-finish.json",
+    "user-publisher-context.json",
+    "device-publisher-context.json",
+    "service-publisher-context.json",
+    "device-authorization-pending.json",
+    "not-found-error.json"
+  ]
+}

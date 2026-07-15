@@ -1,7 +1,7 @@
 package codes.yousef.aether.core.pipeline
 
 import codes.yousef.aether.core.Exchange
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 
 /**
  * Configuration for signal middleware.

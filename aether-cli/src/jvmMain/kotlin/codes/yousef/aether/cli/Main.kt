@@ -6,6 +6,7 @@ import kotlin.system.exitProcess
 import codes.yousef.aether.db.*
 import codes.yousef.aether.db.jvm.VertxPgDriver
 import kotlinx.coroutines.runBlocking
+import codes.yousef.aether.cli.identity.JvmIdentityCliFactory
 
 /**
  * Aether CLI - Command line tools for the Aether framework.
@@ -27,6 +28,12 @@ fun main(args: Array<String>) {
 
     val command = args[0].lowercase()
 
+    if (command == "auth") {
+        val exitCode = runBlocking { JvmIdentityCliFactory.create().execute(args.toList()) }
+        if (exitCode != 0) exitProcess(exitCode)
+        return
+    }
+
     try {
         when (command) {
             "runserver", "run" -> handleRunServer(args.drop(1))
@@ -38,7 +45,7 @@ fun main(args: Array<String>) {
             "shell" -> handleShell(args.drop(1))
             "help", "--help", "-h" -> printHelp()
             else -> {
-                println("Unknown command: $command")
+                println("Unknown command.")
                 println()
                 printHelp()
                 exitProcess(1)
@@ -409,10 +416,10 @@ private fun handleStartProject(args: List<String>) {
             sourceSets {
                 val commonMain by getting {
                     dependencies {
-                        implementation("codes.yousef.aether:aether-core:0.1.0")
-                        implementation("codes.yousef.aether:aether-db:0.1.0")
-                        implementation("codes.yousef.aether:aether-web:0.1.0")
-                        implementation("codes.yousef.aether:aether-ui:0.1.0")
+                        implementation("codes.yousef.aether:aether-core:0.6.0.0")
+                        implementation("codes.yousef.aether:aether-db:0.6.0.0")
+                        implementation("codes.yousef.aether:aether-web:0.6.0.0")
+                        implementation("codes.yousef.aether:aether-ui:0.6.0.0")
                     }
                 }
                 val jvmMain by getting {
@@ -642,6 +649,7 @@ private fun printHelp() {
         Usage: aether-cli <command> [options]
 
         Commands:
+          auth                  Passkey-first identity login and organization commands
           runserver             Start the development server
           migrate               Manage database migrations
           init [directory]      Initialize a new Aether project
@@ -809,4 +817,3 @@ private fun printMigrateHelp() {
 
     """.trimIndent())
 }
-

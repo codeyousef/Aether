@@ -11,7 +11,7 @@ import io.vertx.sqlclient.PoolOptions
 import io.vertx.sqlclient.SqlClient
 import io.vertx.sqlclient.Tuple
 import kotlin.coroutines.coroutineContext
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 
 /**
  * JVM implementation of DatabaseDriver using Vert.x Reactive PostgreSQL Client.

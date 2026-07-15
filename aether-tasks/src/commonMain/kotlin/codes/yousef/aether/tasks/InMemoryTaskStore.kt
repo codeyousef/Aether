@@ -2,7 +2,7 @@ package codes.yousef.aether.tasks
 
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 
 /**
  * In-memory task store for testing and development.

@@ -1,0 +1,15 @@
+{
+  "ceremonyId": "018f47d2-8d4d-7abc-8def-1234567890ad",
+  "credential": {
+    "id": "AAECAwQFBgcICQ",
+    "rawId": "AAECAwQFBgcICQ",
+    "type": "public-key",
+    "response": {
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0In0",
+      "authenticatorData": "AAECAwQFBgcICQ",
+      "signature": "AAECAwQFBgcICQ",
+      "userHandle": "MDE4ZjQ3ZDItOGQ0ZC03YWJjLThkZWYtMTIzNDU2Nzg5MGFi"
+    },
+    "clientExtensionResults": {}
+  }
+}

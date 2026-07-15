@@ -3,9 +3,8 @@ package codes.yousef.aether.core.pipeline
 import codes.yousef.aether.core.AttributeKey
 import codes.yousef.aether.core.Exchange
 import codes.yousef.aether.core.Response
-import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
 import kotlinx.coroutines.withContext
+import kotlin.time.Clock
 
 /**
  * Middleware that injects a debug toolbar into HTML responses.

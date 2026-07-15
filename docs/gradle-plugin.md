@@ -8,7 +8,7 @@ Apply the plugin in your `build.gradle.kts`:
 
 ```kotlin
 plugins {
-    id("codes.yousef.aether.plugin") version "0.1.0"
+    id("codes.yousef.aether.plugin") version "0.6.0.0"
 }
 ```
 

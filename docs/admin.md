@@ -2,6 +2,13 @@
 
 The `aether-admin` module provides an automatic admin interface for managing your models, similar to Django Admin.
 
+> **Identity boundary:** This guide describes generic, application-owned ORM/admin models. Names
+> such as `User`, `password`, `isSuperuser`, and global permissions below are placeholders for an
+> unrelated application's schema; they are not Aether Identity APIs and must never be mapped onto
+> the `aether_identity` schema. Identity-aware administration authenticates with
+> `IdentityContext`, explicit organization IDs, capability guards, and recent-passkey checks from
+> the [passkey-first identity platform](identity/README.md).
+
 ## Overview
 
 The admin interface auto-generates:
@@ -368,7 +375,10 @@ val pipeline = pipeline {
 
 ---
 
-## Authentication
+## Generic application-admin authentication
+
+The following adapter illustrates an application-owned `AdminAuthProvider`. It does not establish
+an Aether `IdentityPrincipal` or grant organization capabilities.
 
 ### Restricting Access
 

@@ -1,110 +1,76 @@
+@file:Suppress("DEPRECATION")
+
 package codes.yousef.aether.core.pipeline
 
 import codes.yousef.aether.core.AttributeKey
-import codes.yousef.aether.core.Cookie
 import codes.yousef.aether.core.Exchange
-import codes.yousef.aether.core.HttpMethod
-import kotlin.random.Random
+import codes.yousef.aether.core.security.CsrfConfig as SessionCsrfConfig
+import codes.yousef.aether.core.security.CsrfMiddleware as SessionCsrfMiddleware
+import codes.yousef.aether.core.security.CsrfTokenAttributeKey
 
 /**
- * Middleware that provides Cross-Site Request Forgery (CSRF) protection.
+ * Compatibility adapter for the original pipeline CSRF API.
  *
- * It ensures that unsafe requests (POST, PUT, DELETE, PATCH) originate from the same site
- * by verifying a secret token.
+ * The implementation now delegates to the session-bound CSRF middleware so
+ * Aether has one validation path. Session middleware must be installed before
+ * this middleware.
  */
+@Deprecated(
+    message = "Use codes.yousef.aether.core.security.CsrfMiddleware",
+    replaceWith = ReplaceWith("CsrfMiddleware(config)", "codes.yousef.aether.core.security.CsrfMiddleware")
+)
 class CsrfProtection(private val config: CsrfConfig) {
-    
+    private val delegate = SessionCsrfMiddleware(
+        SessionCsrfConfig(
+            headerName = config.headerName,
+            allowedOrigins = config.allowedOrigins,
+            sessionCookieNames = config.sessionCookieNames
+        )
+    ).asMiddleware()
+
     suspend operator fun invoke(exchange: Exchange, next: suspend () -> Unit) {
-        // 1. Get or generate CSRF token
-        val existingCookie = exchange.request.cookies[config.cookieName]
-        val token = existingCookie?.value ?: generateToken()
-        
-        // 2. Set cookie if it didn't exist
-        if (existingCookie == null) {
-            exchange.response.setCookie(
-                Cookie(
-                    name = config.cookieName,
-                    value = token,
-                    path = "/",
-                    httpOnly = false, // Needs to be readable by JS often, or at least sent back
-                    secure = config.secureCookie
-                )
-            )
-        }
-        
-        // 3. Expose token to the application (e.g. for form rendering)
-        exchange.attributes.put(CsrfTokenKey, token)
-        
-        // 4. Verify token for unsafe methods
-        if (exchange.request.method in unsafeMethods) {
-            val requestToken = getRequestToken(exchange)
-            
-            if (requestToken == null || requestToken != token) {
-                exchange.respond(403, "CSRF token missing or incorrect")
-                return
+        delegate(exchange) {
+            exchange.attributes.get(CsrfTokenAttributeKey)?.let { token ->
+                exchange.attributes.put(CsrfTokenKey, token)
             }
+            next()
         }
-        
-        next()
-    }
-    
-    private fun generateToken(): String {
-        val charPool = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-        return (1..32)
-            .map { Random.nextInt(0, charPool.length) }
-            .map(charPool::get)
-            .joinToString("")
-    }
-    
-    private suspend fun getRequestToken(exchange: Exchange): String? {
-        // Check header
-        val headerToken = exchange.request.headers[config.headerName]
-        if (headerToken != null) return headerToken
-        
-        // Check form data if content type is form-urlencoded
-        val contentType = exchange.request.headers["Content-Type"]
-        if (contentType != null && contentType.startsWith("application/x-www-form-urlencoded")) {
-            val bodyText = exchange.request.bodyText()
-            val params = parseQueryString(bodyText)
-            return params[config.cookieName]?.firstOrNull()
-        }
-        
-        return null
     }
 
-    private fun parseQueryString(query: String): Map<String, List<String>> {
-        if (query.isEmpty()) return emptyMap()
-        return query.split("&")
-            .mapNotNull { part ->
-                val index = part.indexOf('=')
-                if (index > 0) {
-                    val name = part.substring(0, index)
-                    val value = part.substring(index + 1)
-                    // Simple URL decoding might be needed here, but for the token (alphanumeric) it's fine.
-                    // Ideally we should use a proper URL decoder.
-                    name to value
-                } else {
-                    null
-                }
-            }
-            .groupBy({ it.first }, { it.second })
-    }
-    
     companion object {
+        /** Retained for compatibility with the original pipeline API. */
         val CsrfTokenKey = AttributeKey("CsrfToken", String::class)
-        private val unsafeMethods = setOf(HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE, HttpMethod.PATCH)
     }
 }
 
+/**
+ * Compatibility configuration for [CsrfProtection].
+ *
+ * [cookieName] and [secureCookie] describe the removed double-submit cookie
+ * implementation and are ignored. Tokens now live only in the server-side
+ * session and must be returned in [headerName].
+ */
+@Deprecated("Use codes.yousef.aether.core.security.CsrfConfig")
 data class CsrfConfig(
-    val cookieName: String = "csrftoken",
-    val headerName: String = "X-CSRF-Token",
-    val secureCookie: Boolean = false
+    var cookieName: String = "csrftoken",
+    var headerName: String = "X-CSRF-Token",
+    var secureCookie: Boolean = false,
+    var allowedOrigins: Set<String> = emptySet(),
+    var sessionCookieNames: Set<String> = setOf(
+        "AETHER_SESSION",
+        "__Host-aether_session"
+    )
 )
 
 /**
- * Installs CSRF protection middleware.
+ * Installs the compatibility CSRF adapter.
+ *
+ * Prefer `security.installCsrf`, which accepts the canonical immutable config.
  */
+@Deprecated(
+    message = "Use codes.yousef.aether.core.security.installCsrf",
+    replaceWith = ReplaceWith("installCsrf()", "codes.yousef.aether.core.security.installCsrf")
+)
 fun Pipeline.installCsrfProtection(configure: CsrfConfig.() -> Unit = {}) {
     val config = CsrfConfig().apply(configure)
     use(CsrfProtection(config)::invoke)

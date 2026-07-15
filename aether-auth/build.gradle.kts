@@ -33,8 +33,14 @@ kotlin {
     sourceSets {
         commonMain {
             dependencies {
-                implementation(project(":aether-core"))
-                implementation(project(":aether-db"))
+                api(project(":aether-core")) {
+                    // Aether Identity uses only core HTTP/pipeline contracts. Keep the generic
+                    // core JWT provider available to unrelated applications without placing its
+                    // implementation on the passkey authority runtime classpath.
+                    exclude(group = "com.auth0", module = "java-jwt")
+                }
+                implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.kotlinx.serialization.core)
                 implementation(libs.kotlinx.serialization.json)
             }
         }
@@ -42,20 +48,18 @@ kotlin {
         commonTest {
             dependencies {
                 implementation(libs.kotlin.test)
+                implementation(libs.kotlinx.coroutines.test)
             }
         }
 
-        jvmMain {
-            dependencies {
-                implementation(libs.bcrypt)
-                implementation(libs.java.jwt)
-            }
-        }
-
-        jvmTest {
-            dependencies {
-
-            }
-        }
     }
+}
+
+// Kotlin project dependencies consume the JVM archive, so keep its task edge explicit. Without
+// this edge Gradle can publish a manifest-only archive while the KMP compilation is still running,
+// leaving downstream identity modules with an empty compile classpath.
+tasks.named<Jar>("jvmJar") {
+    val mainCompilation = kotlin.targets.getByName("jvm").compilations.getByName("main")
+    dependsOn(mainCompilation.compileTaskProvider)
+    from(mainCompilation.output.allOutputs)
 }

@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.6.0.0] - Unreleased
+
+This version has not been published. Publication remains blocked until the combined wasmWasi
+component-host gate, independent adversarial review, and Firefox/Safari hardware-passkey smoke
+gates all pass with non-secret evidence.
+
+### Added
+
+- Passkey-first, storage-neutral Kotlin Multiplatform identity authority for JVM, wasmJs, and
+  wasmWasi, with WebAuthn registration, discoverable authentication, step-up, opaque rotating
+  sessions, recovery codes, and administrative recovery.
+- Organization-scoped memberships and capabilities, invitations, RFC 8628 CLI device
+  authorization, rotating device tokens, and scoped service identities.
+- Optional PostgreSQL, Firestore, Summon, OIDC, SAML, and SCIM modules plus a non-published
+  cross-target identity testkit.
+- OpenSSL 3-backed WASI crypto host, strict startup self-tests, storage conformance suites,
+  browser E2E suites, and Seen FEL-634 consumer contract fixtures.
+- JVM CLI device authorization with `auth login`, `whoami`, organization selection, and logout;
+  persisted credentials use only macOS Keychain, Windows DPAPI, or Linux Secret Service.
+- Invite-only production registration and a single-use deployment bootstrap secret for creating
+  the first owner and organization.
+
+### Changed
+
+- `aether-auth` is completely replaced by the `/identity/v1` passkey authority. This is a
+  compile-breaking release; see `docs/migrations/0.6-passkey-identity.md`.
+- Kotlin and the dependency stack are upgraded for Summon `0.7.0.2`; the CLI and example are now
+  compiled from real Kotlin source sets and CI rejects expected tasks that report `NO-SOURCE`.
+
+### Known release gates
+
+- The Kotlin `2.3.x` wasmWasi artifact is still a Preview1 core module. The WIT contract, guest
+  capability checks, and OpenSSL 3 native host primitives exist, but the combined component-model
+  binding and real `wasi:http` host/guest CI runner do not. The wasmWasi authority artifact must not
+  be published as production-ready until that gate passes.
+- The independent adversarial review and manual Firefox/Safari hardware-passkey smoke checklist
+  have not yet been recorded as passing release evidence.
+
+### Removed
+
+- Password authentication, identity JWT fallback, legacy identity sessions, ActiveRecord identity
+  persistence, and global identity groups/permissions. Generic `aether-core` authentication
+  facilities remain available to unrelated applications.
+
 ## [0.5.1.0] - 2026-01-16
 
 ### Added

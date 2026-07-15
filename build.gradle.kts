@@ -23,7 +23,8 @@ val versionProps = Properties().apply {
 }
 
 group = "codes.yousef.aether"
-version = versionProps.getProperty("VERSION") ?: "0.1.0-SNAPSHOT"
+version = versionProps.getProperty("VERSION")
+    ?: error("version.properties must define VERSION")
 
 allprojects {
     group = rootProject.group
@@ -32,6 +33,11 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+    }
+
+    dependencyLocking {
+        lockAllConfigurations()
+        lockMode.set(org.gradle.api.artifacts.dsl.LockMode.STRICT)
     }
 }
 
@@ -77,6 +83,114 @@ subprojects {
             freeCompilerArgs.add("-Xexpect-actual-classes")
         }
     }
+
+    tasks.register("resolveAndLockAll") {
+        group = "verification"
+        description = "Resolves every lockable configuration; run with --write-locks after dependency changes."
+        doLast {
+            configurations.filter { it.isCanBeResolved }.forEach { configuration ->
+                configuration.resolve()
+            }
+        }
+    }
+}
+
+tasks.register("resolveAndLockAll") {
+    group = "verification"
+    description = "Resolves and locks dependencies in every Aether module."
+    dependsOn(subprojects.map { ":${it.name}:resolveAndLockAll" })
+}
+
+fun expectedKmpCompileTasks(module: String, targets: List<String>): List<String> =
+    targets.flatMap { target ->
+        listOf(
+            ":$module:compileKotlin$target",
+            ":$module:compileTestKotlin$target"
+        )
+    }
+
+val identityAuthorityTargets = listOf("Jvm", "WasmJs", "WasmWasi")
+val expectedSourceTaskPaths =
+    expectedKmpCompileTasks("aether-auth", identityAuthorityTargets) +
+        expectedKmpCompileTasks("aether-auth-postgresql", identityAuthorityTargets) +
+        expectedKmpCompileTasks("aether-auth-firestore", identityAuthorityTargets) +
+        expectedKmpCompileTasks("aether-auth-oidc", identityAuthorityTargets) +
+        expectedKmpCompileTasks("aether-auth-saml", identityAuthorityTargets) +
+        expectedKmpCompileTasks("aether-auth-scim", identityAuthorityTargets) +
+        expectedKmpCompileTasks("aether-auth-testkit", identityAuthorityTargets) +
+        expectedKmpCompileTasks("aether-auth-summon", listOf("Jvm", "WasmJs")) +
+        listOf(
+            ":aether-cli:compileKotlin",
+            ":aether-cli:compileTestKotlin"
+        ) +
+        expectedKmpCompileTasks("example-app", listOf("Jvm", "WasmJs"))
+
+val verifyIdentityRuntimeClasspaths by tasks.registering {
+    group = "verification"
+    description = "Fails if legacy JWT or optional adapter/UI dependencies leak into identity runtimes."
+
+    doLast {
+        data class Guard(
+            val projectPath: String,
+            val configurationName: String,
+            val forbidden: Set<Pair<String, String>>
+        )
+
+        val legacyJwt = "com.auth0" to "java-jwt"
+        val coreForbidden = setOf(
+            legacyJwt,
+            "codes.yousef.aether" to "aether-auth-postgresql",
+            "codes.yousef.aether" to "aether-auth-firestore",
+            "codes.yousef.aether" to "aether-auth-summon",
+            "codes.yousef.aether" to "aether-auth-oidc",
+            "codes.yousef.aether" to "aether-auth-saml",
+            "codes.yousef.aether" to "aether-auth-scim",
+            "codes.yousef.summon" to "summon"
+        )
+        fun runtimeGuards(projectPath: String, forbidden: Set<Pair<String, String>>): List<Guard> =
+            project(projectPath).configurations
+                .filter { it.isCanBeResolved && it.name.endsWith("RuntimeClasspath", ignoreCase = true) }
+                .map { Guard(projectPath, it.name, forbidden) }
+
+        val guards = runtimeGuards(":aether-auth", coreForbidden) +
+            runtimeGuards(":aether-cli", setOf(legacyJwt)) +
+            runtimeGuards(":example-app", setOf(legacyJwt))
+
+        guards.forEach { guard ->
+            val guardedProject = project(guard.projectPath)
+            val configuration = guardedProject.configurations.getByName(guard.configurationName)
+            val leaked = configuration.incoming.resolutionResult.allComponents.mapNotNull { component ->
+                val module = component.moduleVersion ?: return@mapNotNull null
+                (module.group to module.name).takeIf { it in guard.forbidden }
+            }.toSet()
+            if (leaked.isNotEmpty()) {
+                throw GradleException(
+                    "Forbidden identity runtime dependencies in ${guard.projectPath}:${guard.configurationName}: " +
+                        leaked.joinToString { (group, name) -> "$group:$name" }
+                )
+            }
+        }
+    }
+}
+
+tasks.register("verifyExpectedSourceTasks") {
+    group = "verification"
+    description = "Fails when an expected identity, CLI, or example compilation is silently skipped as NO-SOURCE."
+    dependsOn(expectedSourceTaskPaths)
+    dependsOn(verifyIdentityRuntimeClasspaths)
+
+    doLast {
+        val tasksByPath = gradle.taskGraph.allTasks.associateBy { it.path }
+        val missing = expectedSourceTaskPaths.filterNot(tasksByPath::containsKey)
+        if (missing.isNotEmpty()) {
+            throw GradleException("Expected source tasks were not scheduled: ${missing.joinToString()}")
+        }
+
+        val noSource = expectedSourceTaskPaths.filter { tasksByPath.getValue(it).state.noSource }
+        if (noSource.isNotEmpty()) {
+            throw GradleException("Expected source tasks reported NO-SOURCE: ${noSource.joinToString()}")
+        }
+    }
 }
 
 // Custom task to bundle and publish artifacts to Maven Central Portal
@@ -114,7 +228,14 @@ tasks.register("publishToCentralPortalManually") {
             "aether-ui",
             "aether-net",
             "aether-ksp",
+            "aether-plugin",
             "aether-auth",
+            "aether-auth-postgresql",
+            "aether-auth-firestore",
+            "aether-auth-summon",
+            "aether-auth-oidc",
+            "aether-auth-saml",
+            "aether-auth-scim",
             "aether-forms",
             "aether-admin",
             "aether-grpc"
@@ -125,8 +246,13 @@ tasks.register("publishToCentralPortalManually") {
         val allFilesToProcess = mutableListOf<File>()
         var foundModuleCount = 0
         var missingModuleCount = 0
+        val missingRequiredCoordinates = mutableListOf<String>()
 
-        val mavenLocalRoot = file("${System.getProperty("user.home")}/.m2/repository/codes/yousef/aether")
+        val mavenLocalRepository = System.getProperty("maven.repo.local")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { file(it) }
+            ?: file("${System.getProperty("user.home")}/.m2/repository")
+        val mavenLocalRoot = file("$mavenLocalRepository/codes/yousef/aether")
         println("📂 Looking for artifacts in: $mavenLocalRoot")
 
         if (!mavenLocalRoot.exists()) {
@@ -163,18 +289,61 @@ tasks.register("publishToCentralPortalManually") {
                         }
                     } else {
                         println("⚠️ Directory exists but no artifact files found for $artifactId")
+                        if (variant.isEmpty()) {
+                            missingRequiredCoordinates.add("codes.yousef.aether:$artifactId:${project.version}")
+                        }
                     }
                 } else {
                     missingModuleCount++
                     // Only warn for base modules without variant suffix, as variants may not exist for all modules
                     if (variant.isEmpty()) {
                         println("⚠️ No artifacts found for $artifactId at $localMavenDir")
+                        missingRequiredCoordinates.add("codes.yousef.aether:$artifactId:${project.version}")
                     }
                 }
             }
         }
 
+        // java-gradle-plugin publishes a marker coordinate outside the project group. Include it
+        // alongside the plugin implementation so the plugins DSL can resolve the released ID.
+        val pluginMarkerArtifactId = "codes.yousef.aether.plugin.gradle.plugin"
+        val pluginMarkerGroupPath = "codes/yousef/aether/plugin"
+        val pluginMarkerCoordinate = "codes.yousef.aether.plugin:$pluginMarkerArtifactId:${project.version}"
+        val pluginMarkerSource = file(
+            "$mavenLocalRepository/$pluginMarkerGroupPath/$pluginMarkerArtifactId/${project.version}"
+        )
+        val pluginMarkerFiles = pluginMarkerSource.listFiles()
+            ?.filter { file ->
+                (file.name.endsWith(".jar") || file.name.endsWith(".pom") ||
+                    file.name.endsWith(".klib") || file.name.endsWith(".module")) &&
+                    !file.name.endsWith(".md5") && !file.name.endsWith(".sha1") &&
+                    !file.name.endsWith(".asc")
+            }
+            .orEmpty()
+        if (pluginMarkerFiles.isEmpty()) {
+            missingRequiredCoordinates.add(pluginMarkerCoordinate)
+        } else {
+            foundModuleCount++
+            val targetDir = file(
+                "$bundleDir/$pluginMarkerGroupPath/$pluginMarkerArtifactId/${project.version}"
+            )
+            targetDir.mkdirs()
+            println("📦 Processing Gradle plugin marker (${pluginMarkerFiles.size} files)...")
+            pluginMarkerFiles.forEach { source ->
+                val target = File(targetDir, source.name)
+                source.copyTo(target, overwrite = true)
+                allFilesToProcess.add(target)
+            }
+        }
+
         println("📊 Found $foundModuleCount module variants, $missingModuleCount not found")
+
+        if (missingRequiredCoordinates.isNotEmpty()) {
+            throw GradleException(
+                "Required Maven publications are missing or empty: " +
+                    missingRequiredCoordinates.distinct().sorted().joinToString()
+            )
+        }
 
         if (allFilesToProcess.isEmpty()) {
             throw GradleException("No Maven artifacts found. Make sure publishToMavenLocal ran successfully.")

@@ -1,0 +1,6 @@
+{
+  "error": "authorization_pending",
+  "message": "Authorization is still pending.",
+  "requestId": "req_seen_fixture_device_pending",
+  "retryable": true
+}

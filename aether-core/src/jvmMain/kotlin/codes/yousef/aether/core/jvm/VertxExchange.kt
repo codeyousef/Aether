@@ -34,6 +34,12 @@ private class VertxRequest(
         Cookies.parse(cookieHeader)
     }
 
+    override val connection: RequestConnection = RequestConnection(
+        scheme = vertxRequest.scheme(),
+        host = vertxRequest.authority()?.toString(),
+        peerAddress = vertxRequest.remoteAddress()?.hostAddress()
+    )
+
     override suspend fun bodyBytes(): ByteArray = bodyDeferred.await()
 
     private fun parseMethod(name: String): HttpMethod {
