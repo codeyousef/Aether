@@ -1,8 +1,8 @@
 # Seen FEL-634 identity contract fixtures
 
-These fixtures define the browser-safe and authorization-safe portion of the unreleased Aether
-Identity `0.6.0.0` target contract that Seen may consume during integration. Publication remains
-blocked by Aether's release gates. They do not expose persistence models. In particular, they contain no
+These fixtures define the browser-safe and authorization-safe portion of the released Aether
+Identity `0.6.0.0` contract that Seen may consume during integration. They do not expose
+persistence models. In particular, they contain no
 session selector/secret, credential public key, token digest, recovery code, raw IP address, or
 provider assertion.
 

@@ -1,8 +1,9 @@
 # Authentication and identity
 
-The unreleased Aether `0.6.0.0` separates generic application authentication in `aether-core` from
-the passkey-first identity platform in `aether-auth`. These are target-release contracts;
-publication remains blocked by the [identity release gates](../identity/deployment.md#release-verification).
+Released on 2026-07-16, Aether `0.6.0.0` separates generic application authentication in
+`aether-core` from the passkey-first identity platform in `aether-auth`. Production wasmWasi
+identity-authority hosting is not supported in this release; see
+[Identity deployment](../identity/deployment.md#wasmwasi).
 
 - Use `aether-auth` for people, organizations, passkeys, recovery, CLI device authorization,
   service identities and enterprise federation/provisioning.

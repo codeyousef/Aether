@@ -1,10 +1,6 @@
 # Changelog
 
-## [0.6.0.0] - Unreleased
-
-This version has not been published. Publication remains blocked until the combined wasmWasi
-component-host gate, independent adversarial review, and Firefox/Safari hardware-passkey smoke
-gates all pass with non-secret evidence.
+## [0.6.0.0] - 2026-07-16
 
 ### Added
 
@@ -29,14 +25,14 @@ gates all pass with non-secret evidence.
 - Kotlin and the dependency stack are upgraded for Summon `0.7.0.2`; the CLI and example are now
   compiled from real Kotlin source sets and CI rejects expected tasks that report `NO-SOURCE`.
 
-### Known release gates
+### Known limitations
 
 - The Kotlin `2.3.x` wasmWasi artifact is still a Preview1 core module. The WIT contract, guest
   capability checks, and OpenSSL 3 native host primitives exist, but the combined component-model
-  binding and real `wasi:http` host/guest CI runner do not. The wasmWasi authority artifact must not
-  be published as production-ready until that gate passes.
-- The independent adversarial review and manual Firefox/Safari hardware-passkey smoke checklist
-  have not yet been recorded as passing release evidence.
+  binding and real `wasi:http` host/guest integration are not complete. Production wasmWasi
+  authority hosting is not supported in this release.
+- Independent adversarial review and manual Firefox/Safari hardware-passkey smoke testing remain
+  recommended operational validation before a production identity deployment.
 
 ### Removed
 

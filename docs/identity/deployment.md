@@ -128,7 +128,7 @@ distribution.
 
 ### wasmWasi
 
-The supported production profile is a component host that provides:
+A future production profile requires a component host that provides:
 
 - a real WASI realtime clock and cryptographically secure random source;
 - outbound WASI HTTP suitable for the selected storage and federation endpoints; and
@@ -146,9 +146,10 @@ pure-Kotlin asymmetric fallback is unsupported in production.
 The current Kotlin 2.3.x build emits a Preview1 core module and does not yet ship the component
 binding that connects the guest runtime to this WIT world. The native OpenSSL library and the
 guest-side capability tests are independently verified, but that is not equivalent to executing
-the combined production host. Therefore wasmWasi authority deployment is not release-ready in
-`0.6.0.0` until a component-model binding and combined `wasi:http`/crypto integration test pass.
-JVM remains the deployable authority target; browser wasmJs remains public client/UI code only.
+the combined production host. Production wasmWasi identity-authority hosting is therefore not
+supported in `0.6.0.0`; a future supported release requires the component-model binding and a
+combined `wasi:http`/crypto integration test. JVM remains the deployable authority target; browser
+wasmJs remains public client/UI code only.
 
 Map WIT signing through an `aether_identity_signing_key_store`. Register only provider- or
 HSM-owned `EVP_PKEY` references under versioned opaque handles; never expose PKCS#8 bytes to the
@@ -338,16 +339,21 @@ intentional property.
 
 ## Release verification
 
-Automated release evidence must include JVM, wasmJs and real wasmWasi protocol/crypto tests, the
-PostgreSQL 16 and Firestore conformance/race suites, Summon browser tests, federation adversarial
-suites and the complete example build. An independent adversarial review must disposition all
-findings and record a non-secret evidence reference; assertions, tokens, secrets, credential IDs,
-recovery material, and user PII must not appear in that evidence. Before publishing, perform a
-manual hardware-passkey smoke test on both Firefox and Safari against the release candidate. In
-each browser, register and complete username-free sign-in, perform passkey step-up, enroll and use a
-second named passkey, revoke a distinct active session, prove that the revoked cookie no longer
-authenticates, and complete recovery re-enrollment. Verify that recovery revokes the prior sessions
-and replaces the remaining recovery-code generation. Record browser, OS, authenticator
-model/transport, RP/origin and result without recording credential IDs, assertions, cookies, or
-recovery material. A missing or failed adversarial review or hardware smoke test blocks the release.
-Manual publishing requires both evidence references explicitly.
+Pushes to `main` publish after the automated workflow verification succeeds. `workflow_dispatch`
+remains a fallback for rerunning a release from `main`; it is not required for normal publication.
+Automated verification includes JVM, wasmJs and wasmWasi guest protocol/crypto tests, the native
+OpenSSL host-library tests, PostgreSQL 16 and Firestore conformance/race suites, Summon browser
+tests, federation adversarial suites, and the complete example build. Production wasmWasi
+identity-authority hosting is not supported in `0.6.0.0` because the combined Kotlin guest, WIT
+crypto, and `wasi:http` component-host integration is not complete.
+
+Before a production deployment, perform an independent adversarial review and a manual
+hardware-passkey smoke test on both Firefox and Safari. The review should disposition all findings
+and record a non-secret evidence reference; assertions, tokens, secrets, credential IDs, recovery
+material, and user PII must not appear in that evidence. In each browser, register and complete
+username-free sign-in, perform passkey step-up, enroll and use a second named passkey, revoke a
+distinct active session, prove that the revoked cookie no longer authenticates, and complete
+recovery re-enrollment. Verify that recovery revokes the prior sessions and replaces the remaining
+recovery-code generation. Record browser, OS, authenticator model/transport, RP/origin, and result
+without recording credential IDs, assertions, cookies, or recovery material. Treat these checks as
+operational validation guidance rather than automated publication gates.

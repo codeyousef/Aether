@@ -1,11 +1,12 @@
 # Passkey-first identity
 
-The unreleased Aether Identity `0.6.0.0` is a storage-neutral Kotlin Multiplatform identity
-authority. Publishing is blocked until every release gate in the
-[deployment guide](deployment.md#release-verification) passes. It uses
+Released on 2026-07-16, Aether Identity `0.6.0.0` is a storage-neutral Kotlin Multiplatform identity
+authority. It uses
 discoverable WebAuthn passkeys for people, organization-bound device grants for the CLI, and
 scoped service credentials for automation. Password authentication, identity JWT fallback,
 legacy identity sessions, and global groups or permissions are not part of this subsystem.
+Production wasmWasi identity-authority hosting is not supported in this release; see the
+[deployment guide](deployment.md#wasmwasi) for the incomplete component-host integration.
 
 The generic authentication and session facilities in `aether-core` remain available to unrelated
 applications. Do not combine those facilities with an Aether Identity session or treat a core role
