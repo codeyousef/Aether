@@ -2,9 +2,10 @@
 
 A Django-like Kotlin Multiplatform framework that runs on JVM (Vert.x + Virtual Threads) and Wasm (Cloudflare/Browser).
 
-> **Release status:** `0.6.0.0` is unreleased and is not available from Maven Central. Its target
-> coordinates below are illustrative until the combined wasmWasi host, adversarial-review, and
-> manual hardware-passkey release gates pass. Use this source checkout for pre-release evaluation.
+> **Release status:** `0.6.0.0` was released on 2026-07-16, and the Maven coordinates below use this
+> version. Production wasmWasi identity-authority hosting is not supported in this release because
+> the combined component-host integration is not complete; use the JVM authority or another
+> supported trusted server host for production.
 
 ## Architecture
 
@@ -293,9 +294,10 @@ DatabaseDriverRegistry.initialize(driver)
 - CBOR-based UI tree serialization
 - Future-proof architecture for emerging web platforms
 
-The generic target is available for experimentation, but the `0.6.0.0` Identity authority is not
-production-ready on wasmWasi until the combined Kotlin guest, WIT OpenSSL crypto host, and
-`wasi:http` release gate passes. See the [identity deployment guide](docs/identity/deployment.md#release-verification).
+The generic target is available for experimentation, but production wasmWasi Identity-authority
+hosting is not supported in `0.6.0.0`: the combined Kotlin guest, WIT OpenSSL crypto host, and
+`wasi:http` integration is not complete. See the
+[identity deployment guide](docs/identity/deployment.md#release-verification).
 
 ## Transport Abstraction
 

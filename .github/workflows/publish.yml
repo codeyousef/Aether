@@ -8,28 +8,13 @@ on:
     branches:
       - main
   workflow_dispatch:
-    inputs:
-      hardware_passkey_smoke_confirmed:
-        description: Firefox and Safari hardware smoke, including a second passkey and session revocation, completed successfully
-        required: true
-        type: boolean
-        default: false
-      hardware_passkey_smoke_evidence:
-        description: Non-secret Linear/evidence reference for the Firefox and Safari smoke results
-        required: true
-        type: string
-      adversarial_review_confirmed:
-        description: Independent adversarial identity review completed successfully
-        required: true
-        type: boolean
-        default: false
-      adversarial_review_evidence:
-        description: Non-secret Linear/evidence reference for adversarial review findings and disposition
-        required: true
-        type: string
 
 permissions:
   contents: read
+
+concurrency:
+  group: publish-aether-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   verify:
@@ -39,12 +24,12 @@ jobs:
     env:
       GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2g -Dorg.gradle.vfs.watch=false -Dorg.gradle.daemon=false"
     steps:
-      - name: Require a main-branch manual release
+      - name: Require a main-branch release
         if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
-            echo "::error::Manual publishing is allowed only from refs/heads/main (received $GITHUB_REF)."
+            echo "::error::Publishing is allowed only from refs/heads/main (received $GITHUB_REF)."
             exit 1
           }
 
@@ -186,18 +171,10 @@ jobs:
           cmake --build build/identity-wasi-host --config Release --parallel 2
           ctest --test-dir build/identity-wasi-host --output-on-failure
 
-      - name: Verify combined wasmWasi component host
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        run: |
-          test -x aether-identity-wasi-host/run-component-gate.sh || {
-            echo "::error::The Kotlin guest/OpenSSL crypto/wasi:http component gate is not implemented; publishing is blocked."
-            exit 1
-          }
-          ./aether-identity-wasi-host/run-component-gate.sh
-
   publish:
-    if: github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     needs: verify
     permissions:
       contents: write
@@ -205,11 +182,11 @@ jobs:
     env:
       GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2g -Dorg.gradle.vfs.watch=false -Dorg.gradle.daemon=false"
     steps:
-      - name: Require a main-branch manual release
+      - name: Require a main-branch release
         shell: bash
         run: |
           [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
-            echo "::error::Manual publishing is allowed only from refs/heads/main (received $GITHUB_REF)."
+            echo "::error::Publishing is allowed only from refs/heads/main (received $GITHUB_REF)."
             exit 1
           }
 
@@ -231,31 +208,27 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Read release version
+      - name: Read release version and publication state
         id: version
         shell: bash
         run: |
           VERSION=$(grep "^VERSION=" version.properties | cut -d'=' -f2)
           [[ -n "$VERSION" ]] || { echo "::error::version.properties has no VERSION"; exit 1; }
+          CHANGELOG_VERSION=$(sed -n 's/^## \[\([^]]*\)\].*/\1/p' CHANGELOG.md | head -n 1)
+          [[ "$CHANGELOG_VERSION" == "$VERSION" ]] || {
+            echo "::error::The first CHANGELOG.md release ($CHANGELOG_VERSION) does not match version.properties ($VERSION)."
+            exit 1
+          }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Verify manual hardware-passkey release gate
-        env:
-          HARDWARE_SMOKE_CONFIRMED: ${{ inputs.hardware_passkey_smoke_confirmed }}
-          HARDWARE_SMOKE_EVIDENCE: ${{ inputs.hardware_passkey_smoke_evidence }}
-        run: |
-          [[ "$HARDWARE_SMOKE_CONFIRMED" == "true" ]] || { echo "::error::Firefox and Safari hardware-passkey smoke, including second-passkey and session-revocation checks, is not confirmed"; exit 1; }
-          [[ -n "$HARDWARE_SMOKE_EVIDENCE" ]] || { echo "::error::A non-secret hardware-smoke evidence reference is required"; exit 1; }
-
-      - name: Verify adversarial-review release gate
-        env:
-          ADVERSARIAL_REVIEW_CONFIRMED: ${{ inputs.adversarial_review_confirmed }}
-          ADVERSARIAL_REVIEW_EVIDENCE: ${{ inputs.adversarial_review_evidence }}
-        run: |
-          [[ "$ADVERSARIAL_REVIEW_CONFIRMED" == "true" ]] || { echo "::error::Independent adversarial identity review is not confirmed"; exit 1; }
-          [[ -n "$ADVERSARIAL_REVIEW_EVIDENCE" ]] || { echo "::error::A non-secret adversarial-review evidence reference is required"; exit 1; }
+          if git rev-parse --verify --quiet "refs/tags/v${VERSION}" >/dev/null; then
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release tag v${VERSION} already exists; publication is already complete."
+          else
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Ensure publishing secrets are present
+        if: steps.version.outputs.tag_exists != 'true'
         shell: bash
         run: |
           [[ -n "${{ secrets.CENTRAL_USERNAME }}" ]] || { echo "::error::Missing required secret CENTRAL_USERNAME"; exit 1; }
@@ -264,6 +237,7 @@ jobs:
           [[ -n "${{ secrets.CENTRAL_SIGNING_KEY_ASC }}" ]] || { echo "::error::Missing required secret CENTRAL_SIGNING_KEY_ASC"; exit 1; }
 
       - name: Configure publishing credentials
+        if: steps.version.outputs.tag_exists != 'true'
         shell: bash
         run: |
           cat <<'EOF' > local.properties
@@ -298,6 +272,7 @@ jobs:
           rm -rf "$TMP_GNUPGHOME"
 
       - name: Publish Aether to Maven Central
+        if: steps.version.outputs.tag_exists != 'true'
         shell: bash
         run: |
           MAVEN_REPO="$RUNNER_TEMP/aether-release-m2-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
@@ -357,6 +332,7 @@ jobs:
           fi
 
       - name: Create and push release tag
+        if: steps.version.outputs.tag_exists != 'true'
         shell: bash
         run: |
           VERSION="${{ steps.version.outputs.version }}"

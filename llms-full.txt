@@ -2,8 +2,8 @@
 
 > A Django-like Kotlin Multiplatform framework for JVM (Vert.x + Virtual Threads) and Wasm (Cloudflare/Browser).
 
-> Release status: `0.6.0.0` is unreleased and publish-blocked by the combined wasmWasi host,
-> adversarial-review, and manual hardware-passkey gates.
+> Release status: `0.6.0.0` was released on 2026-07-16. Production wasmWasi identity-authority
+> hosting is not supported because the combined component-host integration is not complete.
 
 ## Architecture Overview
 

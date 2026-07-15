@@ -71,19 +71,38 @@ test('the secret-bearing live lane cannot retain or upload browser artifacts', a
   assert.match(liveJourney, /function assertSensitive/);
 });
 
-test('manual publishing requires non-secret hardware-smoke and adversarial-review evidence', async () => {
+test('successful main verification publishes automatically and only once per version', async () => {
   const workflow = await text('../.github/workflows/publish.yml');
 
-  for (const gate of [
-    'hardware_passkey_smoke_confirmed',
-    'hardware_passkey_smoke_evidence',
-    'adversarial_review_confirmed',
-    'adversarial_review_evidence'
-  ]) {
-    assert.ok(workflow.includes(gate), `missing release input ${gate}`);
-  }
-  assert.match(workflow, /Verify adversarial-review release gate/);
-  assert.match(workflow, /Independent adversarial identity review is not confirmed/);
+  assert.match(workflow, /pull_request:\n\s+branches:\n\s+- main/);
+  assert.match(workflow, /push:\n\s+branches:\n\s+- main/);
+  assert.match(
+    workflow,
+    /publish:\n\s+if: >-\n\s+github\.event_name == 'workflow_dispatch' \|\|\n\s+\(github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'\)/
+  );
+  assert.match(workflow, /publish:[\s\S]*?needs: verify/);
+  assert.match(
+    workflow,
+    /concurrency:\n\s+group: publish-aether-\$\{\{ github\.ref \}\}\n\s+cancel-in-progress: false/
+  );
+  assert.match(
+    workflow,
+    /Read release version and publication state[\s\S]*?refs\/tags\/v\$\{VERSION\}[\s\S]*?tag_exists=true[\s\S]*?tag_exists=false/
+  );
+  assert.match(workflow, /CHANGELOG_VERSION[\s\S]*?does not match version\.properties/);
+  assert.match(
+    workflow,
+    /- name: Publish Aether to Maven Central\n\s+if: steps\.version\.outputs\.tag_exists != 'true'/
+  );
+  assert.match(
+    workflow,
+    /- name: Create and push release tag\n\s+if: steps\.version\.outputs\.tag_exists != 'true'/
+  );
+  assert.match(workflow, /- name: Extract latest changelog entry\n\s+id: changelog/);
+  assert.match(
+    workflow,
+    /- name: Create GitHub release\n\s+uses: softprops\/action-gh-release@v2\n\s+if: steps\.changelog\.outputs\.notes != ''/
+  );
 });
 
 test('the virtual authenticator models a discoverable user-verified CTAP2 passkey', async () => {

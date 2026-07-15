@@ -18,7 +18,8 @@ Important: this repository currently supplies the hardened native library, WIT
 contract, and guest-side ABI/readiness tests, but not a runnable component that
 binds the Kotlin 2.3.x Preview1 guest to that WIT world. The C test below proves
 the OpenSSL primitives only. It is not the wasmWasi production release gate.
-Publishing a wasmWasi authority remains blocked until a component-model binding
+The `0.6.0.0` artifacts include the experimental wasmWasi target, but production
+wasmWasi identity-authority hosting is unsupported until a component-model binding
 and combined host/guest runner exercise the real library and `wasi:http` in CI.
 This matches the [Kotlin/Wasm WASI documentation](https://kotlinlang.org/docs/wasm-wasi.html),
 which identifies the Kotlin 2.3 toolchain target as WASI 0.1/Preview 1 and leaves

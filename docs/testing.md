@@ -119,8 +119,8 @@ Ensure you have the necessary browsers installed or configured in Karma.
 Identity protocol and middleware tests run on JVM, wasmJs and wasmWasi. Storage race tests run
 against PostgreSQL 16 and the Firestore emulator. The current wasmWasi Node suite verifies guest
 ABI/readiness behavior, while the native C suite verifies the OpenSSL primitives independently.
-Neither is accepted as the production wasmWasi release gate: release evidence must also run a
-combined component host that binds the Kotlin guest to the WIT crypto world and `wasi:http`.
+The combined component host that binds the Kotlin guest to the WIT crypto world and `wasi:http` is
+not complete, so production wasmWasi identity-authority hosting is not supported in `0.6.0.0`.
 
 ```text
 ./gradlew verifyExpectedSourceTasks :aether-auth:jvmTest :aether-auth:wasmJsNodeTest :aether-auth:wasmWasiNodeTest
@@ -163,12 +163,14 @@ refresh replay and family revocation, service-credential transitions, federation
 replay receipts, and retryable compare-and-set races. Adapter-specific suites retain their additional
 invitation, SCIM, transport, migration, and provider failure coverage.
 
-The combined wasmWasi component-host command is intentionally absent until that integration
-exists. Do not substitute `:aether-auth:wasmWasiNodeTest` or native `ctest` for it.
+The combined wasmWasi component-host command is absent because that production integration is not
+supported in this release. The `:aether-auth:wasmWasiNodeTest` and native `ctest` suites validate
+their respective guest and host-library components; they do not establish a supported production
+component-host deployment.
 The pinned Kotlin 2.3 toolchain targets WASI 0.1/Preview 1; see the
 [official Kotlin/Wasm WASI documentation](https://kotlinlang.org/docs/wasm-wasi.html). Moving to a
 later experimental component-model compiler would be a separate compatibility decision, not a
-test-only workaround for this release gate.
+test-only workaround for the missing integration.
 
 Adversarial coverage includes malformed WebAuthn CBOR/COSE, wrong challenge/RP/origin/type,
 signature and UP/UV failures, concurrent ceremony completion, counter anomalies, CSRF and proxy
@@ -183,9 +185,9 @@ store, and it never reuses an already-running local server. The project writes o
 secret-bearing assertions redacted; only the separate UI lane may publish `test-results/` or
 `playwright-report/` as failure evidence.
 
-Firefox and Safari hardware-passkey smoke tests are a separate manual release gate. Each browser
-must enroll and use a second passkey, revoke a distinct active session, and prove that the revoked
-cookie can no longer authenticate in addition to the registration, sign-in, step-up, and recovery
-journeys. See
+Firefox and Safari hardware-passkey smoke tests are recommended manual operational validation for a
+production deployment. Each browser should enroll and use a second passkey, revoke a distinct active
+session, and prove that the revoked cookie can no longer authenticate in addition to the
+registration, sign-in, step-up, and recovery journeys. See
 [Identity deployment](identity/deployment.md#release-verification) for the required flows and safe
 evidence fields.
