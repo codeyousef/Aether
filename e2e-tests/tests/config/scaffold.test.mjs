@@ -76,6 +76,8 @@ test('successful main verification publishes automatically and only once per ver
 
   assert.match(workflow, /pull_request:\n\s+branches:\n\s+- main/);
   assert.match(workflow, /push:\n\s+branches:\n\s+- main/);
+  assert.match(workflow, /workflow_dispatch:\n\npermissions:/);
+  assert.doesNotMatch(workflow, /hardware_passkey_smoke_|adversarial_review_/);
   assert.match(
     workflow,
     /publish:\n\s+if: >-\n\s+github\.event_name == 'workflow_dispatch' \|\|\n\s+\(github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'\)/
