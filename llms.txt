@@ -2,6 +2,9 @@
 
 > A Django-like Kotlin Multiplatform framework for JVM (Vert.x + Virtual Threads) and Wasm (Cloudflare/Browser).
 
+> Release status: `0.6.0.0` is unreleased and publish-blocked by the combined wasmWasi host,
+> adversarial-review, and manual hardware-passkey gates.
+
 ## Overview
 
 Aether is a "colorless" framework that abstracts platform differences via expect/actual declarations, enabling write-once-deploy-anywhere web applications.
@@ -14,7 +17,7 @@ Aether is a "colorless" framework that abstracts platform differences via expect
 - **Active Record ORM**: Django-inspired models with QueryAST (not string SQL)
 - **Middleware Pipeline**: Composable request/response processing
 - **SSR + Hydration**: Server-side rendering with CBOR serialization
-- **Authentication**: Basic, Bearer, JWT, API Key, Form providers
+- **Identity**: Passkey-first people, organizations, opaque sessions, device flow, service identities, OIDC, SAML, and SCIM
 - **WebSocket Support**: Full-duplex with pub/sub channels
 - **gRPC Support**: DSL, adapters, and code-first proto generation
 
@@ -25,7 +28,8 @@ Aether is a "colorless" framework that abstracts platform differences via expect
 | aether-core | Exchange, Pipeline, Dispatcher foundation |
 | aether-web | Radix tree router, path parameters |
 | aether-db | ORM, QueryAST, database drivers |
-| aether-auth | Authentication providers |
+| aether-auth | Storage-neutral passkey-first identity engine |
+| aether-auth-* | Optional PostgreSQL, Firestore, Summon, OIDC, SAML, and SCIM adapters |
 | aether-ui | Composable UI DSL, SSR |
 | aether-grpc | gRPC with DSL and proto generation |
 | aether-channels | WebSocket pub/sub groups |
@@ -66,5 +70,6 @@ AetherServer.start(port = 8080, pipeline = pipeline)
 ## Links
 
 - Full documentation: llms-full.txt
+- Identity deployment: docs/identity/deployment.md
 - Repository: https://github.com/yousef-codes/aether
 - Package: codes.yousef.aether

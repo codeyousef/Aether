@@ -1,5 +1,7 @@
 plugins {
-    `kotlin-dsl`
+    // This module publishes a binary Gradle plugin rather than precompiled
+    // script/convention plugins, so use the project Kotlin toolchain directly.
+    kotlin("jvm")
     `java-gradle-plugin`
 }
 

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "principal": {
+    "kind": "user",
+    "userId": "018f47d2-8d4d-7abc-8def-1234567890ab",
+    "displayName": "Example Publisher",
+    "assurance": "passkey",
+    "authenticatedAt": "2026-07-14T08:15:30Z"
+  },
+  "organization": {
+    "id": "018f47d2-8d4d-7abc-8def-1234567890ae",
+    "role": "publisher"
+  },
+  "capabilities": [
+    "organization.read",
+    "package.publish"
+  ]
+}

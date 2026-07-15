@@ -4,18 +4,24 @@ Aether takes security seriously and provides built-in mechanisms to protect your
 
 ## Authentication & Authorization
 
-See the [Authentication API](api-reference/authentication.md) documentation for details on:
-- AuthMiddleware
-- JWT / Session Auth
-- **Role-Based Access Control (RBAC)** providing Groups and Permissions.
+Use the [passkey-first identity platform](identity/README.md) for people, organizations, CLI device
+authorization, service identities and federation. It uses organization-scoped roles and
+capabilities; password authentication, identity JWT fallback and global groups/permissions are not
+supported. Generic `aether-core` authentication remains separate for unrelated application
+protocols.
 
 ## CSRF Protection
 
-Cross-Site Request Forgery (CSRF) protection is available via `CsrfMiddleware`.
+Generic `aether-core` applications can install `CsrfMiddleware`:
 
 ```kotlin
 pipeline.installCsrfProtection()
 ```
+
+Aether Identity instead validates an exact allowed `Origin` and a session-bound CSRF header token
+on state-changing browser requests. Query-string and form-body CSRF tokens are rejected. Follow the
+[Identity CSRF policy](identity/security.md#csrf-and-cross-origin-requests) when mounting
+`/identity/v1`.
 
 ## Security Headers
 

@@ -2,6 +2,10 @@
 
 A Django-like Kotlin Multiplatform framework that runs on JVM (Vert.x + Virtual Threads) and Wasm (Cloudflare/Browser).
 
+> **Release status:** `0.6.0.0` is unreleased and is not available from Maven Central. Its target
+> coordinates below are illustrative until the combined wasmWasi host, adversarial-review, and
+> manual hardware-passkey release gates pass. Use this source checkout for pre-release evaluation.
+
 ## Architecture
 
 Aether is designed to be a "colorless" framework that abstracts away the differences between JVM and Wasm platforms, enabling developers to write their application logic once and deploy it anywhere.
@@ -17,7 +21,7 @@ Aether is designed to be a "colorless" framework that abstracts away the differe
 - **Transport Abstraction**: Pluggable network layer allowing alternative transport implementations
 - **Session Management**: Secure, configurable session handling with multiple storage backends
 - **CSRF Protection**: Built-in cross-site request forgery protection middleware
-- **Authentication**: Pluggable authentication with Basic, Bearer, JWT, API Key, and Form providers
+- **Identity**: Passkey-first people, organizations, opaque sessions, CLI device flow, service identities, OIDC, SAML, and SCIM
 - **File Uploads**: Multipart form-data parsing with validation and streaming support
 - **WebSocket Support**: Full-duplex WebSocket communication with DSL-based configuration
 - **KSP Migrations**: Kotlin Symbol Processing for automatic database schema migration generation
@@ -31,9 +35,9 @@ kotlin {
     jvm()
     sourceSets {
         commonMain.dependencies {
-            implementation("codes.yousef.aether:aether-core:0.4.0")
-            implementation("codes.yousef.aether:aether-web:0.4.0")
-            implementation("codes.yousef.aether:aether-db:0.4.0")
+            implementation("codes.yousef.aether:aether-core:0.6.0.0")
+            implementation("codes.yousef.aether:aether-web:0.6.0.0")
+            implementation("codes.yousef.aether:aether-db:0.6.0.0")
         }
     }
 }
@@ -84,6 +88,8 @@ aether/
 ├── aether-ui/         # UI rendering (SSR + CBOR)
 ├── aether-net/        # Network transport abstraction
 ├── aether-ksp/        # KSP-based migration generation
+├── aether-auth/       # Storage-neutral passkey-first identity engine
+├── aether-auth-*/     # Optional storage, UI, OIDC, SAML, and SCIM adapters
 ├── aether-plugin/     # Gradle plugin
 ├── aether-cli/        # Command-line tools
 ├── example-app/       # Example application
@@ -95,28 +101,22 @@ aether/
 ### Prerequisites
 
 - JDK 21 or later
-- Kotlin 2.1.0 or later
-- PostgreSQL (for JVM deployment)
+- Kotlin 2.3.21 or later
 
 ### Running the Example App
 
-1. Start a PostgreSQL database:
+1. Build and run the KMP passkey identity example (JVM SSR plus wasmJs hydration):
+
 ```bash
-docker run -d \
-  --name aether-postgres \
-  -e POSTGRES_USER=aether \
-  -e POSTGRES_PASSWORD=aether \
-  -e POSTGRES_DB=aether_dev \
-  -p 5432:5432 \
-  postgres:16-alpine
+AETHER_IDENTITY_BOOTSTRAP_SECRET=a-development-secret-at-least-16-chars \
+  ./gradlew :example-app:run
 ```
 
-2. Build and run the example application:
-```bash
-./gradlew :example-app:run
-```
+2. Open `http://localhost:8080/identity`.
 
-3. Open your browser to `http://localhost:8080`
+The example keeps the authority/storage host seam explicit. Production deployment selects either
+the PostgreSQL 16 or Firestore identity adapter and follows the [identity deployment
+guide](docs/identity/deployment.md).
 
 ### Running Tests
 
@@ -293,6 +293,10 @@ DatabaseDriverRegistry.initialize(driver)
 - CBOR-based UI tree serialization
 - Future-proof architecture for emerging web platforms
 
+The generic target is available for experimentation, but the `0.6.0.0` Identity authority is not
+production-ready on wasmWasi until the combined Kotlin guest, WIT OpenSSL crypto host, and
+`wasi:http` release gate passes. See the [identity deployment guide](docs/identity/deployment.md#release-verification).
+
 ## Transport Abstraction
 
 The framework includes a pluggable network abstraction layer (`:aether-net`) that decouples application logic from the underlying transport mechanism. This enables:
@@ -306,7 +310,11 @@ The transport layer provides a clean interface that can be implemented for diffe
 
 ## Security Features
 
-### Session Management
+### Generic `aether-core` Session Management
+
+This state-bag session API is for unrelated applications. Aether Identity does not use it: identity
+sessions are opaque, rotated credentials in the `__Host-aether_session` cookie and are governed by
+the [identity session policy](docs/identity/security.md#session-and-token-theft).
 
 ```kotlin
 val pipeline = Pipeline().apply {
@@ -326,7 +334,11 @@ val user = session["user"]
 exchange.invalidateSession()
 ```
 
-### CSRF Protection
+### Generic `aether-core` CSRF Protection
+
+The form-token helper below belongs to generic application forms. Aether Identity requires its
+session-bound header token plus exact `Origin` validation and rejects form/query-string CSRF
+tokens; see [identity CSRF policy](docs/identity/security.md#csrf-and-cross-origin-requests).
 
 ```kotlin
 val pipeline = Pipeline().apply {
@@ -345,7 +357,12 @@ exchange.render {
 }
 ```
 
-### Authentication
+### Generic `aether-core` authentication (unrelated applications only)
+
+The following providers belong to the generic core protocol layer. They are not Aether Identity,
+must not be mounted on `/identity/v1`, and cannot establish an identity user, organization,
+membership, capability, or step-up assurance. Identity applications use the passkey authority
+documented in [Passkey-first identity](docs/identity/README.md).
 
 ```kotlin
 val authConfig = AuthenticationConfig().apply {
@@ -447,28 +464,12 @@ val migration = migration("002", "Add users table") {
 
 ## Production Deployment
 
-### Docker
-
-```bash
-# Build image
-docker build -t aether-app:latest -f docs/deployment/Dockerfile .
-
-# Run with Docker Compose
-cd docs/deployment
-docker compose up -d
-```
-
-### Kubernetes
-
-```bash
-# Apply all manifests
-kubectl apply -f docs/deployment/kubernetes/
-
-# Check status
-kubectl -n aether get pods
-```
-
-See [Deployment Guide](docs/deployment/DEPLOYMENT.md) for detailed instructions on AWS, GCP, Azure, and DigitalOcean deployments.
+Aether Identity deployments must follow the dedicated [identity deployment
+guide](docs/identity/deployment.md). It is the only deployment guide in this repository that applies
+to the passkey authority. The old sample Docker, Compose, Nginx, SQL, and Kubernetes files used
+nonexistent example distribution tasks and legacy JWT/session settings; they were removed and a
+non-runnable tombstone remains in their place. Package unrelated `aether-core` applications from
+their own application build and deployment model.
 
 ## Contributing
 

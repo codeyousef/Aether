@@ -1,6 +1,9 @@
 # Session Management API
 
-The `aether-core` module provides a flexible session management system.
+The `aether-core` module provides a flexible session management system for unrelated application
+state. It is not Aether Identity and must not be used to create an identity user, organization,
+membership, assurance level, or authenticated identity session. The passkey authority uses opaque
+rotating credentials and the fixed cookie policy in the [Identity security guide](../identity/security.md).
 
 ## Session Interface
 

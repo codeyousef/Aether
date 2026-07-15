@@ -19,7 +19,7 @@ You can create a new Aether project using the Gradle plugin or by cloning the te
 
 ```kotlin
 plugins {
-    id("codes.yousef.aether.plugin") version "0.1.0"
+    id("codes.yousef.aether.plugin") version "0.6.0.0"
 }
 
 aether {

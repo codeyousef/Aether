@@ -1,0 +1,30 @@
+{
+  "ceremonyId": "018f47d2-8d4d-7abc-8def-1234567890ac",
+  "publicKey": {
+    "challenge": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+    "rp": {
+      "id": "identity.example.test",
+      "name": "Example Identity"
+    },
+    "user": {
+      "id": "MDE4ZjQ3ZDItOGQ0ZC03YWJjLThkZWYtMTIzNDU2Nzg5MGFi",
+      "name": "publisher@example.test",
+      "displayName": "Example Publisher"
+    },
+    "pubKeyCredParams": [
+      {
+        "type": "public-key",
+        "alg": -7
+      }
+    ],
+    "timeout": 300000,
+    "excludeCredentials": [],
+    "authenticatorSelection": {
+      "residentKey": "required",
+      "requireResidentKey": true,
+      "userVerification": "required"
+    },
+    "attestation": "none",
+    "hints": []
+  }
+}

@@ -36,17 +36,17 @@ class ProxyMiddlewareTest {
         .connectTimeout(Duration.ofSeconds(10))
         .build()
     
-    private val proxyPort = 8085
-    private val upstreamPort = 8086
-    private val proxyUrl = "http://localhost:$proxyPort"
-    private val upstreamUrl = "http://localhost:$upstreamPort"
+    private var proxyPort: Int = 0
+    private var upstreamPort: Int = 0
+    private val proxyUrl: String get() = "http://localhost:$proxyPort"
+    private val upstreamUrl: String get() = "http://localhost:$upstreamPort"
 
     @BeforeAll
     fun setup() = runBlocking(AetherDispatcher.dispatcher) {
         vertx = Vertx.vertx()
         
         // Start mock upstream
-        upstreamServer = vertx.createHttpServer(HttpServerOptions().setPort(upstreamPort))
+        upstreamServer = vertx.createHttpServer(HttpServerOptions().setPort(0))
             .requestHandler { request ->
                 val response = request.response()
                 val path = request.path()
@@ -85,6 +85,7 @@ class ProxyMiddlewareTest {
             }
             .listen()
             .coAwait()
+        upstreamPort = upstreamServer.actualPort()
         
         // Start proxy with middleware
         val pipeline = Pipeline().apply {
@@ -126,11 +127,12 @@ class ProxyMiddlewareTest {
             }
         }
         
-        val config = VertxServerConfig(port = proxyPort)
+        val config = VertxServerConfig(port = 0)
         proxyServer = VertxServer(config, pipeline) { exchange ->
             exchange.notFound("Not Found - No matching proxy rule")
         }
         proxyServer.start()
+        proxyPort = proxyServer.actualPort
         
         delay(500)
     }

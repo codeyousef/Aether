@@ -4,7 +4,6 @@ import codes.yousef.aether.core.AttributeKey
 import codes.yousef.aether.core.Exchange
 import codes.yousef.aether.core.HttpMethod
 import codes.yousef.aether.core.pipeline.Middleware
-import codes.yousef.aether.core.session.Session
 import codes.yousef.aether.core.session.SessionAttributeKey
 import codes.yousef.aether.core.session.generateSecureSessionId
 
@@ -23,13 +22,17 @@ data class CsrfConfig(
     val headerName: String = "X-CSRF-Token",
 
     /**
-     * Name of the form field containing the CSRF token.
+     * Retained for source compatibility. Form tokens are not accepted because
+     * identity CSRF protection requires the token in [headerName].
      */
+    @Deprecated("CSRF tokens are accepted only from the configured header")
     val formFieldName: String = "_csrf",
 
     /**
-     * Name of the query parameter containing the CSRF token (optional).
+     * Retained for source compatibility. Query-string CSRF tokens are never
+     * accepted because URLs are commonly persisted in logs and browser history.
      */
+    @Deprecated("Query-string CSRF tokens are not supported")
     val queryParamName: String = "_csrf",
 
     /**
@@ -39,7 +42,8 @@ data class CsrfConfig(
         HttpMethod.POST,
         HttpMethod.PUT,
         HttpMethod.DELETE,
-        HttpMethod.PATCH
+        HttpMethod.PATCH,
+        HttpMethod.CONNECT
     ),
 
     /**
@@ -70,7 +74,22 @@ data class CsrfConfig(
     /**
      * Whether to generate a new token on each request (double-submit cookie pattern).
      */
-    val rotateTokenOnRequest: Boolean = false
+    val rotateTokenOnRequest: Boolean = false,
+
+    /**
+     * Exact serialized origins accepted for unsafe cookie-authenticated requests.
+     * An empty set intentionally rejects every such request.
+     */
+    val allowedOrigins: Set<String> = emptySet(),
+
+    /**
+     * Cookies that indicate the request is using cookie authentication.
+     * Bearer- or service-token-only requests are outside this middleware's scope.
+     */
+    val sessionCookieNames: Set<String> = setOf(
+        "AETHER_SESSION",
+        "__Host-aether_session"
+    )
 )
 
 /**
@@ -96,9 +115,10 @@ class CsrfMiddleware(
         val session = exchange.attributes.get(SessionAttributeKey)
             ?: throw IllegalStateException("CSRF middleware requires session middleware to be installed first")
 
-        // Get or generate CSRF token
+        // Get or generate a token bound to this server-side session.
         var token = session.getString(config.sessionKey)
-        if (token == null || config.rotateTokenOnRequest) {
+        val requiresValidation = shouldValidateCsrf(exchange)
+        if (token == null || (config.rotateTokenOnRequest && !requiresValidation)) {
             token = generateSecureSessionId(config.tokenLength)
             session.set(config.sessionKey, token)
         }
@@ -107,9 +127,13 @@ class CsrfMiddleware(
         exchange.attributes.put(CsrfTokenAttributeKey, token)
 
         // Check if this request needs CSRF validation
-        if (shouldValidateCsrf(exchange)) {
-            val requestToken = extractToken(exchange)
-            if (requestToken == null || !secureCompare(token, requestToken)) {
+        if (requiresValidation) {
+            val requestOrigin = extractExactOrigin(exchange)
+            val requestToken = extractHeaderToken(exchange)
+            if (requestOrigin !in config.allowedOrigins ||
+                requestToken == null ||
+                !secureCompare(token, requestToken)
+            ) {
                 exchange.respond(config.errorStatusCode, config.errorMessage)
             } else {
                 next()
@@ -122,6 +146,12 @@ class CsrfMiddleware(
     private fun shouldValidateCsrf(exchange: Exchange): Boolean {
         // Check if method requires validation
         if (exchange.request.method !in config.protectedMethods) {
+            return false
+        }
+
+        // CSRF applies to ambient cookie credentials. Requests authenticated
+        // only by an explicit Authorization header do not need a CSRF token.
+        if (config.sessionCookieNames.none(exchange.request.cookies::contains)) {
             return false
         }
 
@@ -142,55 +172,13 @@ class CsrfMiddleware(
         return true
     }
 
-    private suspend fun extractToken(exchange: Exchange): String? {
-        // Try header first
-        val headerToken = exchange.request.headers.get(config.headerName)
-        if (headerToken != null) {
-            return headerToken
-        }
+    private fun extractExactOrigin(exchange: Exchange): String? =
+        exchange.request.headers.getAll("Origin").singleOrNull()
+            ?.takeIf { it.isNotEmpty() && it != "null" }
 
-        // Try query parameter
-        val queryToken = exchange.request.queryParameter(config.queryParamName)
-        if (queryToken != null) {
-            return queryToken
-        }
-
-        // Try form field (requires body parsing)
-        val contentType = exchange.request.headers.get("Content-Type") ?: ""
-        if (contentType.contains("application/x-www-form-urlencoded")) {
-            val body = exchange.request.bodyText()
-            val params = parseFormUrlEncoded(body)
-            return params[config.formFieldName]
-        }
-
-        return null
-    }
-
-    private fun parseFormUrlEncoded(body: String): Map<String, String> {
-        if (body.isBlank()) return emptyMap()
-        
-        return body.split("&")
-            .mapNotNull { part ->
-                val index = part.indexOf('=')
-                if (index > 0) {
-                    val name = decodeUrlComponent(part.substring(0, index))
-                    val value = decodeUrlComponent(part.substring(index + 1))
-                    name to value
-                } else {
-                    null
-                }
-            }
-            .toMap()
-    }
-
-    private fun decodeUrlComponent(encoded: String): String {
-        return encoded
-            .replace('+', ' ')
-            .replace(Regex("%([0-9A-Fa-f]{2})")) { match ->
-                val hex = match.groupValues[1]
-                hex.toInt(16).toChar().toString()
-            }
-    }
+    private fun extractHeaderToken(exchange: Exchange): String? =
+        exchange.request.headers.getAll(config.headerName).singleOrNull()
+            ?.takeIf { it.isNotEmpty() }
 
     /**
      * Constant-time string comparison to prevent timing attacks.

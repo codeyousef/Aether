@@ -1,6 +1,6 @@
 package codes.yousef.aether.tasks
 
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.serializer

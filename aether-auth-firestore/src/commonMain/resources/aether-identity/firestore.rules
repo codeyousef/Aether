@@ -1,0 +1,14 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Identity persistence is server-authoritative. Browser clients use the
+    // Aether identity HTTP API and never receive Firestore service credentials.
+    match /aetherIdentity/{document=**} {
+      allow read, write: if false;
+    }
+    match /aetherIdentityEnvironment/{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

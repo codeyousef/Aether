@@ -2,11 +2,12 @@ package codes.yousef.aether.core.pipeline
 
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
+import kotlin.time.Clock
 
 data class QueryLogEntry(
     val sql: String,
     val durationMs: Long,
-    val timestamp: Long = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+    val timestamp: Long = Clock.System.now().toEpochMilliseconds()
 )
 
 class QueryLogContext(

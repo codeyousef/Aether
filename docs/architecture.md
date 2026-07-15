@@ -16,6 +16,9 @@ Aether is designed as a "Write Once, Deploy Anywhere" framework, leveraging Kotl
 *   **`aether-web`**: The router. Implements a Radix Tree for O(k) route matching.
 *   **`aether-db`**: The data layer. A Django-style ORM that builds a Query AST.
 * **`aether-grpc`**: The RPC layer. Code-first gRPC with gRPC-Web, Connect protocol, and native HTTP/2 support.
+* **`aether-auth`**: The storage-neutral passkey identity engine, HTTP contracts, middleware, and
+  runtime/store abstractions. Optional `aether-auth-*` modules provide PostgreSQL, Firestore,
+  Summon UI, OIDC, SAML, and SCIM integrations without leaking them onto the core runtime classpath.
 *   **`aether-ui`**: The view layer. A Composable DSL for Server-Side Rendering (SSR).
 *   **`aether-forms`**: The validation layer. Handles HTML form generation and data cleaning.
 *   **`aether-admin`**: The administration layer. Provides an auto-generated CRUD interface for models.
@@ -27,7 +30,7 @@ Aether is designed as a "Write Once, Deploy Anywhere" framework, leveraging Kotl
 1.  **Transport**: A request arrives via `TcpTransport` (JVM/Vert.x) or a Wasm fetch event.
 2.  **Dispatcher**: The platform-specific dispatcher launches a coroutine (Virtual Thread on JVM).
 3.  **Pipeline**: The request enters the middleware chain.
-    *   Global middleware (Logging, Recovery, Auth).
+    *   Global middleware (Logging, Recovery, and generic application auth or the separate Identity middleware).
 4.  **Router**: The `Router` middleware matches the path and extracts parameters.
 5.  **Handler**: The user-defined handler executes.
     *   Can query the DB (blocking style on JVM, async on Wasm).
@@ -88,9 +91,9 @@ interface UserService {
 
 The KSP processor generates equivalent `.proto` files for interoperability with other languages.
 
-### Unified Authentication
+### Generic protocol authentication and Aether Identity
 
-Authentication works identically for REST and gRPC through `UserContext`:
+Generic application authentication works identically for REST and gRPC through `UserContext`:
 
 ```kotlin
 // Works in both REST handlers and gRPC methods
@@ -99,3 +102,8 @@ val user = currentUser()  // Returns Principal from coroutine context
 
 The `AuthMiddleware` (REST) and gRPC interceptors both propagate the authenticated principal via Kotlin's
 `CoroutineContext`, enabling seamless auth across protocols.
+
+That principal is intentionally separate from Aether Identity. Passkey sessions resolve to an
+`IdentityContext` carrying assurance, an explicit organization, and closed capabilities; generic
+roles never become organization roles. Identity storage bypasses `aether-db`/`QueryAST` and uses
+atomic commands implemented by the PostgreSQL or Firestore adapter.

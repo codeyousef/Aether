@@ -3,7 +3,7 @@ package codes.yousef.aether.tasks
 import codes.yousef.aether.signals.Signal
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.*
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlin.random.Random
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -286,4 +286,3 @@ class TaskWorker(
         return "worker_${timestamp}_${random.toString(36)}"
     }
 }
-

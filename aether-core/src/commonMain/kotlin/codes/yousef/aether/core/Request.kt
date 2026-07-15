@@ -13,6 +13,15 @@ interface Request {
     val cookies: Cookies
 
     /**
+     * Scheme, host, and peer address observed directly by the server adapter.
+     *
+     * The default keeps custom and test [Request] implementations source
+     * compatible. It deliberately does not infer values from headers.
+     */
+    val connection: RequestConnection
+        get() = RequestConnection()
+
+    /**
      * Read the request body as bytes.
      * This is a suspend function as it may involve I/O.
      */

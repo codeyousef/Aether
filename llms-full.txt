@@ -2,6 +2,9 @@
 
 > A Django-like Kotlin Multiplatform framework for JVM (Vert.x + Virtual Threads) and Wasm (Cloudflare/Browser).
 
+> Release status: `0.6.0.0` is unreleased and publish-blocked by the combined wasmWasi host,
+> adversarial-review, and manual hardware-passkey gates.
+
 ## Architecture Overview
 
 Aether is a "colorless" framework that abstracts away platform differences via expect/actual declarations, enabling developers to write application logic once and deploy anywhere.
@@ -22,7 +25,8 @@ Aether is a "colorless" framework that abstracts away platform differences via e
 | aether-signals | Event system (preSave, postSave, etc.) |
 | aether-tasks | Background job queue with KSP code generation |
 | aether-channels | WebSocket pub/sub groups |
-| aether-auth | Authentication providers (Basic, Bearer, JWT, API Key, Form) |
+| aether-auth | Storage-neutral passkey-first identity engine |
+| aether-auth-* | Optional PostgreSQL, Firestore, Summon, OIDC, SAML, and SCIM adapters |
 | aether-ui | Composable UI DSL, SSR + CBOR serialization |
 | aether-net | Transport abstraction (TCP, future protocols) |
 | aether-ksp | Database migration generation |
@@ -75,9 +79,9 @@ kotlin {
     jvm()
     sourceSets {
         commonMain.dependencies {
-            implementation("codes.yousef.aether:aether-core:0.4.0")
-            implementation("codes.yousef.aether:aether-web:0.4.0")
-            implementation("codes.yousef.aether:aether-db:0.4.0")
+            implementation("codes.yousef.aether:aether-core:0.6.0.0")
+            implementation("codes.yousef.aether:aether-web:0.6.0.0")
+            implementation("codes.yousef.aether:aether-db:0.6.0.0")
         }
     }
 }
@@ -286,29 +290,14 @@ exchange.render {
 }
 ```
 
-### Authentication
+### Identity
 
-```kotlin
-val authConfig = AuthenticationConfig().apply {
-    providers["basic"] = BasicAuthProvider { credentials ->
-        if (validateUser(credentials.username, credentials.password)) {
-            AuthResult.Success(Principal.User(credentials.username, setOf("user")))
-        } else {
-            AuthResult.Failure("Invalid credentials")
-        }
-    }
-    providers["jwt"] = JwtAuthProvider(jwtConfig)
-}
-
-val pipeline = Pipeline().apply {
-    installAuthentication(authConfig) {
-        excludePaths.add("/public")
-    }
-    installAuthorization(AuthorizationConfig().apply {
-        rules["/admin"] = AuthorizationRule(requiredRoles = setOf("admin"))
-    })
-}
-```
+Use `aether-auth` for passkey-authenticated people, organizations, recovery, CLI device
+authorization, service identities, and optional enterprise federation/provisioning. Password
+authentication, primary JWT fallback, legacy identity sessions, and global identity
+groups/permissions are not supported. Generic `aether-core` authentication remains separate for
+unrelated application protocols and must not be treated as Aether Identity authority. See
+`docs/identity/README.md` and `docs/identity/deployment.md`.
 
 ## File Uploads
 
@@ -398,9 +387,9 @@ val migration = migration("002", "Add users table") {
 ```bash
 ./gradlew build                              # Full build all targets
 ./gradlew :aether-core:jvmTest               # Run single module's JVM tests
-./gradlew :example-app:run                   # Run example app (requires PostgreSQL)
-./gradlew :example-app:test                  # Integration tests with TestContainers
-./gradlew check -x wasmJsBrowserTest -x :example-app:test  # CI-style test run
+./gradlew :example-app:run                   # Run the passkey identity reference app
+./gradlew :example-app:allTests              # Run the example target tests
+./gradlew verifyExpectedSourceTasks check -x wasmJsBrowserTest  # CI compile/test gate
 ./gradlew publishToMavenLocal                # Publish to local Maven for testing
 ```
 
@@ -412,20 +401,10 @@ val migration = migration("002", "Add users table") {
 
 ## Production Deployment
 
-### Docker
-
-```bash
-docker build -t aether-app:latest -f docs/deployment/Dockerfile .
-cd docs/deployment
-docker compose up -d
-```
-
-### Kubernetes
-
-```bash
-kubectl apply -f docs/deployment/kubernetes/
-kubectl -n aether get pods
-```
+Aether Identity users must follow only `docs/identity/deployment.md`. The old repository-wide
+Docker, Compose, Nginx, SQL, and Kubernetes samples were removed because they invoked nonexistent
+distribution tasks and configured legacy JWT/session and raw-IP behavior. Unrelated `aether-core`
+applications own their application image and orchestration model.
 
 ## Package Naming
 

@@ -41,7 +41,10 @@ kotlin {
                 implementation(project(":aether-signals"))
                 implementation(libs.kotlin.stdlib)
                 implementation(libs.kotlinx.coroutines.core)
-                implementation(libs.kotlinx.serialization.core)
+                // QueryAST and its public model types are @Serializable. Their
+                // generated companions expose serialization runtime supertypes,
+                // so consumers need the core runtime on their compile classpath.
+                api(libs.kotlinx.serialization.core)
                 implementation(libs.kotlinx.serialization.json)
                 implementation(libs.kotlinx.datetime)
             }

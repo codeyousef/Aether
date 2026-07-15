@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "principal": {
+    "kind": "service",
+    "serviceIdentityId": "018f47d2-8d4d-7abc-8def-1234567890af",
+    "displayName": "Seen release automation",
+    "assurance": "service_credential",
+    "authenticatedAt": "2026-07-14T08:15:30Z"
+  },
+  "organization": {
+    "id": "018f47d2-8d4d-7abc-8def-1234567890ae"
+  },
+  "capabilities": [
+    "package.publish"
+  ]
+}

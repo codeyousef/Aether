@@ -1,21 +1,53 @@
 name: Publish Aether
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      hardware_passkey_smoke_confirmed:
+        description: Firefox and Safari hardware smoke, including a second passkey and session revocation, completed successfully
+        required: true
+        type: boolean
+        default: false
+      hardware_passkey_smoke_evidence:
+        description: Non-secret Linear/evidence reference for the Firefox and Safari smoke results
+        required: true
+        type: string
+      adversarial_review_confirmed:
+        description: Independent adversarial identity review completed successfully
+        required: true
+        type: boolean
+        default: false
+      adversarial_review_evidence:
+        description: Non-secret Linear/evidence reference for adversarial review findings and disposition
+        required: true
+        type: string
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
-  release:
+  verify:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     env:
       GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2g -Dorg.gradle.vfs.watch=false -Dorg.gradle.daemon=false"
     steps:
+      - name: Require a main-branch manual release
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
+            echo "::error::Manual publishing is allowed only from refs/heads/main (received $GITHUB_REF)."
+            exit 1
+          }
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -34,6 +66,13 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: e2e-tests/package-lock.json
+
       - name: Cache Gradle and build outputs
         uses: actions/cache@v4
         with:
@@ -44,7 +83,7 @@ jobs:
             ~/.gradle/yarn
             build
             */build
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle.kts', '**/gradle.properties', 'gradle/libs.versions.toml') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle.kts', '**/gradle.properties', 'gradle/libs.versions.toml', '**/gradle.lockfile', 'settings-gradle.lockfile', 'gradle/verification-metadata.xml') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
 
@@ -62,6 +101,22 @@ jobs:
             fi
           fi
 
+      - name: Install locked browser-test dependencies
+        run: npm ci --prefix e2e-tests
+
+      - name: Verify browser-test contracts and types
+        run: |
+          npm test --prefix e2e-tests
+          npm run typecheck --prefix e2e-tests
+
+      - name: Install Playwright browsers
+        run: npm exec --prefix e2e-tests -- playwright install --with-deps chromium firefox webkit
+
+      - name: Expose Playwright Chromium to Kotlin browser tests
+        shell: bash
+        run: |
+          node -e "const fs=require('fs'); const {chromium}=require('./e2e-tests/node_modules/@playwright/test'); fs.appendFileSync(process.env.GITHUB_ENV, 'CHROME_BIN='+chromium.executablePath()+'\n')"
+
       - name: Run tests
         shell: bash
         run: |
@@ -69,7 +124,7 @@ jobs:
           RETRY_DELAY=30
           for i in $(seq 1 $MAX_RETRIES); do
             echo "Attempt $i of $MAX_RETRIES"
-            if ./gradlew check -x wasmJsBrowserTest -x :example-app:test --no-daemon --stacktrace; then
+            if ./gradlew verifyExpectedSourceTasks check -x wasmJsBrowserTest --dependency-verification=strict --no-daemon --stacktrace; then
               exit 0
             fi
             if [ $i -lt $MAX_RETRIES ]; then
@@ -80,6 +135,125 @@ jobs:
           done
           echo "Build failed after $MAX_RETRIES attempts"
           exit 1
+
+      - name: Install the official Firestore emulator
+        uses: google-github-actions/setup-gcloud@v3.0.1
+        with:
+          version: '570.0.0'
+          install_components: cloud-firestore-emulator
+
+      - name: Run the real Firestore REST transaction gate
+        env:
+          AETHER_FIRESTORE_EMULATOR_PROJECT_ID: aether-identity-emulator-${{ github.run_id }}-${{ github.run_attempt }}
+        run: ./aether-auth-firestore/run-emulator-gate.sh
+
+      - name: Run Kotlin browser tests
+        run: |
+          ./gradlew :aether-auth-summon:wasmJsBrowserTest :example-app:wasmJsBrowserTest --dependency-verification=strict --no-daemon --stacktrace
+
+      - name: Run Chromium, Firefox, and WebKit identity UI tests
+        run: npm run test:browser --prefix e2e-tests
+
+      - name: Run disposable passkey and recovery journeys
+        env:
+          AETHER_E2E_LIVE_IDENTITY: '1'
+          AETHER_E2E_EPHEMERAL: '1'
+          AETHER_E2E_RECOVERY_FLOW: '1'
+          PLAYWRIGHT_NO_COPY_PROMPT: '1'
+          AETHER_E2E_BASE_URL: http://localhost:8080
+          AETHER_IDENTITY_BOOTSTRAP_SECRET: aether-ci-disposable-bootstrap-secret
+        run: npm run test:release --prefix e2e-tests
+
+      - name: Delete sensitive live-journey output
+        if: always()
+        run: rm -rf e2e-tests/.live-sensitive-results
+
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: identity-browser-failures
+          path: |
+            e2e-tests/test-results
+            e2e-tests/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Verify OpenSSL WASI host library primitives
+        shell: bash
+        run: |
+          cmake -S aether-identity-wasi-host -B build/identity-wasi-host -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/identity-wasi-host --config Release --parallel 2
+          ctest --test-dir build/identity-wasi-host --output-on-failure
+
+      - name: Verify combined wasmWasi component host
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          test -x aether-identity-wasi-host/run-component-gate.sh || {
+            echo "::error::The Kotlin guest/OpenSSL crypto/wasi:http component gate is not implemented; publishing is blocked."
+            exit 1
+          }
+          ./aether-identity-wasi-host/run-component-gate.sh
+
+  publish:
+    if: github.event_name == 'workflow_dispatch'
+    needs: verify
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    env:
+      GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2g -Dorg.gradle.vfs.watch=false -Dorg.gradle.daemon=false"
+    steps:
+      - name: Require a main-branch manual release
+        shell: bash
+        run: |
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
+            echo "::error::Manual publishing is allowed only from refs/heads/main (received $GITHUB_REF)."
+            exit 1
+          }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Grant execute permissions
+        run: |
+          chmod +x gradlew
+          if [ -f sign-artifact.sh ]; then
+            chmod +x sign-artifact.sh
+          fi
+
+      - name: Set up Temurin JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Read release version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(grep "^VERSION=" version.properties | cut -d'=' -f2)
+          [[ -n "$VERSION" ]] || { echo "::error::version.properties has no VERSION"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Verify manual hardware-passkey release gate
+        env:
+          HARDWARE_SMOKE_CONFIRMED: ${{ inputs.hardware_passkey_smoke_confirmed }}
+          HARDWARE_SMOKE_EVIDENCE: ${{ inputs.hardware_passkey_smoke_evidence }}
+        run: |
+          [[ "$HARDWARE_SMOKE_CONFIRMED" == "true" ]] || { echo "::error::Firefox and Safari hardware-passkey smoke, including second-passkey and session-revocation checks, is not confirmed"; exit 1; }
+          [[ -n "$HARDWARE_SMOKE_EVIDENCE" ]] || { echo "::error::A non-secret hardware-smoke evidence reference is required"; exit 1; }
+
+      - name: Verify adversarial-review release gate
+        env:
+          ADVERSARIAL_REVIEW_CONFIRMED: ${{ inputs.adversarial_review_confirmed }}
+          ADVERSARIAL_REVIEW_EVIDENCE: ${{ inputs.adversarial_review_evidence }}
+        run: |
+          [[ "$ADVERSARIAL_REVIEW_CONFIRMED" == "true" ]] || { echo "::error::Independent adversarial identity review is not confirmed"; exit 1; }
+          [[ -n "$ADVERSARIAL_REVIEW_EVIDENCE" ]] || { echo "::error::A non-secret adversarial-review evidence reference is required"; exit 1; }
 
       - name: Ensure publishing secrets are present
         shell: bash
@@ -113,7 +287,6 @@ jobs:
 
           chmod 600 private-key.asc
 
-          # Validate the signing key is importable before proceeding (fail fast)
           TMP_GNUPGHOME=$(mktemp -d)
           export GNUPGHOME="$TMP_GNUPGHOME"
           if ! gpg --batch --yes --import private-key.asc >/tmp/gpg-import.log 2>&1; then
@@ -127,11 +300,13 @@ jobs:
       - name: Publish Aether to Maven Central
         shell: bash
         run: |
+          MAVEN_REPO="$RUNNER_TEMP/aether-release-m2-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$MAVEN_REPO"
           MAX_RETRIES=3
           RETRY_DELAY=30
           for i in $(seq 1 $MAX_RETRIES); do
             echo "Attempt $i of $MAX_RETRIES"
-            if ./gradlew publishToCentralPortalManually --no-daemon --stacktrace --info; then
+            if ./gradlew -Dmaven.repo.local="$MAVEN_REPO" publishToCentralPortalManually --no-daemon --stacktrace --info; then
               exit 0
             fi
             if [ $i -lt $MAX_RETRIES ]; then
@@ -148,8 +323,6 @@ jobs:
         shell: bash
         run: |
           python3 <<'PY'
-          import itertools
-
           try:
               with open("CHANGELOG.md", encoding="utf-8") as fh:
                   lines = fh.readlines()
@@ -173,14 +346,14 @@ jobs:
           with open("release-notes.md", "w", encoding="utf-8") as out:
               out.write(notes + "\n")
           PY
-          
+
           if [ -f release-notes.md ]; then
             NOTES=$(cat release-notes.md)
             echo "notes<<EOF" >> "$GITHUB_OUTPUT"
             echo "$NOTES" >> "$GITHUB_OUTPUT"
             echo "EOF" >> "$GITHUB_OUTPUT"
           else
-             echo "notes=" >> "$GITHUB_OUTPUT"
+            echo "notes=" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create and push release tag
@@ -190,10 +363,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
-             echo "Tag v${VERSION} already exists, skipping."
+            echo "Tag v${VERSION} already exists, skipping."
           else
-             git tag -a "v${VERSION}" -m "Aether ${VERSION}"
-             git push origin "v${VERSION}"
+            git tag -a "v${VERSION}" -m "Aether ${VERSION}"
+            git push origin "v${VERSION}"
           fi
 
       - name: Create GitHub release

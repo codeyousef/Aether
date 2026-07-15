@@ -1,25 +1,27 @@
 [versions]
-kotlin = "2.1.0"
-coroutines = "1.9.0"
-serialization = "1.7.3"
-atomicfu = "0.26.0"
+kotlin = "2.3.21"
+coroutines = "1.10.2"
+serialization = "1.9.0"
+atomicfu = "0.30.0-beta"
 vertx = "4.5.11"
 slf4j = "2.0.16"
 hikari = "6.2.1"
 logback = "1.5.12"
 kotlin-wrappers = "1.0.0-pre.830"
-kotlin-test = "2.1.0"
+kotlin-test = "2.3.21"
 testcontainers = "1.20.4"
 mockk = "1.13.13"
 postgres = "42.7.4"
-ksp = "2.1.0-1.0.29"
-datetime = "0.6.2"
+ksp = "2.3.9"
+datetime = "0.7.1"
 java-jwt = "4.4.0"
 kotlinpoet = "1.18.1"
-ksp-api = "2.1.0-1.0.29"
+ksp-api = "2.3.9"
 netty = "4.1.115.Final"
 bcrypt = "0.10.2"
 wiremock = "3.9.2"
+summon = "0.7.0.2"
+xmlutil = "0.91.3"
 
 [libraries]
 # Kotlin Core
@@ -59,6 +61,12 @@ testcontainers-core = { module = "org.testcontainers:testcontainers", version.re
 testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 wiremock = { module = "org.wiremock:wiremock", version.ref = "wiremock" }
+
+# Summon UI
+summon = { module = "codes.yousef:summon", version.ref = "summon" }
+
+# Cross-platform XML parsing for the optional SAML adapter
+xmlutil-core = { module = "io.github.pdvrieze.xmlutil:core", version.ref = "xmlutil" }
 
 # DateTime
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "datetime" }

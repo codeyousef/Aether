@@ -1,0 +1,54 @@
+package aether:identity-crypto@0.6.0;
+
+interface crypto {
+    enum host-error {
+        invalid-input,
+        key-unavailable,
+        unsupported,
+        self-test-failed,
+        internal,
+    }
+
+    enum signing-algorithm {
+        es256,
+        rsa-sha256,
+    }
+
+    random-bytes: func(size: u32) -> result<list<u8>, host-error>;
+    wall-clock-epoch-milliseconds: func() -> result<u64, host-error>;
+    sha256: func(input: list<u8>) -> result<list<u8>, host-error>;
+    hmac-sha256: func(key: list<u8>, input: list<u8>) -> result<list<u8>, host-error>;
+    constant-time-equals: func(left: list<u8>, right: list<u8>) -> result<bool, host-error>;
+    validate-p256-public-key: func(
+        uncompressed-p256-public-key: list<u8>
+    ) -> result<bool, host-error>;
+    verify-es256: func(
+        uncompressed-p256-public-key: list<u8>,
+        signed-data: list<u8>,
+        raw-signature: list<u8>
+    ) -> result<bool, host-error>;
+    verify-rsa-sha256: func(
+        spki-public-key: list<u8>,
+        signed-data: list<u8>,
+        signature: list<u8>
+    ) -> result<bool, host-error>;
+
+    /// Private key bytes never cross the component boundary. The host resolves
+    /// a versioned external key handle and performs signing inside OpenSSL 3.
+    sign: func(
+        algorithm: signing-algorithm,
+        key-handle: string,
+        signed-data: list<u8>
+    ) -> result<list<u8>, host-error>;
+
+    self-test: func() -> result<_, host-error>;
+}
+
+world identity-authority {
+    import crypto;
+    /// Enterprise discovery, federation metadata, Firestore REST transactions,
+    /// and PostgREST RPCs use the standard WASI HTTP outbound transport. Hosts
+    /// must provide this import; a Node-only fetch shim is not a production
+    /// identity-authority capability.
+    import wasi:http/outgoing-handler@0.2.0;
+}

@@ -6,7 +6,7 @@ import codes.yousef.aether.core.pipeline.Middleware
 import codes.yousef.aether.core.pipeline.Pipeline
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 
 /**
  * Represents a quota usage record.
@@ -135,12 +135,12 @@ class InMemoryQuotaProvider(
 data class RateLimitConfig(
     /**
      * Function to extract the quota key from an exchange.
-     * Default uses IP address from X-Forwarded-For or remote address.
+     * Default uses the direct network peer and never trusts forwarding headers.
+     * Deployments behind a proxy should configure this with an explicit
+     * [codes.yousef.aether.core.TrustedProxyResolver].
      */
     var keyExtractor: suspend (Exchange) -> String? = { exchange ->
-        exchange.request.headers.get("X-Forwarded-For")?.split(",")?.firstOrNull()?.trim()
-            ?: exchange.request.headers.get("X-Real-IP")
-            ?: "anonymous"
+        exchange.connection.peerAddress ?: "anonymous"
     },
 
     /**

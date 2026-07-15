@@ -9,7 +9,7 @@ The `aether-grpc` module enables:
 
 - **Code-First Proto Generation**: Define services in Kotlin, generate `.proto` files automatically
 - **Multi-Protocol Support**: gRPC-Web, Connect JSON, and native HTTP/2 gRPC
-- **Unified Authentication**: Same auth strategies work for REST and gRPC
+- **Generic application authentication**: Core auth strategies can be shared by REST and gRPC
 - **Streaming**: Server, client, and bidirectional streaming with Kotlin Flow
 - **Cross-Platform**: Works on JVM, WasmJS, and WasmWasi
 
@@ -20,8 +20,8 @@ The `aether-grpc` module enables:
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation("codes.yousef.aether:aether-grpc:0.5.0.2")
-    ksp("codes.yousef.aether:aether-ksp:0.5.0.2")
+    implementation("codes.yousef.aether:aether-grpc:0.6.0.0")
+    ksp("codes.yousef.aether:aether-ksp:0.6.0.0")
 }
 ```
 
@@ -441,7 +441,13 @@ println(parsed?.data)
 
 ---
 
-## Authentication Integration
+## Generic application authentication integration
+
+This section describes the protocol-neutral facilities in `aether-core`. Basic credentials, JWTs,
+API keys, `UserContext`, and global role strings do not establish Aether Identity users,
+organizations, capabilities, or assurance. Identity-aware RPC code must obtain an
+`IdentityContext` from the passkey authority's fixed JSON/session boundary and apply explicit
+organization/capability guards.
 
 ### UserContext
 
@@ -690,11 +696,11 @@ The KSP processor automatically generates `.proto` files from annotated classes:
 ```kotlin
 // build.gradle.kts
 plugins {
-    id("com.google.devtools.ksp") version "2.1.0-1.0.29"
+    id("com.google.devtools.ksp") version "2.3.9"
 }
 
 dependencies {
-    ksp("codes.yousef.aether:aether-ksp:0.5.0.2")
+    ksp("codes.yousef.aether:aether-ksp:0.6.0.0")
 }
 
 // Optional: Configure output location
