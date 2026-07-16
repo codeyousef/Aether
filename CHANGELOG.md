@@ -31,6 +31,9 @@
   binary component's sources and Javadoc companions before upload, and waits for the Central
   deployment to reach `PUBLISHED` before completing the release. Upload IDs are recorded before
   polling so interrupted releases resume the exact commit without submitting a duplicate bundle.
+  The reviewed `0.6.0.0` failed-deployment recovery also fails closed when the old status endpoint
+  returns 404 and checks every coordinate is still unpublished. Every failed-deployment retry creates
+  a single-use claim before upload.
 
 ### Known limitations
 

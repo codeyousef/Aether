@@ -26,6 +26,11 @@ on:
         required: false
         default: false
         type: boolean
+      acknowledge_unavailable_failed_deployment:
+        description: Acknowledge the reviewed one-time recovery when Central no longer exposes the failed deployment
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -239,6 +244,7 @@ jobs:
           RESUME_DEPLOYMENT_ID: ${{ inputs.resume_deployment_id || '' }}
           RESUME_COMMIT_SHA: ${{ inputs.resume_commit_sha || '' }}
           REPAIR_RELEASE_TAG: ${{ inputs.repair_release_tag || false }}
+          ACKNOWLEDGE_UNAVAILABLE_FAILED_DEPLOYMENT: ${{ inputs.acknowledge_unavailable_failed_deployment || false }}
         run: |
           VERSION=$(grep "^VERSION=" version.properties | cut -d'=' -f2)
           [[ -n "$VERSION" ]] || { echo "::error::version.properties has no VERSION"; exit 1; }
@@ -254,6 +260,10 @@ jobs:
 
           if [[ -n "$RETRY_FAILED_DEPLOYMENT_ID" && -n "$RESUME_DEPLOYMENT_ID" ]]; then
             echo "::error::retry_failed_deployment_id and resume_deployment_id are mutually exclusive"
+            exit 1
+          fi
+          if [[ "$ACKNOWLEDGE_UNAVAILABLE_FAILED_DEPLOYMENT" == "true" && -z "$RETRY_FAILED_DEPLOYMENT_ID" ]]; then
+            echo "::error::acknowledge_unavailable_failed_deployment is valid only with retry_failed_deployment_id"
             exit 1
           fi
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && -z "$RETRY_FAILED_DEPLOYMENT_ID" && -z "$RESUME_DEPLOYMENT_ID" ]]; then
@@ -293,6 +303,11 @@ jobs:
           UPLOAD_REQUIRED=false
 
           if [[ -n "$RETRY_FAILED_DEPLOYMENT_ID" ]]; then
+            git fetch --no-tags origin main
+            git merge-base --is-ancestor "$RELEASE_COMMIT" origin/main || {
+              echo "::error::The failed-deployment retry commit is not contained in origin/main."
+              exit 1
+            }
             [[ "$TAG_EXISTS" == "true" ]] || {
               echo "::error::A failed-deployment retry is only allowed for an existing release tag."
               exit 1
@@ -420,6 +435,7 @@ jobs:
           rm -rf "$TMP_GNUPGHOME"
 
       - name: Validate Central recovery request
+        id: central_recovery
         if: >-
           steps.version.outputs.publish_required == 'true' &&
           (inputs.retry_failed_deployment_id != '' || inputs.resume_deployment_id != '')
@@ -431,25 +447,40 @@ jobs:
           EXPECTED_DEPLOYMENT_NAME: ${{ steps.version.outputs.deployment_name }}
           RETRY_FAILED_DEPLOYMENT_ID: ${{ inputs.retry_failed_deployment_id || '' }}
           RESUME_DEPLOYMENT_ID: ${{ inputs.resume_deployment_id || '' }}
+          RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}
+          TAG_NEEDS_REPAIR: ${{ steps.version.outputs.tag_needs_repair }}
+          REPAIR_RELEASE_TAG: ${{ inputs.repair_release_tag || false }}
+          ACKNOWLEDGE_UNAVAILABLE_FAILED_DEPLOYMENT: ${{ inputs.acknowledge_unavailable_failed_deployment || false }}
         run: |
           ./gradlew writeExpectedCentralPurls --no-daemon --quiet
           DEPLOYMENT_ID="${RETRY_FAILED_DEPLOYMENT_ID:-$RESUME_DEPLOYMENT_ID}"
           export DEPLOYMENT_ID
           AUTHORIZATION="Bearer $(printf '%s' "$CENTRAL_USERNAME:$CENTRAL_PASSWORD" | base64 | tr -d '\n\r')"
-          STATUS_JSON=$(curl --request POST \
+          STATUS_FILE="$RUNNER_TEMP/central-recovery-status.json"
+          set +e
+          HTTP_CODE=$(curl --request POST \
             --url "https://central.sonatype.com/api/v1/publisher/status?id=${DEPLOYMENT_ID}" \
             --header "Authorization: ${AUTHORIZATION}" \
             --connect-timeout 10 --max-time 30 \
-            --fail-with-body --silent --show-error)
-          export STATUS_JSON
+            --output "$STATUS_FILE" --write-out '%{http_code}' \
+            --silent --show-error)
+          CURL_EXIT=$?
+          set -e
+          if [[ "$CURL_EXIT" != "0" ]]; then
+            echo "::error::Central recovery status request failed before receiving a definitive HTTP response"
+            exit 1
+          fi
+          echo "claim_retry_deployment=false" >> "$GITHUB_OUTPUT"
 
-          python3 <<'PY'
+          if [[ "$HTTP_CODE" == "200" ]]; then
+            STATUS_JSON=$(<"$STATUS_FILE")
+            export STATUS_JSON
+            python3 <<'PY'
           import json
           import os
           import sys
 
           data = json.loads(os.environ["STATUS_JSON"])
-          version = os.environ["RELEASE_VERSION"]
           deployment_id = os.environ["DEPLOYMENT_ID"]
           retry_id = os.environ.get("RETRY_FAILED_DEPLOYMENT_ID", "")
           expected_name = os.environ["EXPECTED_DEPLOYMENT_NAME"]
@@ -479,17 +510,110 @@ jobs:
               sys.exit(f"deployment component mismatch; missing={missing}, unexpected={unexpected}")
           print(f"Central recovery request verified: {data.get('deploymentId')} is {state}")
           PY
+          elif [[ "$HTTP_CODE" == "404" ]]; then
+            KNOWN_DEPLOYMENT_ID="e4df03ff-971d-4b12-b5cb-da68bbefa81a"
+            KNOWN_VERSION="0.6.0.0"
+            KNOWN_OLD_TAG_OBJECT="dc46b140797264f8bcd6378df3c00dbd42e7421f"
+            KNOWN_OLD_TAG_COMMIT="f55c5a2c14dc444ffe09d0c09a857ea8421dd7ad"
+            REVIEWED_REPAIR_BASELINE="582adbe30a4791f59547abff2c5e9ed9c8b0fd7e"
+
+            [[ -n "$RETRY_FAILED_DEPLOYMENT_ID" ]] || {
+              echo "::error::An unavailable deployment cannot be resumed"
+              exit 1
+            }
+            [[ "$ACKNOWLEDGE_UNAVAILABLE_FAILED_DEPLOYMENT" == "true" ]] || {
+              echo "::error::The reviewed unavailable-deployment recovery requires explicit acknowledgement"
+              exit 1
+            }
+            [[ "$DEPLOYMENT_ID" == "$KNOWN_DEPLOYMENT_ID" && "$RELEASE_VERSION" == "$KNOWN_VERSION" ]] || {
+              echo "::error::HTTP 404 is accepted only for the reviewed 0.6.0.0 failed deployment"
+              exit 1
+            }
+            [[ "$TAG_NEEDS_REPAIR" == "true" && "$REPAIR_RELEASE_TAG" == "true" ]] || {
+              echo "::error::The reviewed unavailable-deployment recovery must repair the unpublished release tag"
+              exit 1
+            }
+            [[ "$(git rev-parse "refs/tags/v${RELEASE_VERSION}")" == "$KNOWN_OLD_TAG_OBJECT" ]] || {
+              echo "::error::The release tag is no longer the reviewed unpublished tag object"
+              exit 1
+            }
+            [[ "$(git rev-list -n 1 "v${RELEASE_VERSION}")" == "$KNOWN_OLD_TAG_COMMIT" ]] || {
+              echo "::error::The release tag no longer targets the reviewed unpublished commit"
+              exit 1
+            }
+            git merge-base --is-ancestor "$REVIEWED_REPAIR_BASELINE" "$RELEASE_COMMIT" || {
+              echo "::error::The unavailable-deployment recovery does not contain the reviewed source-archive repair"
+              exit 1
+            }
+            UNEXPECTED_POST_REVIEW_FILES=()
+            while IFS= read -r FILE; do
+              case "$FILE" in
+                .github/workflows/publish.yml|CHANGELOG.md|docs/identity/deployment.md|e2e-tests/tests/config/scaffold.test.mjs)
+                  ;;
+                *)
+                  UNEXPECTED_POST_REVIEW_FILES+=("$FILE")
+                  ;;
+              esac
+            done < <(git diff --name-only "${REVIEWED_REPAIR_BASELINE}"..."${RELEASE_COMMIT}")
+            if (( ${#UNEXPECTED_POST_REVIEW_FILES[@]} > 0 )); then
+              echo "::error::Unreviewed files changed after the source-archive repair: ${UNEXPECTED_POST_REVIEW_FILES[*]}"
+              exit 1
+            fi
+            echo "::notice::Central no longer exposes the reviewed failed deployment; authorizing one claimed replacement upload"
+          else
+            echo "::error::Central recovery status returned unexpected HTTP ${HTTP_CODE}"
+            exit 1
+          fi
 
           if [[ -n "$RETRY_FAILED_DEPLOYMENT_ID" ]]; then
-            HTTP_CODE=$(curl --head --silent --output /dev/null --write-out '%{http_code}' \
-              --connect-timeout 10 --max-time 30 \
-              "https://repo1.maven.org/maven2/codes/yousef/aether/aether-core/${RELEASE_VERSION}/aether-core-${RELEASE_VERSION}.pom")
-            case "$HTTP_CODE" in
-              404) ;;
-              200) echo "::error::Version ${RELEASE_VERSION} is already public and cannot be replaced"; exit 1 ;;
-              *) echo "::error::Could not prove version ${RELEASE_VERSION} is unpublished (HTTP ${HTTP_CODE})"; exit 1 ;;
-            esac
+            CHECKED_PURLS=0
+            while IFS= read -r PURL; do
+              [[ -n "$PURL" ]] || continue
+              COORDINATE="${PURL#pkg:maven/}"
+              PURL_VERSION="${COORDINATE##*@}"
+              GROUP_AND_ARTIFACT="${COORDINATE%@*}"
+              GROUP_ID="${GROUP_AND_ARTIFACT%/*}"
+              ARTIFACT_ID="${GROUP_AND_ARTIFACT##*/}"
+              [[ "$PURL_VERSION" == "$RELEASE_VERSION" && "$GROUP_ID" != "$GROUP_AND_ARTIFACT" ]] || {
+                echo "::error::Malformed expected release PURL: ${PURL}"
+                exit 1
+              }
+              GROUP_PATH="${GROUP_ID//./\/}"
+              PUBLIC_POM="https://repo.maven.apache.org/maven2/${GROUP_PATH}/${ARTIFACT_ID}/${PURL_VERSION}/${ARTIFACT_ID}-${PURL_VERSION}.pom"
+              PUBLIC_HTTP_CODE=$(curl --head --silent --show-error --output /dev/null --write-out '%{http_code}' \
+                --header 'Cache-Control: no-cache' \
+                --connect-timeout 10 --max-time 30 \
+                "${PUBLIC_POM}?aether_recovery=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}")
+              case "$PUBLIC_HTTP_CODE" in
+                404) ;;
+                200) echo "::error::${PURL} is already public and cannot be replaced"; exit 1 ;;
+                *) echo "::error::Could not prove ${PURL} is unpublished (HTTP ${PUBLIC_HTTP_CODE})"; exit 1 ;;
+              esac
+              CHECKED_PURLS=$((CHECKED_PURLS + 1))
+            done < build/central-expected-purls.txt
+            [[ "$CHECKED_PURLS" == "75" ]] || {
+              echo "::error::Expected to prove 75 coordinates unpublished, checked ${CHECKED_PURLS}"
+              exit 1
+            }
+            echo "claim_retry_deployment=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Claim the one-time failed-deployment retry
+        if: steps.central_recovery.outputs.claim_retry_deployment == 'true'
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}
+          RETRY_FAILED_DEPLOYMENT_ID: ${{ inputs.retry_failed_deployment_id || '' }}
+        run: |
+          CLAIM_TAG="central-retry-v${RELEASE_VERSION}-${RETRY_FAILED_DEPLOYMENT_ID}"
+          CLAIM_REF="refs/tags/${CLAIM_TAG}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag --annotate "$CLAIM_TAG" "$RELEASE_COMMIT" \
+            --message "Aether Central retry claim from run ${GITHUB_RUN_ID}, attempt ${GITHUB_RUN_ATTEMPT}"
+          git push --force-with-lease="${CLAIM_REF}:" origin "$CLAIM_REF"
+          echo "Claimed ${CLAIM_REF}; any interrupted run must resume the newly accepted deployment instead of uploading again."
 
       - name: Upload one Aether bundle to Maven Central
         id: central_upload

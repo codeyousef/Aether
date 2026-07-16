@@ -81,6 +81,7 @@ test('successful main verification publishes automatically and only once per ver
   assert.match(workflow, /resume_deployment_id:/);
   assert.match(workflow, /resume_commit_sha:/);
   assert.match(workflow, /repair_release_tag:/);
+  assert.match(workflow, /acknowledge_unavailable_failed_deployment:/);
   assert.doesNotMatch(workflow, /hardware_passkey_smoke_|adversarial_review_/);
   assert.match(
     workflow,
@@ -97,8 +98,10 @@ test('successful main verification publishes automatically and only once per ver
   );
   assert.match(workflow, /CHANGELOG_VERSION[\s\S]*?does not match version\.properties/);
   assert.match(workflow, /retry_failed_deployment_id and resume_deployment_id are mutually exclusive/);
+  assert.match(workflow, /acknowledge_unavailable_failed_deployment is valid only with retry_failed_deployment_id/);
   assert.match(workflow, /Manual publication is recovery-only; provide a failed retry ID or an exact resume ID/);
   assert.match(workflow, /resume_commit_sha must be the exact 40-character upload commit/);
+  assert.match(workflow, /The failed-deployment retry commit is not contained in origin\/main/);
   assert.match(workflow, /A rerun may duplicate an accepted Central upload/);
   assert.match(workflow, /Same-version recovery is restricted to reviewed publication metadata/);
   assert.match(workflow, /git diff --name-only "v\$\{VERSION\}"\.\.\.HEAD/);
@@ -123,10 +126,13 @@ test('successful main verification publishes automatically and only once per ver
   );
 
   const validateIndex = workflow.indexOf('- name: Validate Central recovery request');
+  const claimIndex = workflow.indexOf('- name: Claim the one-time failed-deployment retry');
   const uploadIndex = workflow.indexOf('- name: Upload one Aether bundle to Maven Central');
   const waitIndex = workflow.indexOf('- name: Wait for Maven Central publication');
   const tagIndex = workflow.indexOf('- name: Create or repair the release tag');
-  assert.ok(validateIndex < uploadIndex && uploadIndex < waitIndex && waitIndex < tagIndex);
+  assert.ok(
+    validateIndex < claimIndex && claimIndex < uploadIndex && uploadIndex < waitIndex && waitIndex < tagIndex
+  );
 });
 
 test('Maven Central publication requires real sources and waits for PUBLISHED', async () => {
@@ -162,10 +168,61 @@ test('Maven Central publication requires real sources and waits for PUBLISHED', 
   assert.doesNotMatch(signScript, /PASSPHRASE="\$1"|--passphrase "\$PASSPHRASE"/);
   assert.match(workflow, /verifyExpectedSourceTasks verifyCentralPublicationArtifacts check/);
   assert.match(workflow, /retry deployment must be FAILED/);
+  assert.match(workflow, /HTTP_CODE" == "200"/);
+  assert.match(workflow, /HTTP_CODE" == "404"/);
+  assert.match(workflow, /e4df03ff-971d-4b12-b5cb-da68bbefa81a/);
+  assert.match(workflow, /KNOWN_VERSION="0\.6\.0\.0"/);
+  assert.match(workflow, /KNOWN_OLD_TAG_OBJECT="dc46b140797264f8bcd6378df3c00dbd42e7421f"/);
+  assert.match(workflow, /REVIEWED_REPAIR_BASELINE="582adbe30a4791f59547abff2c5e9ed9c8b0fd7e"/);
+  assert.match(workflow, /An unavailable deployment cannot be resumed/);
+  assert.match(workflow, /claim_retry_deployment=true/);
+  assert.match(workflow, /--force-with-lease="\$\{CLAIM_REF\}:"/);
   assert.match(workflow, /data\.get\("deploymentName"\) != expected_name/);
   assert.match(workflow, /actual_purls != expected_purls/);
   assert.match(workflow, /state == "PUBLISHED" or bool\(actual_purls\)/);
-  assert.match(workflow, /Version \$\{RELEASE_VERSION\} is already public and cannot be replaced/);
+  assert.match(workflow, /repo\.maven\.apache\.org\/maven2/);
+  assert.match(workflow, /Expected to prove 75 coordinates unpublished/);
+  assert.match(workflow, /is already public and cannot be replaced/);
+
+  const recoveryValidationStep = workflow.match(
+    /- name: Validate Central recovery request[\s\S]*?(?=\n\s+- name: Claim the one-time failed-deployment retry)/
+  )?.[0] ?? '';
+  const recoveryClaimStep = workflow.match(
+    /- name: Claim the one-time failed-deployment retry[\s\S]*?(?=\n\s+- name: Upload one Aether bundle to Maven Central)/
+  )?.[0] ?? '';
+  assert.match(recoveryValidationStep, /claim_retry_deployment=false/);
+  assert.match(
+    recoveryValidationStep,
+    /ACKNOWLEDGE_UNAVAILABLE_FAILED_DEPLOYMENT" == "true"[\s\S]*?DEPLOYMENT_ID" == "\$KNOWN_DEPLOYMENT_ID" && "\$RELEASE_VERSION" == "\$KNOWN_VERSION"/
+  );
+  assert.match(
+    recoveryValidationStep,
+    /TAG_NEEDS_REPAIR" == "true" && "\$REPAIR_RELEASE_TAG" == "true"/
+  );
+  assert.match(
+    recoveryValidationStep,
+    /KNOWN_OLD_TAG_COMMIT="f55c5a2c14dc444ffe09d0c09a857ea8421dd7ad"[\s\S]*?git rev-list -n 1[\s\S]*?KNOWN_OLD_TAG_COMMIT/
+  );
+  assert.match(
+    recoveryValidationStep,
+    /git merge-base --is-ancestor "\$REVIEWED_REPAIR_BASELINE" "\$RELEASE_COMMIT"/
+  );
+  assert.match(
+    recoveryValidationStep,
+    /\.github\/workflows\/publish\.yml\|CHANGELOG\.md\|docs\/identity\/deployment\.md\|e2e-tests\/tests\/config\/scaffold\.test\.mjs/
+  );
+  assert.match(
+    recoveryValidationStep,
+    /if \[\[ -n "\$RETRY_FAILED_DEPLOYMENT_ID" \]\]; then[\s\S]*?done < build\/central-expected-purls\.txt[\s\S]*?CHECKED_PURLS" == "75"[\s\S]*?claim_retry_deployment=true/
+  );
+  assert.match(
+    recoveryClaimStep,
+    /if: steps\.central_recovery\.outputs\.claim_retry_deployment == 'true'/
+  );
+  assert.match(
+    recoveryClaimStep,
+    /CLAIM_TAG="central-retry-v\$\{RELEASE_VERSION\}-\$\{RETRY_FAILED_DEPLOYMENT_ID\}"[\s\S]*?git tag --annotate "\$CLAIM_TAG" "\$RELEASE_COMMIT"[\s\S]*?GITHUB_RUN_ID[\s\S]*?GITHUB_RUN_ATTEMPT[\s\S]*?--force-with-lease="\$\{CLAIM_REF\}:"/
+  );
 
   const uploadStep = workflow.match(
     /- name: Upload one Aether bundle to Maven Central[\s\S]*?(?=\n\s+- name: Wait for Maven Central publication)/

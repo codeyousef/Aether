@@ -352,6 +352,14 @@ separate steps: the accepted deployment UUID is recorded immediately and an inte
 is resumed by that UUID plus the exact commit encoded in its deterministic deployment name. Never
 rerun an ambiguous upload. Recovery compares Central's complete component set with the 75-coordinate
 release manifest before it can repair a tag or update the GitHub release.
+Every failed-deployment retry atomically creates a permanent claim tag immediately before its
+replacement upload, making that deployment ID single-use. If Central no longer exposes a reviewed
+failed deployment, HTTP 404 alone is not proof that the deployment failed. The `0.6.0.0` exception
+is therefore also bound to the recorded deployment, original tag object and commit, reviewed repair
+baseline, explicit operator acknowledgement, and a fresh canonical Maven lookup proving that all 75
+coordinates remain unpublished. After an interruption, never submit the old failed-deployment ID
+again: resume the exact replacement ID if Central accepted one, or stop for manual review if no
+accepted ID can be proven. Do not remove a claim without definitive evidence that no upload began.
 Automated verification includes JVM, wasmJs and wasmWasi guest protocol/crypto tests, the native
 OpenSSL host-library tests, PostgreSQL 16 and Firestore conformance/race suites, Summon browser
 tests, federation adversarial suites, and the complete example build. Production wasmWasi
