@@ -101,6 +101,7 @@ test('successful main verification publishes automatically and only once per ver
   assert.match(workflow, /acknowledge_unavailable_failed_deployment is valid only with retry_failed_deployment_id/);
   assert.match(workflow, /Manual publication is recovery-only; provide a failed retry ID or an exact resume ID/);
   assert.match(workflow, /resume_commit_sha must be the exact 40-character upload commit/);
+  assert.match(workflow, /Central deployment IDs must use canonical lowercase UUIDs/);
   assert.equal((workflow.match(/ref: \$\{\{ github\.sha \}\}/g) ?? []).length, 2);
   assert.doesNotMatch(workflow, /ref: \$\{\{ inputs\.resume_commit_sha/);
   assert.match(workflow, /RELEASE_COMMIT=\$\(git rev-parse "\$\{RESUME_COMMIT_SHA\}\^\{commit\}"\)/);
@@ -127,7 +128,7 @@ test('successful main verification publishes automatically and only once per ver
     workflow,
     /- name: Create or repair the release tag\n\s+if: steps\.version\.outputs\.publish_required == 'true'/
   );
-  assert.match(workflow, /--force-with-lease="refs\/tags\/v\$\{VERSION\}:\$\{OLD_TAG_OBJECT\}"/);
+  assert.match(workflow, /--force-with-lease="refs\/tags\/v\$\{VERSION\}:\$\{EXPECTED_TAG_OBJECT\}"/);
   assert.match(workflow, /- name: Extract latest changelog entry\n\s+id: changelog/);
   assert.match(
     workflow,
@@ -135,7 +136,7 @@ test('successful main verification publishes automatically and only once per ver
   );
 
   const validateIndex = workflow.indexOf('- name: Validate Central recovery request');
-  const claimIndex = workflow.indexOf('- name: Claim the one-time failed-deployment retry');
+  const claimIndex = workflow.indexOf('- name: Claim the one-time Central upload');
   const uploadIndex = workflow.indexOf('- name: Upload one Aether bundle to Maven Central');
   const waitIndex = workflow.indexOf('- name: Wait for Maven Central publication');
   const tagIndex = workflow.indexOf('- name: Create or repair the release tag');
@@ -181,6 +182,7 @@ test('Maven Central publication requires real sources and waits for PUBLISHED', 
   assert.match(rootBuild, /klibArtifactIds\.size == 35/);
   assert.match(rootBuild, /reportedPurls\.size == 111/);
   assert.match(rootBuild, /unexpectedPurls = purls - expectedPurls/);
+  assert.match(rootBuild, /Central status purls must contain only strings/);
   assert.equal((rootBuild.match(/inputs\.property\("expectedPurls", expectedPurls\)/g) ?? []).length, 2);
   assert.match(rootBuild, /reportedPurls\.containsAll\(basePurls\)/);
   assert.match(rootBuild, /purlList\.size != purls\.size/);
@@ -197,8 +199,10 @@ test('Maven Central publication requires real sources and waits for PUBLISHED', 
   assert.match(workflow, /KNOWN_OLD_TAG_OBJECT="dc46b140797264f8bcd6378df3c00dbd42e7421f"/);
   assert.match(workflow, /REVIEWED_REPAIR_BASELINE="582adbe30a4791f59547abff2c5e9ed9c8b0fd7e"/);
   assert.match(workflow, /An unavailable deployment cannot be resumed/);
-  assert.match(workflow, /claim_retry_deployment=true/);
   assert.match(workflow, /--force-with-lease="\$\{CLAIM_REF\}:"/);
+  assert.match(workflow, /Central status purls must be an array containing only strings/);
+  assert.match(workflow, /b2534c321438153e16a8a4b19c4acbacae071720e76b754e4b7ab95610cd7960/);
+  assert.match(workflow, /23593a776b051febe452adc0edffd0fbc5a90730242e6e4dd346641d0f0a6143/);
   assert.match(workflow, /data\.get\("deploymentName"\) != expected_name/);
   assert.match(workflow, /actual_purls != expected_reported_purls/);
   assert.match(workflow, /writeExpectedCentralPurls writeExpectedCentralReportedPurls/);
@@ -210,14 +214,15 @@ test('Maven Central publication requires real sources and waits for PUBLISHED', 
   assert.match(workflow, /is already public and cannot be replaced/);
   assert.match(workflow, /git merge-base --is-ancestor "v\$\{VERSION\}" "\$RELEASE_COMMIT"/);
   assert.match(workflow, /git show "\$\{RELEASE_COMMIT\}:CHANGELOG\.md"/);
+  assert.match(workflow, /The current polling workflow must descend from the resumed release commit/);
+  assert.match(workflow, /The remote release tag changed while publication was in progress/);
 
   const recoveryValidationStep = workflow.match(
-    /- name: Validate Central recovery request[\s\S]*?(?=\n\s+- name: Claim the one-time failed-deployment retry)/
+    /- name: Validate Central recovery request[\s\S]*?(?=\n\s+- name: Claim the one-time Central upload)/
   )?.[0] ?? '';
   const recoveryClaimStep = workflow.match(
-    /- name: Claim the one-time failed-deployment retry[\s\S]*?(?=\n\s+- name: Upload one Aether bundle to Maven Central)/
+    /- name: Claim the one-time Central upload[\s\S]*?(?=\n\s+- name: Upload one Aether bundle to Maven Central)/
   )?.[0] ?? '';
-  assert.match(recoveryValidationStep, /claim_retry_deployment=false/);
   assert.match(
     recoveryValidationStep,
     /ACKNOWLEDGE_UNAVAILABLE_FAILED_DEPLOYMENT" == "true"[\s\S]*?DEPLOYMENT_ID" == "\$KNOWN_DEPLOYMENT_ID" && "\$RELEASE_VERSION" == "\$KNOWN_VERSION"/
@@ -240,15 +245,15 @@ test('Maven Central publication requires real sources and waits for PUBLISHED', 
   );
   assert.match(
     recoveryValidationStep,
-    /if \[\[ -n "\$RETRY_FAILED_DEPLOYMENT_ID" \]\]; then[\s\S]*?done < build\/central-expected-purls\.txt[\s\S]*?CHECKED_PURLS" == "75"[\s\S]*?claim_retry_deployment=true/
+    /if \[\[ -n "\$RETRY_FAILED_DEPLOYMENT_ID" \]\]; then[\s\S]*?done < build\/central-expected-purls\.txt[\s\S]*?CHECKED_PURLS" == "75"/
   );
   assert.match(
     recoveryClaimStep,
-    /if: steps\.central_recovery\.outputs\.claim_retry_deployment == 'true'/
+    /if: steps\.version\.outputs\.upload_required == 'true'/
   );
   assert.match(
     recoveryClaimStep,
-    /CLAIM_TAG="central-retry-v\$\{RELEASE_VERSION\}-\$\{RETRY_FAILED_DEPLOYMENT_ID\}"[\s\S]*?git tag --annotate "\$CLAIM_TAG" "\$RELEASE_COMMIT"[\s\S]*?GITHUB_RUN_ID[\s\S]*?GITHUB_RUN_ATTEMPT[\s\S]*?--force-with-lease="\$\{CLAIM_REF\}:"/
+    /central-retry-v\$\{RELEASE_VERSION\}-\$\{RETRY_FAILED_DEPLOYMENT_ID\}[\s\S]*?central-upload-v\$\{RELEASE_VERSION\}[\s\S]*?git tag --annotate "\$CLAIM_TAG" "\$RELEASE_COMMIT"[\s\S]*?GITHUB_RUN_ID[\s\S]*?GITHUB_RUN_ATTEMPT[\s\S]*?--force-with-lease="\$\{CLAIM_REF\}:"/
   );
 
   const uploadStep = workflow.match(

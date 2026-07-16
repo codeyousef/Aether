@@ -273,6 +273,10 @@ jobs:
               echo "::error::Central deployment IDs must be UUIDs"
               exit 1
             fi
+            if [[ -n "$DEPLOYMENT_ID" && "$DEPLOYMENT_ID" != "${DEPLOYMENT_ID,,}" ]]; then
+              echo "::error::Central deployment IDs must use canonical lowercase UUIDs"
+              exit 1
+            fi
           done
           if [[ -n "$RESUME_DEPLOYMENT_ID" ]]; then
             [[ "$RESUME_COMMIT_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || {
@@ -302,12 +306,15 @@ jobs:
           if git rev-parse --verify --quiet "refs/tags/v${VERSION}" >/dev/null; then
             echo "tag_exists=true" >> "$GITHUB_OUTPUT"
             TAG_EXISTS=true
+            TAG_OBJECT=$(git rev-parse "refs/tags/v${VERSION}")
             TAG_COMMIT=$(git rev-list -n 1 "v${VERSION}")
           else
             echo "tag_exists=false" >> "$GITHUB_OUTPUT"
             TAG_EXISTS=false
+            TAG_OBJECT=""
             TAG_COMMIT=""
           fi
+          echo "tag_object=$TAG_OBJECT" >> "$GITHUB_OUTPUT"
           TAG_NEEDS_REPAIR=false
           UPLOAD_REQUIRED=false
 
@@ -340,6 +347,10 @@ jobs:
             git fetch --no-tags origin main
             git merge-base --is-ancestor "$RELEASE_COMMIT" origin/main || {
               echo "::error::The resumed release commit is not contained in origin/main."
+              exit 1
+            }
+            git merge-base --is-ancestor "$RELEASE_COMMIT" "$WORKFLOW_COMMIT" || {
+              echo "::error::The current polling workflow must descend from the resumed release commit."
               exit 1
             }
             if [[ "$TAG_EXISTS" == "true" ]]; then
@@ -479,13 +490,12 @@ jobs:
             echo "::error::Central recovery status request failed before receiving a definitive HTTP response"
             exit 1
           fi
-          echo "claim_retry_deployment=false" >> "$GITHUB_OUTPUT"
-
           if [[ "$HTTP_CODE" == "200" ]]; then
             STATUS_JSON=$(<"$STATUS_FILE")
             export STATUS_JSON
             python3 <<'PY'
           import json
+          import hashlib
           import os
           import sys
 
@@ -494,7 +504,13 @@ jobs:
           retry_id = os.environ.get("RETRY_FAILED_DEPLOYMENT_ID", "")
           expected_name = os.environ["EXPECTED_DEPLOYMENT_NAME"]
           state = data.get("deploymentState")
-          purls = data.get("purls") or []
+          raw_purls = data.get("purls")
+          if raw_purls is None:
+              purls = []
+          elif isinstance(raw_purls, list) and all(type(purl) is str for purl in raw_purls):
+              purls = raw_purls
+          else:
+              sys.exit("Central status purls must be an array containing only strings")
           with open("build/central-expected-purls.txt", encoding="utf-8") as source:
               expected_purls = {line.strip() for line in source if line.strip()}
           with open("build/central-expected-reported-purls.txt", encoding="utf-8") as source:
@@ -515,6 +531,15 @@ jobs:
               sys.exit("deployment contains duplicate component PURLs")
           if len(expected_purls) != 75 or len(expected_reported_purls) != 111:
               sys.exit("expected release manifests must contain exactly 75 coordinates and 111 reported PURLs")
+          known_deployment_id = "7a3ef832-4930-42bb-a102-e64ba6ee5bb7"
+          if deployment_id == known_deployment_id:
+              if os.environ["RELEASE_COMMIT"] != "4e867905ca316e13b89e1cf2cd707afb99a1c10e":
+                  sys.exit("the published 0.6.0.0 deployment is bound to an unexpected release commit")
+              manifest = lambda values: hashlib.sha256(("\n".join(sorted(values)) + "\n").encode()).hexdigest()
+              if manifest(expected_purls) != "b2534c321438153e16a8a4b19c4acbacae071720e76b754e4b7ab95610cd7960":
+                  sys.exit("the published 0.6.0.0 coordinate manifest changed after upload")
+              if manifest(expected_reported_purls) != "23593a776b051febe452adc0edffd0fbc5a90730242e6e4dd346641d0f0a6143":
+                  sys.exit("the published 0.6.0.0 status manifest changed after upload")
           actual_purls = set(purls)
           unexpected_purls = actual_purls - expected_reported_purls
           if unexpected_purls:
@@ -611,23 +636,26 @@ jobs:
               echo "::error::Expected to prove 75 coordinates unpublished, checked ${CHECKED_PURLS}"
               exit 1
             }
-            echo "claim_retry_deployment=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Claim the one-time failed-deployment retry
-        if: steps.central_recovery.outputs.claim_retry_deployment == 'true'
+      - name: Claim the one-time Central upload
+        if: steps.version.outputs.upload_required == 'true'
         shell: bash
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
           RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}
           RETRY_FAILED_DEPLOYMENT_ID: ${{ inputs.retry_failed_deployment_id || '' }}
         run: |
-          CLAIM_TAG="central-retry-v${RELEASE_VERSION}-${RETRY_FAILED_DEPLOYMENT_ID}"
+          if [[ -n "$RETRY_FAILED_DEPLOYMENT_ID" ]]; then
+            CLAIM_TAG="central-retry-v${RELEASE_VERSION}-${RETRY_FAILED_DEPLOYMENT_ID}"
+          else
+            CLAIM_TAG="central-upload-v${RELEASE_VERSION}"
+          fi
           CLAIM_REF="refs/tags/${CLAIM_TAG}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag --annotate "$CLAIM_TAG" "$RELEASE_COMMIT" \
-            --message "Aether Central retry claim from run ${GITHUB_RUN_ID}, attempt ${GITHUB_RUN_ATTEMPT}"
+            --message "Aether Central upload claim from run ${GITHUB_RUN_ID}, attempt ${GITHUB_RUN_ATTEMPT}"
           git push --force-with-lease="${CLAIM_REF}:" origin "$CLAIM_REF"
           echo "Claimed ${CLAIM_REF}; any interrupted run must resume the newly accepted deployment instead of uploading again."
 
@@ -715,12 +743,23 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           RELEASE_COMMIT="${{ steps.version.outputs.release_commit }}"
+          TAG_EXISTS="${{ steps.version.outputs.tag_exists }}"
+          EXPECTED_TAG_OBJECT="${{ steps.version.outputs.tag_object }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          REMOTE_TAG_OBJECT=$(git ls-remote origin "refs/tags/v${VERSION}" | awk 'NR == 1 { print $1 }')
+          if [[ "$TAG_EXISTS" == "true" ]]; then
+            [[ -n "$EXPECTED_TAG_OBJECT" && "$REMOTE_TAG_OBJECT" == "$EXPECTED_TAG_OBJECT" ]] || {
+              echo "::error::The remote release tag changed while publication was in progress"
+              exit 1
+            }
+          elif [[ -n "$REMOTE_TAG_OBJECT" ]]; then
+            echo "::error::The remote release tag appeared while publication was in progress"
+            exit 1
+          fi
           if [[ "${{ steps.version.outputs.tag_needs_repair }}" == "true" ]]; then
-            OLD_TAG_OBJECT=$(git rev-parse "refs/tags/v${VERSION}")
             git tag --force --annotate "v${VERSION}" "$RELEASE_COMMIT" --message "Aether ${VERSION}"
-            git push --force-with-lease="refs/tags/v${VERSION}:${OLD_TAG_OBJECT}" origin "refs/tags/v${VERSION}"
+            git push --force-with-lease="refs/tags/v${VERSION}:${EXPECTED_TAG_OBJECT}" origin "refs/tags/v${VERSION}"
           elif git rev-parse "v${VERSION}" >/dev/null 2>&1; then
             [[ "$(git rev-list -n 1 "v${VERSION}")" == "$RELEASE_COMMIT" ]] || {
               echo "::error::Existing release tag does not match the published commit"

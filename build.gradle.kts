@@ -649,7 +649,16 @@ val waitForCentralPortalPublication by tasks.registering {
                 val returnedName = status["deploymentName"] as? String
                 val state = status["deploymentState"] as? String
                     ?: throw GradleException("Central status has no deploymentState for $deploymentId")
-                val purlList = (status["purls"] as? List<*>)?.filterIsInstance<String>().orEmpty()
+                val rawPurls = status["purls"]
+                val purlValues = when (rawPurls) {
+                    null -> emptyList<Any?>()
+                    is List<*> -> rawPurls
+                    else -> throw GradleException("Central status purls must be an array")
+                }
+                if (purlValues.any { it !is String }) {
+                    throw GradleException("Central status purls must contain only strings")
+                }
+                val purlList = purlValues.filterIsInstance<String>()
                 val purls = purlList.toSet()
                 if (returnedId != deploymentId) throw GradleException("Central status returned a different deployment ID")
                 if (returnedName != expectedDeploymentName) {

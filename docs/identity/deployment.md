@@ -354,12 +354,13 @@ Resume executes the current reviewed polling workflow while keeping the deployme
 bound to that original upload commit. Never rerun an ambiguous upload. Recovery requires Central's
 complete 111-PURL report—75 base coordinates, 35 `type=klib` variants, and the plugin marker's
 `type=pom` variant—before it can repair a tag or update the GitHub release.
-Every failed-deployment retry atomically creates a permanent claim tag immediately before its
-replacement upload, making that deployment ID single-use. If Central no longer exposes a reviewed
-failed deployment, HTTP 404 alone is not proof that the deployment failed. The `0.6.0.0` exception
-is therefore also bound to the recorded deployment, original tag object and commit, reviewed repair
-baseline, explicit operator acknowledgement, and a fresh canonical Maven lookup proving that all 75
-coordinates remain unpublished. After an interruption, never submit the old failed-deployment ID
+Every Central upload atomically creates a permanent version/deployment claim tag immediately before
+the network call, making a new-version upload or failed-deployment retry single-use. If Central no
+longer exposes a reviewed failed deployment, HTTP 404 alone is not proof that the deployment failed.
+The `0.6.0.0` exception is therefore also bound to the recorded deployment, original tag object and
+commit, reviewed repair baseline, explicit operator acknowledgement, and a fresh canonical Maven
+lookup proving that all 75 coordinates remain unpublished. After an interruption, never submit the
+old failed-deployment ID
 again: resume the exact replacement ID if Central accepted one, or stop for manual review if no
 accepted ID can be proven. Do not remove a claim without definitive evidence that no upload began.
 Automated verification includes JVM, wasmJs and wasmWasi guest protocol/crypto tests, the native
