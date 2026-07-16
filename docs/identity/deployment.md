@@ -340,7 +340,18 @@ intentional property.
 ## Release verification
 
 Pushes to `main` publish after the automated workflow verification succeeds. `workflow_dispatch`
-remains a fallback for rerunning a release from `main`; it is not required for normal publication.
+is reserved for a guarded failed-deployment retry or exact-ID resume; it is not required for normal
+publication and must not be used to repeat an upload with an unknown outcome.
+Before any upload, the workflow publishes into an isolated local Maven repository and verifies that
+every non-POM component has its exact primary artifact, sources JAR, and Javadoc JAR. A Central
+upload is not considered complete at HTTP acceptance: the workflow polls the deployment until it
+reaches `PUBLISHED`, and a validation failure prevents release completion. Exceptional recovery of
+an already-tagged but unpublished release requires the exact authenticated `FAILED` deployment ID
+and explicit authorization to move the GitHub tag to the corrected commit. Upload and polling are
+separate steps: the accepted deployment UUID is recorded immediately and an interrupted deployment
+is resumed by that UUID plus the exact commit encoded in its deterministic deployment name. Never
+rerun an ambiguous upload. Recovery compares Central's complete component set with the 75-coordinate
+release manifest before it can repair a tag or update the GitHub release.
 Automated verification includes JVM, wasmJs and wasmWasi guest protocol/crypto tests, the native
 OpenSSL host-library tests, PostgreSQL 16 and Firestore conformance/race suites, Summon browser
 tests, federation adversarial suites, and the complete example build. Production wasmWasi

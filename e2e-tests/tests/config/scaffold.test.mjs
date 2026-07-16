@@ -76,7 +76,11 @@ test('successful main verification publishes automatically and only once per ver
 
   assert.match(workflow, /pull_request:\n\s+branches:\n\s+- main/);
   assert.match(workflow, /push:\n\s+branches:\n\s+- main/);
-  assert.match(workflow, /workflow_dispatch:\n\npermissions:/);
+  assert.match(workflow, /workflow_dispatch:\n\s+inputs:/);
+  assert.match(workflow, /retry_failed_deployment_id:/);
+  assert.match(workflow, /resume_deployment_id:/);
+  assert.match(workflow, /resume_commit_sha:/);
+  assert.match(workflow, /repair_release_tag:/);
   assert.doesNotMatch(workflow, /hardware_passkey_smoke_|adversarial_review_/);
   assert.match(
     workflow,
@@ -89,22 +93,90 @@ test('successful main verification publishes automatically and only once per ver
   );
   assert.match(
     workflow,
-    /Read release version and publication state[\s\S]*?refs\/tags\/v\$\{VERSION\}[\s\S]*?tag_exists=true[\s\S]*?tag_exists=false/
+    /Read release version and publication state[\s\S]*?refs\/tags\/v\$\{VERSION\}[\s\S]*?tag_exists=true[\s\S]*?tag_exists=false[\s\S]*?publish_required=true[\s\S]*?publish_required=false/
   );
   assert.match(workflow, /CHANGELOG_VERSION[\s\S]*?does not match version\.properties/);
+  assert.match(workflow, /retry_failed_deployment_id and resume_deployment_id are mutually exclusive/);
+  assert.match(workflow, /Manual publication is recovery-only; provide a failed retry ID or an exact resume ID/);
+  assert.match(workflow, /resume_commit_sha must be the exact 40-character upload commit/);
+  assert.match(workflow, /A rerun may duplicate an accepted Central upload/);
+  assert.match(workflow, /Same-version recovery is restricted to reviewed publication metadata/);
+  assert.match(workflow, /git diff --name-only "v\$\{VERSION\}"\.\.\.HEAD/);
+  assert.match(workflow, /git merge-base --is-ancestor "v\$\{VERSION\}" HEAD/);
   assert.match(
     workflow,
-    /- name: Publish Aether to Maven Central\n\s+if: steps\.version\.outputs\.tag_exists != 'true'/
+    /- name: Upload one Aether bundle to Maven Central[\s\S]*?if: steps\.version\.outputs\.upload_required == 'true'/
   );
   assert.match(
     workflow,
-    /- name: Create and push release tag\n\s+if: steps\.version\.outputs\.tag_exists != 'true'/
+    /- name: Wait for Maven Central publication[\s\S]*?if: steps\.version\.outputs\.publish_required == 'true'/
   );
+  assert.match(
+    workflow,
+    /- name: Create or repair the release tag\n\s+if: steps\.version\.outputs\.publish_required == 'true'/
+  );
+  assert.match(workflow, /--force-with-lease="refs\/tags\/v\$\{VERSION\}:\$\{OLD_TAG_OBJECT\}"/);
   assert.match(workflow, /- name: Extract latest changelog entry\n\s+id: changelog/);
   assert.match(
     workflow,
-    /- name: Create GitHub release\n\s+uses: softprops\/action-gh-release@v2\n\s+if: steps\.changelog\.outputs\.notes != ''/
+    /- name: Create GitHub release\n\s+uses: softprops\/action-gh-release@v2\n\s+if: steps\.version\.outputs\.publish_required == 'true' && steps\.changelog\.outputs\.notes != ''/
   );
+
+  const validateIndex = workflow.indexOf('- name: Validate Central recovery request');
+  const uploadIndex = workflow.indexOf('- name: Upload one Aether bundle to Maven Central');
+  const waitIndex = workflow.indexOf('- name: Wait for Maven Central publication');
+  const tagIndex = workflow.indexOf('- name: Create or repair the release tag');
+  assert.ok(validateIndex < uploadIndex && uploadIndex < waitIndex && waitIndex < tagIndex);
+});
+
+test('Maven Central publication requires real sources and waits for PUBLISHED', async () => {
+  const pluginBuild = await text('../aether-plugin/build.gradle.kts');
+  const rootBuild = await text('../build.gradle.kts');
+  const workflow = await text('../.github/workflows/publish.yml');
+  const signScript = await text('../sign-artifact.sh');
+
+  assert.match(pluginBuild, /java\s*\{[\s\S]*?withSourcesJar\(\)/);
+  assert.match(rootBuild, /verifyCentralPublicationArtifacts by tasks\.registering/);
+  assert.match(rootBuild, /sources JAR is missing or empty/);
+  assert.match(rootBuild, /sources JAR contains no Kotlin or Java source/);
+  assert.match(rootBuild, /val pomOnly = Regex/);
+  assert.match(rootBuild, /if \(pomOnly\)/);
+  assert.match(rootBuild, /prepareCentralPortalBundle by tasks\.registering/);
+  assert.match(rootBuild, /uploadCentralPortalBundle by tasks\.registering/);
+  assert.match(rootBuild, /waitForCentralPortalPublication by tasks\.registering/);
+  assert.match(rootBuild, /dependsOn\(verifyCentralPublicationArtifacts, writeExpectedCentralPurls\)/);
+  assert.match(rootBuild, /publishingType=AUTOMATIC/);
+  assert.match(rootBuild, /Authorization: \$\{'\$'\}AETHER_CENTRAL_AUTHORIZATION/);
+  assert.match(rootBuild, /"PUBLISHED" -> \{/);
+  assert.match(rootBuild, /"FAILED" -> throw GradleException/);
+  assert.match(rootBuild, /JsonSlurper\(\)\.parseText/);
+  assert.match(rootBuild, /--connect-timeout 15/);
+  assert.match(rootBuild, /Central upload outcome is indeterminate/);
+  assert.match(rootBuild, /numericHttpCode !in setOf\(408, 409, 425, 429\)/);
+  assert.match(rootBuild, /uploadCentralPortalBundle cannot resume an existing deployment/);
+  assert.match(rootBuild, /centralExpectedPurls/);
+  assert.match(rootBuild, /purlList\.size != purls\.size/);
+  assert.match(rootBuild, /purls != expectedPurls/);
+  assert.match(signScript, /AETHER_SIGNING_PASSPHRASE/);
+  assert.match(signScript, /--passphrase-fd 0/);
+  assert.doesNotMatch(signScript, /PASSPHRASE="\$1"|--passphrase "\$PASSPHRASE"/);
+  assert.match(workflow, /verifyExpectedSourceTasks verifyCentralPublicationArtifacts check/);
+  assert.match(workflow, /retry deployment must be FAILED/);
+  assert.match(workflow, /data\.get\("deploymentName"\) != expected_name/);
+  assert.match(workflow, /actual_purls != expected_purls/);
+  assert.match(workflow, /state == "PUBLISHED" or bool\(actual_purls\)/);
+  assert.match(workflow, /Version \$\{RELEASE_VERSION\} is already public and cannot be replaced/);
+
+  const uploadStep = workflow.match(
+    /- name: Upload one Aether bundle to Maven Central[\s\S]*?(?=\n\s+- name: Wait for Maven Central publication)/
+  )?.[0] ?? '';
+  const waitStep = workflow.match(
+    /- name: Wait for Maven Central publication[\s\S]*?(?=\n\s+- name: Delete publishing credentials)/
+  )?.[0] ?? '';
+  assert.doesNotMatch(uploadStep, /MAX_RETRIES|for i in|waitForCentralPortalPublication/);
+  assert.match(uploadStep, /uploadCentralPortalBundle/);
+  assert.doesNotMatch(waitStep, /uploadCentralPortalBundle|signingPassword|private-key\.asc/);
+  assert.match(waitStep, /waitForCentralPortalPublication/);
 });
 
 test('the virtual authenticator models a discoverable user-verified CTAP2 passkey', async () => {

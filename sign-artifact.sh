@@ -1,10 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-PASSPHRASE="$1"
-KEY_FILE="$2"
-OUTPUT_FILE="$3"
-INPUT_FILE="$4"
+PASSPHRASE="${AETHER_SIGNING_PASSPHRASE:?AETHER_SIGNING_PASSPHRASE is required}"
+KEY_FILE="$1"
+OUTPUT_FILE="$2"
+INPUT_FILE="$3"
 
 GPG_BIN="${GPG_BIN:-$(command -v gpg)}"
 
@@ -37,8 +37,8 @@ if [[ -z "$KEY_ID" ]]; then
 fi
 
 # Sign the artifact
-"$GPG_BIN" --batch --yes --pinentry-mode loopback \
-  --passphrase "$PASSPHRASE" \
+printf '%s\n' "$PASSPHRASE" | "$GPG_BIN" --batch --yes --pinentry-mode loopback \
+  --passphrase-fd 0 \
   --default-key "$KEY_ID" \
   --local-user "$KEY_ID" \
   --armor --detach-sign \

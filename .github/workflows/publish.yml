@@ -8,6 +8,24 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      retry_failed_deployment_id:
+        description: Exact FAILED Central deployment UUID authorizing a corrected same-version upload
+        required: false
+        type: string
+      resume_deployment_id:
+        description: Existing non-failed Central deployment UUID to resume polling without another upload
+        required: false
+        type: string
+      resume_commit_sha:
+        description: Exact 40-character commit SHA encoded in the resumed deployment name
+        required: false
+        type: string
+      repair_release_tag:
+        description: Move an existing unpublished release tag to the exact corrected publication commit
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -37,6 +55,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.resume_commit_sha || github.sha }}
 
       - name: Grant execute permissions
         run: |
@@ -109,7 +128,10 @@ jobs:
           RETRY_DELAY=30
           for i in $(seq 1 $MAX_RETRIES); do
             echo "Attempt $i of $MAX_RETRIES"
-            if ./gradlew verifyExpectedSourceTasks check -x wasmJsBrowserTest --dependency-verification=strict --no-daemon --stacktrace; then
+            MAVEN_REPO="$RUNNER_TEMP/aether-verify-m2-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${i}"
+            rm -rf "$MAVEN_REPO"
+            mkdir -p "$MAVEN_REPO"
+            if ./gradlew -Dmaven.repo.local="$MAVEN_REPO" verifyExpectedSourceTasks verifyCentralPublicationArtifacts check -x wasmJsBrowserTest --dependency-verification=strict --no-daemon --stacktrace; then
               exit 0
             fi
             if [ $i -lt $MAX_RETRIES ]; then
@@ -194,6 +216,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.resume_commit_sha || github.sha }}
 
       - name: Grant execute permissions
         run: |
@@ -211,6 +234,11 @@ jobs:
       - name: Read release version and publication state
         id: version
         shell: bash
+        env:
+          RETRY_FAILED_DEPLOYMENT_ID: ${{ inputs.retry_failed_deployment_id || '' }}
+          RESUME_DEPLOYMENT_ID: ${{ inputs.resume_deployment_id || '' }}
+          RESUME_COMMIT_SHA: ${{ inputs.resume_commit_sha || '' }}
+          REPAIR_RELEASE_TAG: ${{ inputs.repair_release_tag || false }}
         run: |
           VERSION=$(grep "^VERSION=" version.properties | cut -d'=' -f2)
           [[ -n "$VERSION" ]] || { echo "::error::version.properties has no VERSION"; exit 1; }
@@ -219,43 +247,163 @@ jobs:
             echo "::error::The first CHANGELOG.md release ($CHANGELOG_VERSION) does not match version.properties ($VERSION)."
             exit 1
           }
+          RELEASE_COMMIT=$(git rev-parse HEAD)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          if git rev-parse --verify --quiet "refs/tags/v${VERSION}" >/dev/null; then
-            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
-            echo "Release tag v${VERSION} already exists; publication is already complete."
-          else
-            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+          echo "release_commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "deployment_name=aether-${VERSION}-${RELEASE_COMMIT}" >> "$GITHUB_OUTPUT"
+
+          if [[ -n "$RETRY_FAILED_DEPLOYMENT_ID" && -n "$RESUME_DEPLOYMENT_ID" ]]; then
+            echo "::error::retry_failed_deployment_id and resume_deployment_id are mutually exclusive"
+            exit 1
           fi
-
-      - name: Ensure publishing secrets are present
-        if: steps.version.outputs.tag_exists != 'true'
-        shell: bash
-        run: |
-          [[ -n "${{ secrets.CENTRAL_USERNAME }}" ]] || { echo "::error::Missing required secret CENTRAL_USERNAME"; exit 1; }
-          [[ -n "${{ secrets.CENTRAL_PASSWORD }}" ]] || { echo "::error::Missing required secret CENTRAL_PASSWORD"; exit 1; }
-          [[ -n "${{ secrets.CENTRAL_SIGNING_PASSWORD }}" ]] || { echo "::error::Missing required secret CENTRAL_SIGNING_PASSWORD"; exit 1; }
-          [[ -n "${{ secrets.CENTRAL_SIGNING_KEY_ASC }}" ]] || { echo "::error::Missing required secret CENTRAL_SIGNING_KEY_ASC"; exit 1; }
-
-      - name: Configure publishing credentials
-        if: steps.version.outputs.tag_exists != 'true'
-        shell: bash
-        run: |
-          cat <<'EOF' > local.properties
-          mavenCentralUsername=${{ secrets.CENTRAL_USERNAME }}
-          mavenCentralPassword=${{ secrets.CENTRAL_PASSWORD }}
-          signingPassword=${{ secrets.CENTRAL_SIGNING_PASSWORD }}
-          EOF
-
-          SIGNING_SECRET="${{ secrets.CENTRAL_SIGNING_KEY_ASC }}"
-          if [[ -z "$SIGNING_SECRET" ]]; then
-            echo "::error::CENTRAL_SIGNING_KEY_ASC secret is not set"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && -z "$RETRY_FAILED_DEPLOYMENT_ID" && -z "$RESUME_DEPLOYMENT_ID" ]]; then
+            echo "::error::Manual publication is recovery-only; provide a failed retry ID or an exact resume ID."
+            exit 1
+          fi
+          for DEPLOYMENT_ID in "$RETRY_FAILED_DEPLOYMENT_ID" "$RESUME_DEPLOYMENT_ID"; do
+            if [[ -n "$DEPLOYMENT_ID" && ! "$DEPLOYMENT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+              echo "::error::Central deployment IDs must be UUIDs"
+              exit 1
+            fi
+          done
+          if [[ -n "$RESUME_DEPLOYMENT_ID" ]]; then
+            [[ "$RESUME_COMMIT_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || {
+              echo "::error::resume_commit_sha must be the exact 40-character upload commit"
+              exit 1
+            }
+            [[ "${RESUME_COMMIT_SHA,,}" == "${RELEASE_COMMIT,,}" ]] || {
+              echo "::error::Checkout commit does not match resume_commit_sha"
+              exit 1
+            }
+          elif [[ -n "$RESUME_COMMIT_SHA" ]]; then
+            echo "::error::resume_commit_sha is valid only with resume_deployment_id"
             exit 1
           fi
 
-          if echo "$SIGNING_SECRET" | base64 -d > private-key.asc 2>/tmp/base64-decode.log; then
+          if git rev-parse --verify --quiet "refs/tags/v${VERSION}" >/dev/null; then
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+            TAG_EXISTS=true
+            TAG_COMMIT=$(git rev-list -n 1 "v${VERSION}")
+          else
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+            TAG_EXISTS=false
+            TAG_COMMIT=""
+          fi
+          TAG_NEEDS_REPAIR=false
+          UPLOAD_REQUIRED=false
+
+          if [[ -n "$RETRY_FAILED_DEPLOYMENT_ID" ]]; then
+            [[ "$TAG_EXISTS" == "true" ]] || {
+              echo "::error::A failed-deployment retry is only allowed for an existing release tag."
+              exit 1
+            }
+            git merge-base --is-ancestor "v${VERSION}" HEAD || {
+              echo "::error::Existing tag v${VERSION} is not an ancestor of the repair commit."
+              exit 1
+            }
+            if [[ "$TAG_COMMIT" != "$RELEASE_COMMIT" ]]; then
+              [[ "$REPAIR_RELEASE_TAG" == "true" ]] || {
+                echo "::error::The corrected bundle differs from v${VERSION}; explicitly enable repair_release_tag."
+                exit 1
+              }
+              TAG_NEEDS_REPAIR=true
+            fi
+            UPLOAD_REQUIRED=true
+            echo "publish_required=true" >> "$GITHUB_OUTPUT"
+            echo "upload_required=true" >> "$GITHUB_OUTPUT"
+            echo "release_mode=retry_failed" >> "$GITHUB_OUTPUT"
+          elif [[ -n "$RESUME_DEPLOYMENT_ID" ]]; then
+            git fetch --no-tags origin main
+            git merge-base --is-ancestor "$RELEASE_COMMIT" origin/main || {
+              echo "::error::The resumed release commit is not contained in origin/main."
+              exit 1
+            }
+            if [[ "$TAG_EXISTS" == "true" ]]; then
+              git merge-base --is-ancestor "v${VERSION}" HEAD || {
+                echo "::error::Existing tag v${VERSION} is not an ancestor of the repair commit."
+                exit 1
+              }
+              if [[ "$TAG_COMMIT" != "$RELEASE_COMMIT" ]]; then
+                [[ "$REPAIR_RELEASE_TAG" == "true" ]] || {
+                  echo "::error::Resume would change v${VERSION}; explicitly enable repair_release_tag."
+                  exit 1
+                }
+                TAG_NEEDS_REPAIR=true
+              fi
+            fi
+            echo "publish_required=true" >> "$GITHUB_OUTPUT"
+            echo "upload_required=false" >> "$GITHUB_OUTPUT"
+            echo "release_mode=resume" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG_EXISTS" == "true" ]]; then
+            git merge-base --is-ancestor "v${VERSION}" HEAD || {
+              echo "::error::Existing tag v${VERSION} is not an ancestor of the current main commit."
+              exit 1
+            }
+            [[ "$REPAIR_RELEASE_TAG" == "false" ]] || {
+              echo "::error::repair_release_tag is valid only for retry or resume recovery."
+              exit 1
+            }
+            echo "publish_required=false" >> "$GITHUB_OUTPUT"
+            echo "upload_required=false" >> "$GITHUB_OUTPUT"
+            echo "release_mode=existing" >> "$GITHUB_OUTPUT"
+            echo "Release tag v${VERSION} already exists; Central upload is skipped."
+          else
+            [[ "$REPAIR_RELEASE_TAG" == "false" ]] || {
+              echo "::error::repair_release_tag requires an existing release tag."
+              exit 1
+            }
+            UPLOAD_REQUIRED=true
+            echo "publish_required=true" >> "$GITHUB_OUTPUT"
+            echo "upload_required=true" >> "$GITHUB_OUTPUT"
+            echo "release_mode=new" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "$TAG_NEEDS_REPAIR" == "true" ]]; then
+            UNEXPECTED_REPAIR_FILES=()
+            while IFS= read -r FILE; do
+              case "$FILE" in
+                .github/workflows/publish.yml|CHANGELOG.md|aether-plugin/build.gradle.kts|build.gradle.kts|docs/identity/deployment.md|e2e-tests/tests/config/scaffold.test.mjs|sign-artifact.sh)
+                  ;;
+                *)
+                  UNEXPECTED_REPAIR_FILES+=("$FILE")
+                  ;;
+              esac
+            done < <(git diff --name-only "v${VERSION}"...HEAD)
+            if (( ${#UNEXPECTED_REPAIR_FILES[@]} > 0 )); then
+              echo "::error::Same-version recovery is restricted to reviewed publication metadata; unexpected files: ${UNEXPECTED_REPAIR_FILES[*]}"
+              exit 1
+            fi
+          fi
+          echo "tag_needs_repair=$TAG_NEEDS_REPAIR" >> "$GITHUB_OUTPUT"
+
+          if [[ "$GITHUB_RUN_ATTEMPT" != "1" && "$UPLOAD_REQUIRED" == "true" ]]; then
+            echo "::error::A rerun may duplicate an accepted Central upload. Start a fresh dispatch or resume an exact deployment ID."
+            exit 1
+          fi
+
+      - name: Ensure Central credentials are present
+        if: steps.version.outputs.publish_required == 'true'
+        shell: bash
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+        run: |
+          [[ -n "$CENTRAL_USERNAME" ]] || { echo "::error::Missing required secret CENTRAL_USERNAME"; exit 1; }
+          [[ -n "$CENTRAL_PASSWORD" ]] || { echo "::error::Missing required secret CENTRAL_PASSWORD"; exit 1; }
+
+      - name: Configure signing key
+        if: steps.version.outputs.upload_required == 'true'
+        shell: bash
+        env:
+          CENTRAL_SIGNING_PASSWORD: ${{ secrets.CENTRAL_SIGNING_PASSWORD }}
+          CENTRAL_SIGNING_KEY_ASC: ${{ secrets.CENTRAL_SIGNING_KEY_ASC }}
+        run: |
+          [[ -n "$CENTRAL_SIGNING_PASSWORD" ]] || { echo "::error::Missing required secret CENTRAL_SIGNING_PASSWORD"; exit 1; }
+          [[ -n "$CENTRAL_SIGNING_KEY_ASC" ]] || { echo "::error::Missing required secret CENTRAL_SIGNING_KEY_ASC"; exit 1; }
+          if printf '%s' "$CENTRAL_SIGNING_KEY_ASC" | base64 --decode > private-key.asc 2>/tmp/base64-decode.log; then
             echo "Imported signing key from base64-encoded secret"
           else
-            echo "$SIGNING_SECRET" > private-key.asc
+            printf '%s\n' "$CENTRAL_SIGNING_KEY_ASC" > private-key.asc
             echo "Stored signing key as literal ASCII-armored block"
           fi
 
@@ -271,27 +419,110 @@ jobs:
           fi
           rm -rf "$TMP_GNUPGHOME"
 
-      - name: Publish Aether to Maven Central
-        if: steps.version.outputs.tag_exists != 'true'
+      - name: Validate Central recovery request
+        if: >-
+          steps.version.outputs.publish_required == 'true' &&
+          (inputs.retry_failed_deployment_id != '' || inputs.resume_deployment_id != '')
         shell: bash
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          EXPECTED_DEPLOYMENT_NAME: ${{ steps.version.outputs.deployment_name }}
+          RETRY_FAILED_DEPLOYMENT_ID: ${{ inputs.retry_failed_deployment_id || '' }}
+          RESUME_DEPLOYMENT_ID: ${{ inputs.resume_deployment_id || '' }}
+        run: |
+          ./gradlew writeExpectedCentralPurls --no-daemon --quiet
+          DEPLOYMENT_ID="${RETRY_FAILED_DEPLOYMENT_ID:-$RESUME_DEPLOYMENT_ID}"
+          export DEPLOYMENT_ID
+          AUTHORIZATION="Bearer $(printf '%s' "$CENTRAL_USERNAME:$CENTRAL_PASSWORD" | base64 | tr -d '\n\r')"
+          STATUS_JSON=$(curl --request POST \
+            --url "https://central.sonatype.com/api/v1/publisher/status?id=${DEPLOYMENT_ID}" \
+            --header "Authorization: ${AUTHORIZATION}" \
+            --connect-timeout 10 --max-time 30 \
+            --fail-with-body --silent --show-error)
+          export STATUS_JSON
+
+          python3 <<'PY'
+          import json
+          import os
+          import sys
+
+          data = json.loads(os.environ["STATUS_JSON"])
+          version = os.environ["RELEASE_VERSION"]
+          deployment_id = os.environ["DEPLOYMENT_ID"]
+          retry_id = os.environ.get("RETRY_FAILED_DEPLOYMENT_ID", "")
+          expected_name = os.environ["EXPECTED_DEPLOYMENT_NAME"]
+          state = data.get("deploymentState")
+          purls = data.get("purls") or []
+          with open("build/central-expected-purls.txt", encoding="utf-8") as source:
+              expected_purls = {line.strip() for line in source if line.strip()}
+
+          if data.get("deploymentId") != deployment_id:
+              sys.exit("Central status response did not match the requested deployment")
+          if not retry_id and data.get("deploymentName") != expected_name:
+              sys.exit("resumed deployment name is not bound to the requested release commit")
+
+          if retry_id:
+              if state != "FAILED":
+                  sys.exit(f"retry deployment must be FAILED, received {state!r}")
+          elif state not in {"PENDING", "VALIDATING", "VALIDATED", "PUBLISHING", "PUBLISHED"}:
+              sys.exit(f"resume deployment is not resumable, received {state!r}")
+
+          if len(purls) != len(set(purls)):
+              sys.exit("deployment contains duplicate component PURLs")
+          actual_purls = set(purls)
+          require_complete_manifest = bool(retry_id) or state == "PUBLISHED" or bool(actual_purls)
+          if require_complete_manifest and actual_purls != expected_purls:
+              missing = sorted(expected_purls - actual_purls)
+              unexpected = sorted(actual_purls - expected_purls)
+              sys.exit(f"deployment component mismatch; missing={missing}, unexpected={unexpected}")
+          print(f"Central recovery request verified: {data.get('deploymentId')} is {state}")
+          PY
+
+          if [[ -n "$RETRY_FAILED_DEPLOYMENT_ID" ]]; then
+            HTTP_CODE=$(curl --head --silent --output /dev/null --write-out '%{http_code}' \
+              --connect-timeout 10 --max-time 30 \
+              "https://repo1.maven.org/maven2/codes/yousef/aether/aether-core/${RELEASE_VERSION}/aether-core-${RELEASE_VERSION}.pom")
+            case "$HTTP_CODE" in
+              404) ;;
+              200) echo "::error::Version ${RELEASE_VERSION} is already public and cannot be replaced"; exit 1 ;;
+              *) echo "::error::Could not prove version ${RELEASE_VERSION} is unpublished (HTTP ${HTTP_CODE})"; exit 1 ;;
+            esac
+          fi
+
+      - name: Upload one Aether bundle to Maven Central
+        id: central_upload
+        if: steps.version.outputs.upload_required == 'true'
+        shell: bash
+        env:
+          mavenCentralUsername: ${{ secrets.CENTRAL_USERNAME }}
+          mavenCentralPassword: ${{ secrets.CENTRAL_PASSWORD }}
+          signingPassword: ${{ secrets.CENTRAL_SIGNING_PASSWORD }}
+          AETHER_CENTRAL_DEPLOYMENT_NAME: ${{ steps.version.outputs.deployment_name }}
         run: |
           MAVEN_REPO="$RUNNER_TEMP/aether-release-m2-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           mkdir -p "$MAVEN_REPO"
-          MAX_RETRIES=3
-          RETRY_DELAY=30
-          for i in $(seq 1 $MAX_RETRIES); do
-            echo "Attempt $i of $MAX_RETRIES"
-            if ./gradlew -Dmaven.repo.local="$MAVEN_REPO" publishToCentralPortalManually --no-daemon --stacktrace --info; then
-              exit 0
-            fi
-            if [ $i -lt $MAX_RETRIES ]; then
-              echo "Publish failed, retrying in ${RETRY_DELAY}s..."
-              sleep $RETRY_DELAY
-              RETRY_DELAY=$((RETRY_DELAY * 2))
-            fi
-          done
-          echo "Publish failed after $MAX_RETRIES attempts"
-          exit 1
+          ./gradlew -Dmaven.repo.local="$MAVEN_REPO" uploadCentralPortalBundle --no-daemon --stacktrace
+          DEPLOYMENT_ID=$(tr -d '\n\r' < build/central-portal-deployment-id.txt)
+          [[ "$DEPLOYMENT_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || { echo "::error::Central deployment ID was not recorded"; exit 1; }
+          echo "deployment_id=$DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for Maven Central publication
+        if: steps.version.outputs.publish_required == 'true'
+        shell: bash
+        env:
+          mavenCentralUsername: ${{ secrets.CENTRAL_USERNAME }}
+          mavenCentralPassword: ${{ secrets.CENTRAL_PASSWORD }}
+          AETHER_CENTRAL_DEPLOYMENT_ID: ${{ inputs.resume_deployment_id || steps.central_upload.outputs.deployment_id }}
+          AETHER_CENTRAL_DEPLOYMENT_NAME: ${{ steps.version.outputs.deployment_name }}
+        run: |
+          ./gradlew waitForCentralPortalPublication --no-daemon --stacktrace
+
+      - name: Delete publishing credentials
+        if: always()
+        shell: bash
+        run: rm -f private-key.asc local.properties
 
       - name: Extract latest changelog entry
         id: changelog
@@ -331,23 +562,31 @@ jobs:
             echo "notes=" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create and push release tag
-        if: steps.version.outputs.tag_exists != 'true'
+      - name: Create or repair the release tag
+        if: steps.version.outputs.publish_required == 'true'
         shell: bash
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          RELEASE_COMMIT="${{ steps.version.outputs.release_commit }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
-            echo "Tag v${VERSION} already exists, skipping."
+          if [[ "${{ steps.version.outputs.tag_needs_repair }}" == "true" ]]; then
+            OLD_TAG_OBJECT=$(git rev-parse "refs/tags/v${VERSION}")
+            git tag --force --annotate "v${VERSION}" "$RELEASE_COMMIT" --message "Aether ${VERSION}"
+            git push --force-with-lease="refs/tags/v${VERSION}:${OLD_TAG_OBJECT}" origin "refs/tags/v${VERSION}"
+          elif git rev-parse "v${VERSION}" >/dev/null 2>&1; then
+            [[ "$(git rev-list -n 1 "v${VERSION}")" == "$RELEASE_COMMIT" ]] || {
+              echo "::error::Existing release tag does not match the published commit"
+              exit 1
+            }
           else
-            git tag -a "v${VERSION}" -m "Aether ${VERSION}"
+            git tag --annotate "v${VERSION}" "$RELEASE_COMMIT" --message "Aether ${VERSION}"
             git push origin "v${VERSION}"
           fi
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
-        if: steps.changelog.outputs.notes != ''
+        if: steps.version.outputs.publish_required == 'true' && steps.changelog.outputs.notes != ''
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: Aether ${{ steps.version.outputs.version }}
