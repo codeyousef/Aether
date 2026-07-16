@@ -235,22 +235,65 @@ val centralDeploymentIdPattern = Regex(
 )
 
 fun centralExpectedPurls(version: String): Set<String> = buildSet {
+    check(centralPortalArtifactIds.size == centralPortalArtifactIds.toSet().size) {
+        "Central publication artifact IDs must be unique"
+    }
     centralPortalArtifactIds.forEach { artifactId ->
         add("pkg:maven/codes.yousef.aether/$artifactId@$version")
     }
     add("pkg:maven/codes.yousef.aether.plugin/$centralPluginMarkerArtifactId@$version")
+}.also { purls ->
+    check(centralPortalArtifactIds.size == 74 && purls.size == 75) {
+        "Central coordinate manifest must contain exactly 74 artifacts plus the plugin marker"
+    }
+}
+
+fun centralExpectedReportedPurls(version: String): Set<String> {
+    val basePurls = centralExpectedPurls(version)
+    val klibArtifactIds = centralPortalArtifactIds
+        .filter { artifactId -> artifactId.endsWith("-wasm-js") || artifactId.endsWith("-wasm-wasi") }
+    check(klibArtifactIds.size == 35) { "Central status manifest must contain exactly 35 KLIB variants" }
+    return buildSet {
+        addAll(basePurls)
+        klibArtifactIds.forEach { artifactId ->
+            add("pkg:maven/codes.yousef.aether/$artifactId@$version?type=klib")
+        }
+        add("pkg:maven/codes.yousef.aether.plugin/$centralPluginMarkerArtifactId@$version?type=pom")
+    }.also { reportedPurls ->
+        check(reportedPurls.size == 111 && reportedPurls.containsAll(basePurls)) {
+            "Central status manifest must contain exactly 111 PURLs including all release coordinates"
+        }
+    }
 }
 
 val writeExpectedCentralPurls by tasks.registering {
     group = "publishing"
     description = "Writes the exact component set expected in a Central Portal deployment."
     val outputFile = layout.buildDirectory.file("central-expected-purls.txt")
+    val expectedPurls = provider { centralExpectedPurls(project.version.toString()).sorted() }
+    inputs.property("expectedPurls", expectedPurls)
     outputs.file(outputFile)
 
     doLast {
         outputFile.get().asFile.apply {
             parentFile.mkdirs()
-            writeText(centralExpectedPurls(project.version.toString()).sorted().joinToString("\n", postfix = "\n"))
+            writeText(expectedPurls.get().joinToString("\n", postfix = "\n"))
+        }
+    }
+}
+
+val writeExpectedCentralReportedPurls by tasks.registering {
+    group = "publishing"
+    description = "Writes the exact PURL set reported by Central Portal for the release components."
+    val outputFile = layout.buildDirectory.file("central-expected-reported-purls.txt")
+    val expectedPurls = provider { centralExpectedReportedPurls(project.version.toString()).sorted() }
+    inputs.property("expectedPurls", expectedPurls)
+    outputs.file(outputFile)
+
+    doLast {
+        outputFile.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(expectedPurls.get().joinToString("\n", postfix = "\n"))
         }
     }
 }
@@ -527,7 +570,7 @@ val uploadCentralPortalBundle by tasks.registering {
 val waitForCentralPortalPublication by tasks.registering {
     group = "publishing"
     description = "Polls one known Central deployment until it reaches PUBLISHED or FAILED."
-    dependsOn(writeExpectedCentralPurls)
+    dependsOn(writeExpectedCentralPurls, writeExpectedCentralReportedPurls)
 
     doLast {
         val username = localProperties.getProperty("mavenCentralUsername")
@@ -551,7 +594,7 @@ val waitForCentralPortalPublication by tasks.registering {
             ?.trim()?.takeIf(String::isNotEmpty)
             ?: deploymentNameFile.takeIf(File::isFile)?.readText()?.trim()
             ?: throw GradleException("AETHER_CENTRAL_DEPLOYMENT_NAME or a recorded deployment name is required")
-        val expectedPurls = centralExpectedPurls(project.version.toString())
+        val expectedPurls = centralExpectedReportedPurls(project.version.toString())
         val timeoutSeconds = System.getenv("AETHER_CENTRAL_STATUS_TIMEOUT_SECONDS")
             ?.toLongOrNull()?.coerceIn(60L, 7200L) ?: 1800L
         val pollSeconds = System.getenv("AETHER_CENTRAL_STATUS_POLL_SECONDS")
@@ -613,10 +656,10 @@ val waitForCentralPortalPublication by tasks.registering {
                     throw GradleException("Central status returned unexpected deployment name '$returnedName'")
                 }
                 if (purlList.size != purls.size) throw GradleException("Central status contains duplicate PURLs")
-                if (purls.isNotEmpty() && purls != expectedPurls) {
+                val unexpectedPurls = purls - expectedPurls
+                if (unexpectedPurls.isNotEmpty()) {
                     throw GradleException(
-                        "Central deployment component mismatch; missing=${(expectedPurls - purls).sorted()}, " +
-                            "unexpected=${(purls - expectedPurls).sorted()}"
+                        "Central deployment contains unexpected components: ${unexpectedPurls.sorted()}"
                     )
                 }
 

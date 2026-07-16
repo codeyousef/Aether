@@ -349,9 +349,11 @@ reaches `PUBLISHED`, and a validation failure prevents release completion. Excep
 an already-tagged but unpublished release requires the exact authenticated `FAILED` deployment ID
 and explicit authorization to move the GitHub tag to the corrected commit. Upload and polling are
 separate steps: the accepted deployment UUID is recorded immediately and an interrupted deployment
-is resumed by that UUID plus the exact commit encoded in its deterministic deployment name. Never
-rerun an ambiguous upload. Recovery compares Central's complete component set with the 75-coordinate
-release manifest before it can repair a tag or update the GitHub release.
+is resumed by that UUID plus the exact upload commit encoded in its deterministic deployment name.
+Resume executes the current reviewed polling workflow while keeping the deployment and repaired tag
+bound to that original upload commit. Never rerun an ambiguous upload. Recovery requires Central's
+complete 111-PURL report—75 base coordinates, 35 `type=klib` variants, and the plugin marker's
+`type=pom` variant—before it can repair a tag or update the GitHub release.
 Every failed-deployment retry atomically creates a permanent claim tag immediately before its
 replacement upload, making that deployment ID single-use. If Central no longer exposes a reviewed
 failed deployment, HTTP 404 alone is not proof that the deployment failed. The `0.6.0.0` exception
