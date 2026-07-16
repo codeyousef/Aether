@@ -101,10 +101,19 @@ test('successful main verification publishes automatically and only once per ver
   assert.match(workflow, /acknowledge_unavailable_failed_deployment is valid only with retry_failed_deployment_id/);
   assert.match(workflow, /Manual publication is recovery-only; provide a failed retry ID or an exact resume ID/);
   assert.match(workflow, /resume_commit_sha must be the exact 40-character upload commit/);
+  assert.equal((workflow.match(/ref: \$\{\{ github\.sha \}\}/g) ?? []).length, 2);
+  assert.doesNotMatch(workflow, /ref: \$\{\{ inputs\.resume_commit_sha/);
+  assert.match(workflow, /RELEASE_COMMIT=\$\(git rev-parse "\$\{RESUME_COMMIT_SHA\}\^\{commit\}"\)/);
+  assert.match(workflow, /The current release version does not match the resumed upload commit/);
+  assert.doesNotMatch(workflow, /Checkout commit does not match resume_commit_sha/);
+  assert.match(
+    workflow,
+    /elif \[\[ -n "\$RESUME_DEPLOYMENT_ID" \]\]; then[\s\S]*?upload_required=false[\s\S]*?release_mode=resume/
+  );
   assert.match(workflow, /The failed-deployment retry commit is not contained in origin\/main/);
   assert.match(workflow, /A rerun may duplicate an accepted Central upload/);
   assert.match(workflow, /Same-version recovery is restricted to reviewed publication metadata/);
-  assert.match(workflow, /git diff --name-only "v\$\{VERSION\}"\.\.\.HEAD/);
+  assert.match(workflow, /git diff --name-only "v\$\{VERSION\}"\.\.\."\$\{RELEASE_COMMIT\}"/);
   assert.match(workflow, /git merge-base --is-ancestor "v\$\{VERSION\}" HEAD/);
   assert.match(
     workflow,
@@ -161,8 +170,21 @@ test('Maven Central publication requires real sources and waits for PUBLISHED', 
   assert.match(rootBuild, /numericHttpCode !in setOf\(408, 409, 425, 429\)/);
   assert.match(rootBuild, /uploadCentralPortalBundle cannot resume an existing deployment/);
   assert.match(rootBuild, /centralExpectedPurls/);
+  assert.match(rootBuild, /centralExpectedReportedPurls/);
+  assert.match(rootBuild, /writeExpectedCentralReportedPurls by tasks\.registering/);
+  assert.match(rootBuild, /central-expected-reported-purls\.txt/);
+  assert.match(rootBuild, /artifactId\.endsWith\("-wasm-js"\)/);
+  assert.match(rootBuild, /artifactId\.endsWith\("-wasm-wasi"\)/);
+  assert.match(rootBuild, /\?type=klib/);
+  assert.match(rootBuild, /\?type=pom/);
+  assert.match(rootBuild, /centralPortalArtifactIds\.size == 74 && purls\.size == 75/);
+  assert.match(rootBuild, /klibArtifactIds\.size == 35/);
+  assert.match(rootBuild, /reportedPurls\.size == 111/);
+  assert.match(rootBuild, /unexpectedPurls = purls - expectedPurls/);
+  assert.equal((rootBuild.match(/inputs\.property\("expectedPurls", expectedPurls\)/g) ?? []).length, 2);
+  assert.match(rootBuild, /reportedPurls\.containsAll\(basePurls\)/);
   assert.match(rootBuild, /purlList\.size != purls\.size/);
-  assert.match(rootBuild, /purls != expectedPurls/);
+  assert.match(rootBuild, /"PUBLISHED" -> \{[\s\S]*?purls != expectedPurls/);
   assert.match(signScript, /AETHER_SIGNING_PASSPHRASE/);
   assert.match(signScript, /--passphrase-fd 0/);
   assert.doesNotMatch(signScript, /PASSPHRASE="\$1"|--passphrase "\$PASSPHRASE"/);
@@ -178,11 +200,16 @@ test('Maven Central publication requires real sources and waits for PUBLISHED', 
   assert.match(workflow, /claim_retry_deployment=true/);
   assert.match(workflow, /--force-with-lease="\$\{CLAIM_REF\}:"/);
   assert.match(workflow, /data\.get\("deploymentName"\) != expected_name/);
-  assert.match(workflow, /actual_purls != expected_purls/);
-  assert.match(workflow, /state == "PUBLISHED" or bool\(actual_purls\)/);
+  assert.match(workflow, /actual_purls != expected_reported_purls/);
+  assert.match(workflow, /writeExpectedCentralPurls writeExpectedCentralReportedPurls/);
+  assert.match(workflow, /len\(expected_purls\) != 75 or len\(expected_reported_purls\) != 111/);
+  assert.match(workflow, /unexpected_purls = actual_purls - expected_reported_purls/);
+  assert.match(workflow, /require_complete_manifest = bool\(retry_id\) or state == "PUBLISHED"/);
   assert.match(workflow, /repo\.maven\.apache\.org\/maven2/);
   assert.match(workflow, /Expected to prove 75 coordinates unpublished/);
   assert.match(workflow, /is already public and cannot be replaced/);
+  assert.match(workflow, /git merge-base --is-ancestor "v\$\{VERSION\}" "\$RELEASE_COMMIT"/);
+  assert.match(workflow, /git show "\$\{RELEASE_COMMIT\}:CHANGELOG\.md"/);
 
   const recoveryValidationStep = workflow.match(
     /- name: Validate Central recovery request[\s\S]*?(?=\n\s+- name: Claim the one-time failed-deployment retry)/
@@ -227,13 +254,20 @@ test('Maven Central publication requires real sources and waits for PUBLISHED', 
   const uploadStep = workflow.match(
     /- name: Upload one Aether bundle to Maven Central[\s\S]*?(?=\n\s+- name: Wait for Maven Central publication)/
   )?.[0] ?? '';
+  const signingStep = workflow.match(
+    /- name: Configure signing key[\s\S]*?(?=\n\s+- name: Validate Central recovery request)/
+  )?.[0] ?? '';
   const waitStep = workflow.match(
     /- name: Wait for Maven Central publication[\s\S]*?(?=\n\s+- name: Delete publishing credentials)/
   )?.[0] ?? '';
   assert.doesNotMatch(uploadStep, /MAX_RETRIES|for i in|waitForCentralPortalPublication/);
+  assert.match(signingStep, /if: steps\.version\.outputs\.upload_required == 'true'/);
   assert.match(uploadStep, /uploadCentralPortalBundle/);
+  assert.match(uploadStep, /if: steps\.version\.outputs\.upload_required == 'true'/);
   assert.doesNotMatch(waitStep, /uploadCentralPortalBundle|signingPassword|private-key\.asc/);
   assert.match(waitStep, /waitForCentralPortalPublication/);
+  assert.match(waitStep, /AETHER_CENTRAL_DEPLOYMENT_ID: \$\{\{ inputs\.resume_deployment_id \|\| steps\.central_upload\.outputs\.deployment_id \}\}/);
+  assert.match(waitStep, /AETHER_CENTRAL_DEPLOYMENT_NAME: \$\{\{ steps\.version\.outputs\.deployment_name \}\}/);
 });
 
 test('the virtual authenticator models a discoverable user-verified CTAP2 passkey', async () => {

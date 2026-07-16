@@ -60,7 +60,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ inputs.resume_commit_sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Grant execute permissions
         run: |
@@ -221,7 +221,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ inputs.resume_commit_sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Grant execute permissions
         run: |
@@ -253,10 +253,8 @@ jobs:
             echo "::error::The first CHANGELOG.md release ($CHANGELOG_VERSION) does not match version.properties ($VERSION)."
             exit 1
           }
-          RELEASE_COMMIT=$(git rev-parse HEAD)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "release_commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
-          echo "deployment_name=aether-${VERSION}-${RELEASE_COMMIT}" >> "$GITHUB_OUTPUT"
+          WORKFLOW_COMMIT=$(git rev-parse HEAD)
+          RELEASE_COMMIT="$WORKFLOW_COMMIT"
 
           if [[ -n "$RETRY_FAILED_DEPLOYMENT_ID" && -n "$RESUME_DEPLOYMENT_ID" ]]; then
             echo "::error::retry_failed_deployment_id and resume_deployment_id are mutually exclusive"
@@ -281,14 +279,25 @@ jobs:
               echo "::error::resume_commit_sha must be the exact 40-character upload commit"
               exit 1
             }
-            [[ "${RESUME_COMMIT_SHA,,}" == "${RELEASE_COMMIT,,}" ]] || {
-              echo "::error::Checkout commit does not match resume_commit_sha"
+            git cat-file -e "${RESUME_COMMIT_SHA}^{commit}" || {
+              echo "::error::resume_commit_sha is not an available commit"
               exit 1
             }
+            RESUME_VERSION=$(git show "${RESUME_COMMIT_SHA}:version.properties" | sed -n 's/^VERSION=//p')
+            [[ "$RESUME_VERSION" == "$VERSION" ]] || {
+              echo "::error::The current release version does not match the resumed upload commit"
+              exit 1
+            }
+            RELEASE_COMMIT=$(git rev-parse "${RESUME_COMMIT_SHA}^{commit}")
           elif [[ -n "$RESUME_COMMIT_SHA" ]]; then
             echo "::error::resume_commit_sha is valid only with resume_deployment_id"
             exit 1
           fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "workflow_commit=$WORKFLOW_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "release_commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "deployment_name=aether-${VERSION}-${RELEASE_COMMIT}" >> "$GITHUB_OUTPUT"
 
           if git rev-parse --verify --quiet "refs/tags/v${VERSION}" >/dev/null; then
             echo "tag_exists=true" >> "$GITHUB_OUTPUT"
@@ -334,7 +343,7 @@ jobs:
               exit 1
             }
             if [[ "$TAG_EXISTS" == "true" ]]; then
-              git merge-base --is-ancestor "v${VERSION}" HEAD || {
+              git merge-base --is-ancestor "v${VERSION}" "$RELEASE_COMMIT" || {
                 echo "::error::Existing tag v${VERSION} is not an ancestor of the repair commit."
                 exit 1
               }
@@ -383,7 +392,7 @@ jobs:
                   UNEXPECTED_REPAIR_FILES+=("$FILE")
                   ;;
               esac
-            done < <(git diff --name-only "v${VERSION}"...HEAD)
+            done < <(git diff --name-only "v${VERSION}"..."${RELEASE_COMMIT}")
             if (( ${#UNEXPECTED_REPAIR_FILES[@]} > 0 )); then
               echo "::error::Same-version recovery is restricted to reviewed publication metadata; unexpected files: ${UNEXPECTED_REPAIR_FILES[*]}"
               exit 1
@@ -452,7 +461,7 @@ jobs:
           REPAIR_RELEASE_TAG: ${{ inputs.repair_release_tag || false }}
           ACKNOWLEDGE_UNAVAILABLE_FAILED_DEPLOYMENT: ${{ inputs.acknowledge_unavailable_failed_deployment || false }}
         run: |
-          ./gradlew writeExpectedCentralPurls --no-daemon --quiet
+          ./gradlew writeExpectedCentralPurls writeExpectedCentralReportedPurls --no-daemon --quiet
           DEPLOYMENT_ID="${RETRY_FAILED_DEPLOYMENT_ID:-$RESUME_DEPLOYMENT_ID}"
           export DEPLOYMENT_ID
           AUTHORIZATION="Bearer $(printf '%s' "$CENTRAL_USERNAME:$CENTRAL_PASSWORD" | base64 | tr -d '\n\r')"
@@ -488,6 +497,8 @@ jobs:
           purls = data.get("purls") or []
           with open("build/central-expected-purls.txt", encoding="utf-8") as source:
               expected_purls = {line.strip() for line in source if line.strip()}
+          with open("build/central-expected-reported-purls.txt", encoding="utf-8") as source:
+              expected_reported_purls = {line.strip() for line in source if line.strip()}
 
           if data.get("deploymentId") != deployment_id:
               sys.exit("Central status response did not match the requested deployment")
@@ -502,11 +513,16 @@ jobs:
 
           if len(purls) != len(set(purls)):
               sys.exit("deployment contains duplicate component PURLs")
+          if len(expected_purls) != 75 or len(expected_reported_purls) != 111:
+              sys.exit("expected release manifests must contain exactly 75 coordinates and 111 reported PURLs")
           actual_purls = set(purls)
-          require_complete_manifest = bool(retry_id) or state == "PUBLISHED" or bool(actual_purls)
-          if require_complete_manifest and actual_purls != expected_purls:
-              missing = sorted(expected_purls - actual_purls)
-              unexpected = sorted(actual_purls - expected_purls)
+          unexpected_purls = actual_purls - expected_reported_purls
+          if unexpected_purls:
+              sys.exit(f"deployment contains unexpected component PURLs: {sorted(unexpected_purls)}")
+          require_complete_manifest = bool(retry_id) or state == "PUBLISHED"
+          if require_complete_manifest and actual_purls != expected_reported_purls:
+              missing = sorted(expected_reported_purls - actual_purls)
+              unexpected = sorted(actual_purls - expected_reported_purls)
               sys.exit(f"deployment component mismatch; missing={missing}, unexpected={unexpected}")
           print(f"Central recovery request verified: {data.get('deploymentId')} is {state}")
           PY
@@ -651,10 +667,17 @@ jobs:
       - name: Extract latest changelog entry
         id: changelog
         shell: bash
+        env:
+          RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}
         run: |
+          RELEASE_CHANGELOG="$RUNNER_TEMP/release-changelog.md"
+          git show "${RELEASE_COMMIT}:CHANGELOG.md" > "$RELEASE_CHANGELOG"
+          export RELEASE_CHANGELOG
           python3 <<'PY'
+          import os
+
           try:
-              with open("CHANGELOG.md", encoding="utf-8") as fh:
+              with open(os.environ["RELEASE_CHANGELOG"], encoding="utf-8") as fh:
                   lines = fh.readlines()
           except FileNotFoundError:
               print("No CHANGELOG.md found")
