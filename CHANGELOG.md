@@ -25,6 +25,13 @@
 - Kotlin and the dependency stack are upgraded for Summon `0.7.0.2`; the CLI and example are now
   compiled from real Kotlin source sets and CI rejects expected tasks that report `NO-SOURCE`.
 
+### Fixed
+
+- Maven Central publication now includes the Gradle plugin's real Kotlin sources, validates every
+  binary component's sources and Javadoc companions before upload, and waits for the Central
+  deployment to reach `PUBLISHED` before completing the release. Upload IDs are recorded before
+  polling so interrupted releases resume the exact commit without submitting a duplicate bundle.
+
 ### Known limitations
 
 - The Kotlin `2.3.x` wasmWasi artifact is still a Preview1 core module. The WIT contract, guest
