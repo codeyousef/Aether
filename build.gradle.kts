@@ -115,7 +115,8 @@ fun expectedKmpCompileTasks(module: String, targets: List<String>): List<String>
 
 val identityAuthorityTargets = listOf("Jvm", "WasmJs", "WasmWasi")
 val expectedSourceTaskPaths =
-    expectedKmpCompileTasks("aether-auth", identityAuthorityTargets) +
+    expectedKmpCompileTasks("aether-browser-client", listOf("Js", "WasmJs")) +
+        expectedKmpCompileTasks("aether-auth", identityAuthorityTargets) +
         expectedKmpCompileTasks("aether-auth-postgresql", identityAuthorityTargets) +
         expectedKmpCompileTasks("aether-auth-firestore", identityAuthorityTargets) +
         expectedKmpCompileTasks("aether-auth-oidc", identityAuthorityTargets) +

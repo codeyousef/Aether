@@ -24,6 +24,7 @@ include(
     ":aether-tasks",
     ":aether-channels",
     ":aether-web",
+    ":aether-browser-client",
     ":aether-ui",
     ":aether-net",
     ":aether-plugin",

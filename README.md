@@ -86,6 +86,7 @@ aether/
 ├── aether-core/       # Core abstractions (Exchange, Pipeline, Dispatcher)
 ├── aether-db/         # ORM and database drivers
 ├── aether-web/        # Routing and controllers
+├── aether-browser-client/ # Typed same-origin browser HTTP, navigation, and bootstrap APIs
 ├── aether-ui/         # UI rendering (SSR + CBOR)
 ├── aether-net/        # Network transport abstraction
 ├── aether-ksp/        # KSP-based migration generation
