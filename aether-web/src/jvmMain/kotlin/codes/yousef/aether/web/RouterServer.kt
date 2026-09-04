@@ -178,8 +178,14 @@ class AetherServer(
                     }
                 }
 
-                scope.launch {
-                    try {
+                // Resilience: a failed launch here previously died silently when
+                // stdout/stderr were broken (client gone → pipe reader gone → JVM
+                // uncaught-exception prints vanish with EPIPE), leaving accepted
+                // connections unanswered. Surface failures on stderr AND track
+                // them in-process so a wedged dispatcher is diagnosable.
+                try {
+                    scope.launch {
+                        try {
                         val bodyBytes = bodyDeferred.await()
                         val exchange = createVertxExchangeWithBody(vertxRequest, bodyBytes)
 
@@ -204,6 +210,15 @@ class AetherServer(
                         } catch (responseError: Exception) {
                             logger.error("Failed to send error response", responseError)
                         }
+                    }
+                    }
+                } catch (t: Throwable) {
+                    // Rejected dispatcher / framework-level failure: never leave
+                    // the connection silently unanswered.
+                    logger.error("Aether request launch failed for ${vertxRequest.path()}", t)
+                    System.err.println("[aether] request launch failed for ${vertxRequest.path()}: $t")
+                    runCatching {
+                        vertxRequest.response().setStatusCode(503).end()
                     }
                 }
             }
