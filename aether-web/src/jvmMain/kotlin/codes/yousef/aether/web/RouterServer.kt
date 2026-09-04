@@ -178,6 +178,21 @@ class AetherServer(
                     }
                 }
 
+                // Watchdog: the recurring editor-server wedge showed requests whose
+                // endHandler never fired — the coroutine then waits forever and the
+                // connection is silently unanswered. Diagnose the stalled state and
+                // complete the deferred so the error-response path can run.
+                val watchdog = vertx.setTimer(10_000L) { _ ->
+                    if (!bodyDeferred.isCompleted) {
+                        System.err.println(
+                            "[aether] request watchdog fired: path=" + vertxRequest.path() +
+                                " ended=" + vertxRequest.isEnded
+                        )
+                        bodyDeferred.complete(buffer.bytes)
+                    }
+                }
+                bodyDeferred.invokeOnCompletion { vertx.cancelTimer(watchdog) }
+
                 // Resilience: a failed launch here previously died silently when
                 // stdout/stderr were broken (client gone → pipe reader gone → JVM
                 // uncaught-exception prints vanish with EPIPE), leaving accepted
