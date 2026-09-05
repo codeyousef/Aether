@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0.1] - 2026-09-05
+
+### Fixed
+
+- Prevent an abrupt Vert.x WebSocket disconnect from cancelling Aether's shared server scope.
+  WebSocket callbacks now use non-throwing channel delivery, and request/WebSocket tasks are
+  supervised independently so a failed connection cannot leave later HTTP requests hanging.
+
 ## [0.6.0.0] - 2026-07-16
 
 ### Added

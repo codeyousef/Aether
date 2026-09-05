@@ -36,40 +36,36 @@ class VertxWebSocketSession(
 
     private fun setupHandlers() {
         socket.textMessageHandler { text ->
-            scope.launch {
-                incomingChannel.send(WebSocketMessage.Text(text))
-            }
+            incomingChannel.trySend(WebSocketMessage.Text(text))
         }
 
         socket.binaryMessageHandler { buffer ->
-            scope.launch {
-                incomingChannel.send(WebSocketMessage.Binary(buffer.bytes))
-            }
+            incomingChannel.trySend(WebSocketMessage.Binary(buffer.bytes))
         }
 
         socket.pongHandler { buffer ->
-            scope.launch {
-                incomingChannel.send(WebSocketMessage.Pong(buffer.bytes))
-            }
+            incomingChannel.trySend(WebSocketMessage.Pong(buffer.bytes))
         }
 
         socket.closeHandler {
             _isOpen = false
-            scope.launch {
-                incomingChannel.send(
-                    WebSocketMessage.Close(
-                        socket.closeStatusCode()?.toInt() ?: 1000,
-                        socket.closeReason() ?: ""
-                    )
+            // Vert.x may deliver exceptionHandler and closeHandler for the same
+            // abrupt disconnect. Never launch a suspending send here: if the
+            // exception handler has already closed the channel, send rethrows
+            // the transport exception in a child coroutine and can cancel the
+            // server's parent request scope.
+            incomingChannel.trySend(
+                WebSocketMessage.Close(
+                    socket.closeStatusCode()?.toInt() ?: 1000,
+                    socket.closeReason() ?: ""
                 )
-                incomingChannel.close()
-            }
+            )
+            incomingChannel.close()
         }
 
         socket.exceptionHandler { error ->
-            scope.launch {
-                incomingChannel.close(error)
-            }
+            _isOpen = false
+            incomingChannel.close(error)
         }
     }
 

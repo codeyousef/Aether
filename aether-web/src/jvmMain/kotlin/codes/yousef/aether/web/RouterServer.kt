@@ -13,7 +13,9 @@ import io.vertx.core.net.PemKeyCertOptions
 import io.vertx.core.net.SelfSignedCertificate
 import io.vertx.kotlin.coroutines.coAwait
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
@@ -80,7 +82,17 @@ class AetherServer(
     private val logger = LoggerFactory.getLogger("codes.yousef.aether.web.AetherServer")
     private val vertx: Vertx = Vertx.vertx()
     private var server: HttpServer? = null
-    private val scope = CoroutineScope(AetherDispatcher.dispatcher)
+    // A WebSocket session and an HTTP request are independent units of work.
+    // A plain Job here lets an uncaught transport exception from either child
+    // cancel the parent scope, after which every accepted request is launched
+    // already-cancelled and Vert.x leaves the connection unanswered.
+    private val scope = CoroutineScope(
+        SupervisorJob() +
+            AetherDispatcher.dispatcher +
+            CoroutineExceptionHandler { _, error ->
+                logger.error("Uncaught Aether server task failure", error)
+            }
+    )
     private val webSocketServer = VertxWebSocketServer(vertx, config.webSocket)
 
     init {
