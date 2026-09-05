@@ -1,13 +1,22 @@
 package codes.yousef.aether.core
 
+import codes.yousef.aether.core.websocket.VertxWebSocketSession
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.slot
+import io.vertx.core.Handler
+import io.vertx.core.MultiMap
+import io.vertx.core.http.ServerWebSocket
 import kotlinx.coroutines.*
 import org.junit.jupiter.api.*
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.io.PrintStream
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -19,6 +28,38 @@ import kotlin.test.assertTrue
 class AetherStartTest {
 
     private val httpClient = HttpClient.newHttpClient()
+
+    @Test
+    fun `WebSocket exception followed by close cannot cancel its owner scope`() {
+        val socket = mockk<ServerWebSocket>()
+        val closeHandler = slot<Handler<Void>>()
+        val exceptionHandler = slot<Handler<Throwable>>()
+        val failures = CopyOnWriteArrayList<Throwable>()
+        val ownerJob = Job()
+        val scope = CoroutineScope(
+            ownerJob +
+                Dispatchers.Unconfined +
+                CoroutineExceptionHandler { _, error -> failures += error }
+        )
+
+        every { socket.path() } returns "/ws/test"
+        every { socket.query() } returns null
+        every { socket.headers() } returns MultiMap.caseInsensitiveMultiMap()
+        every { socket.textMessageHandler(any()) } returns socket
+        every { socket.binaryMessageHandler(any()) } returns socket
+        every { socket.pongHandler(any()) } returns socket
+        every { socket.closeHandler(capture(closeHandler)) } returns socket
+        every { socket.exceptionHandler(capture(exceptionHandler)) } returns socket
+        every { socket.closeStatusCode() } returns null
+        every { socket.closeReason() } returns null
+
+        VertxWebSocketSession(socket, scope)
+        exceptionHandler.captured.handle(IOException("connection closed"))
+        closeHandler.captured.handle(null)
+
+        assertTrue(ownerJob.isActive, "A socket callback must not cancel the server scope")
+        assertTrue(failures.isEmpty(), "A duplicate close callback must not throw")
+    }
 
     @Test
     fun `test AetherConfig default values`() {
@@ -509,4 +550,3 @@ class AetherStartTest {
         }
     }
 }
-

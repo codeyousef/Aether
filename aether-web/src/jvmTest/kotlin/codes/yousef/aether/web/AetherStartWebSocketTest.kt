@@ -4,9 +4,11 @@ import codes.yousef.aether.core.pipeline.Pipeline
 import kotlinx.coroutines.*
 import org.junit.jupiter.api.*
 import java.net.URI
+import java.net.ServerSocket
 import java.net.http.HttpClient
 import java.net.http.WebSocket
 import java.nio.ByteBuffer
+import java.time.Duration
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.CopyOnWriteArrayList
@@ -23,6 +25,54 @@ import kotlin.test.assertTrue
 class AetherStartWebSocketTest {
 
     private val httpClient = HttpClient.newHttpClient()
+
+    @Test
+    @Timeout(15)
+    fun `WebSocket task failure does not cancel later HTTP requests`() {
+        val testPort = ServerSocket(0).use { it.localPort }
+        val webSocketFailureObserved = CountDownLatch(1)
+        val router = router {
+            get("/api/health") { exchange -> exchange.respond(200, "OK") }
+            ws("/ws/fail") {
+                onConnect { session -> session.sendText("connected") }
+                onError { _, error ->
+                    webSocketFailureObserved.countDown()
+                    throw error
+                }
+            }
+        }
+        val server = AetherServer.create(AetherServerConfig(port = testPort), router, Pipeline())
+        var webSocket: WebSocket? = null
+
+        try {
+            runBlocking { server.start() }
+            val listener = TestWebSocketListener()
+            webSocket = httpClient.newWebSocketBuilder()
+                .buildAsync(URI.create("ws://localhost:$testPort/ws/fail"), listener)
+                .get(5, TimeUnit.SECONDS)
+
+            assertTrue(listener.awaitOpen(), "WebSocket should open")
+            assertTrue(listener.awaitMessages(1), "WebSocket should receive the connection message")
+            webSocket.abort()
+            assertTrue(
+                webSocketFailureObserved.await(5, TimeUnit.SECONDS),
+                "Abrupt close should reach the WebSocket error handler"
+            )
+
+            val request = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:$testPort/api/health"))
+                .timeout(Duration.ofSeconds(2))
+                .GET()
+                .build()
+            val response = httpClient.send(request, java.net.http.HttpResponse.BodyHandlers.ofString())
+
+            assertEquals(200, response.statusCode())
+            assertEquals("OK", response.body())
+        } finally {
+            webSocket?.abort()
+            runBlocking { server.close() }
+        }
+    }
 
     /**
      * Simple WebSocket listener for testing.
@@ -632,4 +682,3 @@ class AetherStartWebSocketTest {
         assertTrue(unknownHandler == null, "Should not find unknown handler")
     }
 }
-
