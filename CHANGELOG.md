@@ -74,6 +74,8 @@
 - Route-local proxy authorization replacement now suppresses the inbound credential without
   deleting the explicitly configured service credential; global security-profile removals remain
   authoritative.
+- Browser-client JS and WasmJS Karma tests use the existing no-sandbox Chromium launcher in CI,
+  matching the hardened GitHub-hosted runner configuration used by the other browser modules.
 
 ## [0.6.0.1] - 2026-09-05
 
