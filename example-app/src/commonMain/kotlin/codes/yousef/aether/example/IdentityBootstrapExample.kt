@@ -185,7 +185,9 @@ fun BootstrapIdentityUi(
                 label = if (state.busy) "Creating owner…" else "Create owner and enroll passkey",
                 disabled = !state.canSubmit,
                 dataAttributes = mapOf("identity-action" to "bootstrap"),
-                modifier = Modifier().ariaLabel("Create the first owner and continue to passkey enrollment")
+                modifier = Modifier()
+                    .attribute("key", "bootstrap-submit-${state.busy}-${state.canSubmit}")
+                    .ariaLabel("Create the first owner and continue to passkey enrollment")
             )
             P { Text("The bootstrap secret is never stored by this page.") }
         }
@@ -210,6 +212,7 @@ private fun BootstrapTextField(
         isEnabled = enabled,
         // Summon 0.7.0.2's JVM renderer otherwise replaces the requested type and generated ID.
         modifier = Modifier()
+            .attribute("key", "$id-enabled-$enabled")
             .id(id)
             .attribute("name", id)
             .attribute("type", type.name.lowercase())

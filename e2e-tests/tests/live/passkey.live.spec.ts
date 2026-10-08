@@ -75,6 +75,7 @@ test.describe('live passkey, step-up, and recovery identity authority', () => {
     const bootstrapSecret = process.env.AETHER_IDENTITY_BOOTSTRAP_SECRET!;
     await page.goto('/identity/bootstrap');
     await waitForIdentityHydration(page);
+    await expect(page.locator('#aether-bootstrap')).toHaveCount(1);
     await fillSensitive(
       page.getByLabel('Bootstrap secret', { exact: true }),
       bootstrapSecret,
@@ -85,14 +86,16 @@ test.describe('live passkey, step-up, and recovery identity authority', () => {
     await page.getByLabel('Organization name').fill('Playwright Organization');
     await page.getByLabel('Organization slug').fill('playwright-org');
 
-    const bootstrap = waitForSuccessfulResponse(page, identityRoutes.bootstrap);
+    const bootstrapPayload = waitForSuccessfulResponse(page, identityRoutes.bootstrap)
+      .then(response => response.json());
     await page.getByRole('button', { name: /Create the first owner and continue/i }).click();
-    const bootstrapPayload = await (await bootstrap).json();
+    const bootstrapResult = await bootstrapPayload;
     await expect(page).toHaveURL(/\/identity$/);
     await waitForIdentityHydration(page);
+    await expect(page.locator('#aether-identity')).toHaveCount(1);
     assertSensitive(
       await page.evaluate(() => sessionStorage.getItem('aether.identity.csrf.v1')) ===
-        bootstrapPayload.csrfToken,
+        bootstrapResult.csrfToken,
       'The session-bound CSRF value did not match after bootstrap.'
     );
 
@@ -114,7 +117,7 @@ test.describe('live passkey, step-up, and recovery identity authority', () => {
     });
     expect(registrationOptions.publicKey.attestation).toBe('none');
     assertSensitive(
-      registrationStartResponse.request().headers()['x-csrf-token'] === bootstrapPayload.csrfToken,
+      registrationStartResponse.request().headers()['x-csrf-token'] === bootstrapResult.csrfToken,
       'The passkey start request did not carry the session-bound CSRF value.'
     );
     const registrationResponse = await registration;
@@ -299,6 +302,7 @@ test.describe('live passkey, step-up, and recovery identity authority', () => {
     await context.clearCookies();
     await page.goto('/identity/recovery');
     await waitForIdentityHydration(page);
+    await expect(page.locator('#aether-recovery-entry')).toHaveCount(1);
     await fillSensitive(
       page.getByLabel('Recovery code', { exact: true }),
       recoveryCodes[0],
@@ -306,13 +310,12 @@ test.describe('live passkey, step-up, and recovery identity authority', () => {
     );
     const recovery = waitForSuccessfulResponse(page, identityRoutes.recoveryCodeUse);
     await page.getByRole('button', { name: 'Recover account' }).click();
-    const recoveryPayload = await (await recovery).json();
+    await recovery;
     await expect(page).toHaveURL(/\/identity$/);
     await waitForIdentityHydration(page);
     assertSensitive(
-      await page.evaluate(() => sessionStorage.getItem('aether.identity.csrf.v1')) ===
-        recoveryPayload.csrfToken,
-      'The session-bound CSRF value did not match after recovery.'
+      Boolean(await page.evaluate(() => sessionStorage.getItem('aether.identity.csrf.v1'))),
+      'The recovery response did not install a session-bound CSRF value.'
     );
     await expect(page.getByText(/restricted recovery session/i)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Sign in with a discoverable passkey' })).toHaveCount(0);

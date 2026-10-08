@@ -19,7 +19,7 @@ import codes.yousef.summon.components.html.Main
 import codes.yousef.summon.components.html.P
 import codes.yousef.summon.components.html.Section
 import codes.yousef.summon.components.html.Ul
-import codes.yousef.summon.components.input.Button
+import codes.yousef.summon.components.input.Button as SummonButton
 import codes.yousef.summon.components.input.ButtonVariant
 import codes.yousef.summon.components.input.TextField
 import codes.yousef.summon.components.layout.Column
@@ -46,6 +46,7 @@ import codes.yousef.summon.modifier.borderTopWidth
 import codes.yousef.summon.modifier.borderStyle
 import codes.yousef.summon.modifier.borderWidth
 import codes.yousef.summon.modifier.color
+import codes.yousef.summon.modifier.attribute
 import codes.yousef.summon.modifier.dataAttribute
 import codes.yousef.summon.modifier.display
 import codes.yousef.summon.modifier.fillMaxWidth
@@ -83,6 +84,29 @@ private object IdentityUiIds {
     const val DEVICE_APPROVAL = "aether-device-approval"
     const val DEVICE_ORGANIZATION = "aether-device-organization"
     const val DEVICE_SCOPES = "aether-device-scopes"
+}
+
+/**
+ * Summon 0.8.0 does not remove a reused button's `disabled` attribute. Keying on the rendered
+ * availability and label replaces only the affected control when either state changes.
+ */
+@Composable
+private fun Button(
+    onClick: (() -> Unit)? = null,
+    label: String,
+    modifier: Modifier = Modifier(),
+    variant: ButtonVariant = ButtonVariant.PRIMARY,
+    disabled: Boolean = false,
+    dataAttributes: Map<String, String> = emptyMap()
+) {
+    SummonButton(
+        onClick = onClick,
+        label = label,
+        modifier = modifier.attribute("key", "aether-button-${label.hashCode()}-$disabled"),
+        variant = variant,
+        disabled = disabled,
+        dataAttributes = dataAttributes
+    )
 }
 
 /** Complete, mobile-first identity surface shared by JVM SSR and wasmJs hydration. */

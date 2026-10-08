@@ -80,13 +80,16 @@ import codes.yousef.aether.auth.summon.ServiceIdentityDraftUiState
 import codes.yousef.aether.auth.summon.ServiceIdentityUiModel
 import codes.yousef.aether.auth.summon.SessionUiModel
 import codes.yousef.aether.auth.summon.StepUpUiState
-import codes.yousef.aether.auth.summon.hydrateIdentityUi
+import codes.yousef.aether.auth.summon.IdentityUi
 import codes.yousef.aether.auth.summon.reduceIdentityUiState
 import codes.yousef.aether.auth.webauthn.AuthenticationPublicKeyCredentialDto
 import codes.yousef.aether.auth.webauthn.RegistrationPublicKeyCredentialDto
 import codes.yousef.aether.auth.webauthn.WebAuthnAuthenticationStartResponse
 import codes.yousef.aether.auth.webauthn.WebAuthnRegistrationStartResponse
-import codes.yousef.summon.runtime.PlatformRenderer
+import codes.yousef.summon.mountComposableRoot
+import codes.yousef.summon.state.getValue
+import codes.yousef.summon.state.mutableStateOf
+import codes.yousef.summon.state.setValue
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
@@ -111,25 +114,16 @@ fun main() {
 
 private fun runRecoveryUi(contract: IdentityExampleContract, gateway: BrowserIdentityGateway) {
     val scope = MainScope()
-    var state = RecoveryIdentityUiState()
+    var state by mutableStateOf(RecoveryIdentityUiState())
     lateinit var dispatcher: RecoveryIdentityUiDispatcher
-
-    fun render() = PlatformRenderer().hydrateComposableRoot(SUMMON_HYDRATION_ROOT_ID) {
-        RecoveryIdentityUi(state, dispatcher)
-    }
 
     dispatcher = RecoveryIdentityUiDispatcher { action ->
         state = reduceRecoveryIdentityUiState(state, action)
         if (action != RecoveryIdentityUiAction.Submit) {
-            render()
             return@RecoveryIdentityUiDispatcher
         }
-        val request = state.toRequest() ?: run {
-            render()
-            return@RecoveryIdentityUiDispatcher
-        }
+        val request = state.toRequest() ?: return@RecoveryIdentityUiDispatcher
         state = state.copy(busy = true, feedback = null, failed = false)
-        render()
         scope.launch {
             try {
                 gateway.recover(request)
@@ -139,7 +133,6 @@ private fun runRecoveryUi(contract: IdentityExampleContract, gateway: BrowserIde
                     feedback = "Recovery accepted. Continuing to restricted passkey enrollment.",
                     failed = false
                 )
-                render()
                 browserRedirect(contract.identityUi)
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -149,34 +142,27 @@ private fun runRecoveryUi(contract: IdentityExampleContract, gateway: BrowserIde
                     feedback = "The recovery code is invalid, used, or expired.",
                     failed = true
                 )
-                render()
             }
         }
     }
-    render()
+    mountComposableRoot(SUMMON_HYDRATION_ROOT_ID) {
+        RecoveryIdentityUi(state, dispatcher)
+    }
+    markBrowserRootReady(SUMMON_HYDRATION_ROOT_ID)
 }
 
 private fun runBootstrapUi(contract: IdentityExampleContract, gateway: BrowserIdentityGateway) {
     val scope = MainScope()
-    var state = BootstrapIdentityUiState()
+    var state by mutableStateOf(BootstrapIdentityUiState())
     lateinit var dispatcher: BootstrapIdentityUiDispatcher
-
-    fun render() = PlatformRenderer().hydrateComposableRoot(SUMMON_HYDRATION_ROOT_ID) {
-        BootstrapIdentityUi(state, dispatcher)
-    }
 
     dispatcher = BootstrapIdentityUiDispatcher { action ->
         state = reduceBootstrapIdentityUiState(state, action)
         if (action != BootstrapIdentityUiAction.Submit) {
-            render()
             return@BootstrapIdentityUiDispatcher
         }
-        val request = state.toRequest() ?: run {
-            render()
-            return@BootstrapIdentityUiDispatcher
-        }
+        val request = state.toRequest() ?: return@BootstrapIdentityUiDispatcher
         state = state.copy(busy = true, feedback = null, failed = false)
-        render()
         scope.launch {
             try {
                 gateway.bootstrap(request)
@@ -186,7 +172,6 @@ private fun runBootstrapUi(contract: IdentityExampleContract, gateway: BrowserId
                     feedback = "Owner created. Continuing to passkey enrollment.",
                     failed = false
                 )
-                render()
                 browserRedirect(contract.identityUi)
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -196,11 +181,13 @@ private fun runBootstrapUi(contract: IdentityExampleContract, gateway: BrowserId
                     feedback = "Bootstrap failed. Verify the one-time secret and input values.",
                     failed = true
                 )
-                render()
             }
         }
     }
-    render()
+    mountComposableRoot(SUMMON_HYDRATION_ROOT_ID) {
+        BootstrapIdentityUi(state, dispatcher)
+    }
+    markBrowserRootReady(SUMMON_HYDRATION_ROOT_ID)
 }
 
 private fun runIdentityUi(gateway: BrowserIdentityGateway) {
@@ -209,10 +196,9 @@ private fun runIdentityUi(gateway: BrowserIdentityGateway) {
         api = gateway
     )
     val scope = MainScope()
-    var state = restrictedEnrollmentUiState()
+    var state by mutableStateOf(restrictedEnrollmentUiState())
 
     lateinit var dispatcher: IdentityUiDispatcher
-    fun render() = hydrateIdentityUi(SUMMON_HYDRATION_ROOT_ID, state, dispatcher)
     fun runNetwork(
         kind: IdentityUiActionKind,
         signsOut: Boolean = false,
@@ -220,7 +206,6 @@ private fun runIdentityUi(gateway: BrowserIdentityGateway) {
     ) {
         if (state.busyAction != null) return
         state = state.copy(busyAction = kind, feedback = null)
-        render()
         scope.launch {
             state = try {
                 operation()
@@ -283,7 +268,6 @@ private fun runIdentityUi(gateway: BrowserIdentityGateway) {
                     )
                 }
             }
-            render()
         }
     }
 
@@ -308,11 +292,9 @@ private fun runIdentityUi(gateway: BrowserIdentityGateway) {
             }
             IdentityUiAction.DismissRecoveryCodes -> {
                 gateway.dismissRecoveryCodes()
-                render()
             }
             IdentityUiAction.DismissOneTimeSecret -> {
                 gateway.dismissOneTimeSecret()
-                render()
             }
             is IdentityUiAction.RenamePasskey -> runNetwork(IdentityUiActionKind.RENAME_PASSKEY) {
                 val name = state.passkeys.first { it.id == action.credentialId }.renameDraft
@@ -403,16 +385,17 @@ private fun runIdentityUi(gateway: BrowserIdentityGateway) {
             is IdentityUiAction.DenyDeviceAuthorization -> runNetwork(IdentityUiActionKind.DENY_DEVICE) {
                 gateway.denyDevice(action.userCode)
             }
-            else -> render()
+            else -> Unit
         }
     }
-    render()
+    mountComposableRoot(SUMMON_HYDRATION_ROOT_ID) {
+        IdentityUi(state, dispatcher)
+    }
+    markBrowserRootReady(SUMMON_HYDRATION_ROOT_ID)
     scope.launch {
-        var stateChanged = false
         try {
             gateway.loadIdentityUiState()?.let { loaded ->
                 state = loaded
-                stateChanged = true
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -424,11 +407,7 @@ private fun runIdentityUi(gateway: BrowserIdentityGateway) {
                     IdentityUiFeedbackSeverity.ERROR
                 )
             )
-            stateChanged = true
         }
-        // A normal unauthenticated probe returns null. Re-rendering an identical tree here would
-        // replace focused elements while a visitor is already typing or tabbing through sign-in.
-        if (stateChanged) render()
     }
 }
 
@@ -1053,6 +1032,9 @@ private external fun browserIdentityRequest(
 
 @JsFun("id => globalThis.document && globalThis.document.getElementById(id) !== null")
 private external fun browserElementExists(id: String): Boolean
+
+@JsFun("id => globalThis.document.getElementById(id)?.setAttribute('data-hydration-ready', 'true')")
+private external fun markBrowserRootReady(id: String)
 
 @JsFun("value => globalThis.sessionStorage.setItem('aether.identity.csrf.v1', value)")
 private external fun storeBrowserCsrfToken(value: String)

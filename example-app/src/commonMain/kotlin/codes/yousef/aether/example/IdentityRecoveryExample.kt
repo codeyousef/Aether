@@ -97,6 +97,7 @@ fun RecoveryIdentityUi(
                 isEnabled = !state.busy,
                 // Keep the SSR boundary secret-safe despite Summon 0.7.0.2's JVM text-type default.
                 modifier = Modifier()
+                    .attribute("key", "recovery-code-enabled-${!state.busy}")
                     .id("aether-recovery-code")
                     .attribute("name", "aether-recovery-code")
                     .attribute("type", "password")
@@ -112,7 +113,9 @@ fun RecoveryIdentityUi(
                 label = if (state.busy) "Recovering…" else "Recover account",
                 disabled = !state.canSubmit,
                 dataAttributes = mapOf("identity-action" to "recover-account"),
-                modifier = Modifier().ariaLabel("Recover account")
+                modifier = Modifier()
+                    .attribute("key", "recovery-submit-${state.busy}-${state.canSubmit}")
+                    .ariaLabel("Recover account")
             )
         }
     }

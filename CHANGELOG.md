@@ -76,6 +76,9 @@
   authoritative.
 - Browser-client JS and WasmJS Karma tests use the existing no-sandbox Chromium launcher in CI,
   matching the hardened GitHub-hosted runner configuration used by the other browser modules.
+- The passkey example now replaces its server-rendered shell with one owned reactive WasmJS root,
+  preventing duplicate bootstrap, identity, and recovery controls while preserving live state
+  updates and explicit browser-readiness signaling.
 
 ## [0.6.0.1] - 2026-09-05
 
