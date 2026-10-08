@@ -25,6 +25,17 @@ class IdentityConfigTest {
     }
 
     @Test
+    fun `device token audience defaults to the public origin and rejects ambiguous values`() {
+        assertEquals("http://localhost:8080", developmentConfig().deviceTokenAudience)
+
+        listOf("", "audience with spaces", "audience\ninjection").forEach { audience ->
+            assertFailsWith<IllegalArgumentException>(audience) {
+                developmentConfig().copy(deviceTokenAudience = audience)
+            }
+        }
+    }
+
+    @Test
     fun `production rejects loopback and plaintext origins`() {
         assertFailsWith<IllegalArgumentException> {
             IdentityConfig(

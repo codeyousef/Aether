@@ -46,6 +46,120 @@ class IdentityDeviceAuthorizationServiceTest {
     }
 
     @Test
+    fun `configured device client allowlist rejects unregistered clients`() = runTest {
+        val fixture = DeviceAuthorizationFixture()
+        val service = fixture.serviceWith(
+            fixture.store,
+            allowedClientIds = setOf(DEVICE_CLIENT_ID)
+        )
+
+        assertEquals(
+            IdentityErrorCode.REQUEST_INVALID,
+            service.start(
+                clientId = "unregistered-client",
+                requestedCapabilities = setOf(Capability.ORGANIZATION_READ)
+            ).expectFailure()
+        )
+        assertTrue(fixture.store.snapshot().deviceGrants.isEmpty())
+    }
+
+    @Test
+    fun `device credentials are bound to their deployment audience`() = runTest {
+        val fixture = DeviceAuthorizationFixture()
+        val started = fixture.authorize(setOf(Capability.ORGANIZATION_READ))
+        val issued = fixture.service.poll(started.deviceCode, DEVICE_CLIENT_ID).expectTokenSuccess()
+        val otherAudience = fixture.serviceWith(
+            fixture.store,
+            config = fixture.config.copy(deviceTokenAudience = "urn:private-suite:other-deployment")
+        )
+
+        assertEquals(
+            IdentityErrorCode.INVALID_CREDENTIALS,
+            otherAudience.authenticateAccessToken(issued.accessToken).expectFailure()
+        )
+        otherAudience.refresh(issued.refreshToken, DEVICE_CLIENT_ID)
+            .expectError(OAuthDeviceErrorCode.INVALID_GRANT)
+
+        val pending = fixture.start(setOf(Capability.ORGANIZATION_READ))
+        otherAudience.poll(pending.deviceCode, DEVICE_CLIENT_ID)
+            .expectError(OAuthDeviceErrorCode.INVALID_GRANT)
+    }
+
+    @Test
+    fun `suite device access and refresh lifetimes are explicitly configurable`() = runTest {
+        val fixture = DeviceAuthorizationFixture()
+        val config = fixture.config.copy(
+            lifetimes = fixture.config.lifetimes.copy(
+                deviceAccessToken = IdentityDuration.minutes(10),
+                deviceRefreshToken = IdentityDuration.days(30)
+            )
+        )
+        val service = fixture.serviceWith(fixture.store, config = config)
+        val started = service.start(
+            DEVICE_CLIENT_ID,
+            setOf(Capability.ORGANIZATION_READ)
+        ).expectSuccess()
+        service.approve(
+            started.userCode,
+            fixture.approver,
+            fixture.organization.id,
+            setOf(Capability.ORGANIZATION_READ)
+        ).expectSuccess()
+
+        val issued = service.poll(started.deviceCode, DEVICE_CLIENT_ID).expectTokenSuccess()
+
+        assertEquals(600L, issued.expiresIn)
+        val snapshot = fixture.store.snapshot()
+        assertEquals(
+            IdentityDuration.days(30).seconds,
+            snapshot.deviceTokenFamilies.single().expiresAt.epochSeconds -
+                snapshot.deviceTokenFamilies.single().createdAt.epochSeconds
+        )
+    }
+
+    @Test
+    fun `device administration requires an active passkey-backed session`() = runTest {
+        val fixture = DeviceAuthorizationFixture()
+        val started = fixture.start(setOf(Capability.ORGANIZATION_READ))
+        val federatedSession = requireNotNull(fixture.approver.session).copy(
+            assurance = AuthenticationAssurance.SESSION,
+            authenticationMethod = SessionAuthenticationMethod.OIDC,
+            federationOrganizationId = fixture.organization.id,
+            federationProviderKey = IdentityFixtures.federationProviderStorageKey(
+                FederationProviderKind.OIDC,
+                "device-admin"
+            ),
+            federationProviderSessionEpoch = 0,
+            externalIdentityId = IdentityFixtures.externalIdentityId("device-admin")
+        )
+        val nonPasskeyContext = fixture.approver.copy(
+            principal = requireNotNull(fixture.approver.principal).copy(
+                assurance = AuthenticationAssurance.SESSION
+            ),
+            session = federatedSession
+        )
+
+        assertEquals(
+            IdentityErrorCode.AUTHENTICATION_REQUIRED,
+            fixture.service.inspect(started.userCode, nonPasskeyContext).expectFailure()
+        )
+        assertEquals(
+            IdentityErrorCode.NOT_FOUND,
+            fixture.service.approve(
+                started.userCode,
+                nonPasskeyContext,
+                fixture.organization.id,
+                setOf(Capability.ORGANIZATION_READ)
+            ).expectFailure()
+        )
+        assertEquals(
+            IdentityErrorCode.NOT_FOUND,
+            fixture.service.deny(started.userCode, nonPasskeyContext).expectFailure()
+        )
+        assertEquals(DeviceGrantState.PENDING, fixture.store.snapshot().deviceGrants.single().state)
+    }
+
+    @Test
     fun `pending polls enforce the five-second interval and cumulative slow down`() = runTest {
         val fixture = DeviceAuthorizationFixture()
         val started = fixture.start(setOf(Capability.ORGANIZATION_READ))
@@ -526,13 +640,16 @@ private class DeviceAuthorizationFixture {
     fun serviceWith(
         identityStore: IdentityStore,
         allowedCapabilities: Set<Capability> = setOf(Capability.ORGANIZATION_READ, Capability.AUDIT_READ),
-        capabilityResolver: CapabilityResolver = CapabilityResolver.NONE
+        capabilityResolver: CapabilityResolver = CapabilityResolver.NONE,
+        config: IdentityConfig = this.config,
+        allowedClientIds: Set<String>? = null
     ) = IdentityDeviceAuthorizationService(
         store = identityStore,
         runtime = runtime.runtime,
         config = config,
         allowedCapabilities = allowedCapabilities,
-        capabilityResolver = capabilityResolver
+        capabilityResolver = capabilityResolver,
+        allowedClientIds = allowedClientIds
     )
     val approver = IdentityContext(
         principal = IdentityPrincipal(

@@ -40,6 +40,11 @@
   SQL, and isolate module version histories. Startup rejects generated/destructive work and blocks
   while resumable operator-only nontransactional plans are active; operator reset is all-or-nothing.
   KSP emits paired expand-only SQL/schema candidates, and the CLI refuses unreviewed artifacts.
+- Identity HTTP APIs now accept an explicit application-to-canonical route adapter without
+  bypassing request authority, cookies, CSRF, body limits, or trusted connection metadata. RFC 8628
+  credentials are digest-bound to an explicit deployment audience; device clients may be closed to
+  an allowlist, and grant inspection/approval/denial requires an active passkey or step-up identity
+  session instead of accepting a generic or federated session.
 
 ## [0.6.0.1] - 2026-09-05
 

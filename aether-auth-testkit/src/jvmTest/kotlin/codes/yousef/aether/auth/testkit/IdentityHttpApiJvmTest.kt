@@ -19,6 +19,26 @@ import kotlin.test.assertTrue
 
 class IdentityHttpApiJvmTest {
     @Test
+    fun `explicit route adapter maps owned application paths and preserves fallthrough`() = runTest {
+        val fixture = HttpApiFixture.create()
+        val adapter = IdentityHttpRouteAdapter { method, path ->
+            if (method == HttpMethod.GET && path == "/v1/auth/me") IdentityHttpApi.ME else null
+        }
+        val mapped = TestHttpExchange.call(HttpMethod.GET, "/v1/auth/me")
+        var mappedFellThrough = false
+
+        fixture.api.asMiddleware(adapter)(mapped) { mappedFellThrough = true }
+
+        assertFalse(mappedFellThrough)
+        assertSafeError(mapped, "authentication_required")
+
+        val unrelated = TestHttpExchange.call(HttpMethod.GET, "/v1/content")
+        var unrelatedFellThrough = false
+        fixture.api.asMiddleware(adapter)(unrelated) { unrelatedFellThrough = true }
+        assertTrue(unrelatedFellThrough)
+    }
+
+    @Test
     fun `registration HTTP boundary enforces every policy and trusted session provenance`() = runTest {
         suspend fun registrationCall(
             policy: RegistrationPolicy,

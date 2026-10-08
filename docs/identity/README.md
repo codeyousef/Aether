@@ -54,19 +54,25 @@ The audit stream is read at
 audit view documented in the [authentication API](../api-reference/authentication.md#organization-audit-events).
 
 RFC 8628 public clients must send a bounded `client_id` to both
-`/oauth/device_authorization` and `/oauth/token`. The authority persists that identifier on the
-grant and token family; a different or missing client ID cannot poll, exchange, rotate, or revoke
-the credentials. `client_name` is optional display text and never substitutes for `client_id`.
+`/oauth/device_authorization` and `/oauth/token`. Configure `allowedClientIds` on
+`IdentityDeviceAuthorizationService` for a closed deployment allowlist. The authority persists the
+identifier on the grant and token family; a different, unlisted, or missing client ID cannot start,
+poll, exchange, rotate, or revoke credentials. `client_name` is optional display text and never
+substitutes for `client_id`.
 The authorization response intentionally omits optional `verification_uri_complete`. The user opens
 the plain `verification_uri` and manually enters the human code; Aether never places that code in a
 query string or route segment.
 
 Device grants expire after ten minutes. Device codes contain 256 bits of entropy; human
-`XXXX-XXXX` codes carry 40 bits and are compared through the atomic store command. Polling starts
-at five seconds, and each RFC `slow_down` response increases the required interval. Approval binds
-one explicit organization and an explicit subset of requested capabilities. Exchange produces a
-15-minute opaque access token and a rotating 30-day refresh token. Only keyed digests are stored;
-refresh replay revokes the entire token family and emits an audit event.
+`XXXX-XXXX` codes carry 40 bits and are compared through the atomic store command. Every code and
+token digest includes `IdentityConfig.deviceTokenAudience`; two deployments sharing storage and key
+material therefore still reject credential substitution. Polling starts at five seconds, and each
+RFC `slow_down` response increases the required interval. Approval binds one explicit organization
+and an explicit subset of requested capabilities. Inspect, approve, and deny accept only an active,
+usable passkey or step-up identity session; generic Basic/JWT principals and federated sessions
+without passkey step-up cannot administer device grants. Exchange produces a 15-minute opaque
+access token and a rotating 30-day refresh token. Only keyed digests are stored; refresh replay
+revokes the entire token family and emits an audit event.
 
 ### Federation HTTP boundary
 

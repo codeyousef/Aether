@@ -29,6 +29,7 @@ val identityConfig = IdentityConfig(
         allowedOrigins = setOf("https://identity.example.com")
     ),
     storageNamespace = "aether_production",
+    deviceTokenAudience = "urn:example:identity:production",
     registrationPolicy = RegistrationPolicy.INVITATION_ONLY,
     trustedProxy = TrustedProxyConfig(TrustedProxyMode.DIRECT_ONLY),
     audit = IdentityAuditConfig(
@@ -50,9 +51,13 @@ val identityConfig = IdentityConfig(
 )
 ```
 
-Every key reference must be distinct and belong to the configured environment. Production has no
-inferred origin, RP ID, key or open-registration default. A new production deployment remains
-`PENDING` and fails configuration validation without its single-use bootstrap secret. After the
+Every key reference must be distinct and belong to the configured environment. Set one stable,
+deployment-specific `deviceTokenAudience`; changing it invalidates outstanding device codes, access
+tokens, and refresh tokens even when key material and storage are shared. Credentials issued before
+audience-bound digests were introduced cannot be verified by the new domain and must reauthorize;
+there is intentionally no audience-free compatibility fallback. Production has no inferred origin,
+RP ID, key or open-registration default. A new production deployment remains `PENDING` and fails
+configuration validation without its single-use bootstrap secret. After the
 first owner completes passkey enrollment and the durable bootstrap receipt is verified, deploy
 `bootstrapLifecycle = IdentityBootstrapLifecycle.RETIRED` with `bootstrapSecret = null`, then
 invalidate the old secret-manager version. Retired startup never resolves that reference and the

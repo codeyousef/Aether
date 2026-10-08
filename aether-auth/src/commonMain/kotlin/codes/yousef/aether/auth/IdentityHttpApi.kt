@@ -159,8 +159,22 @@ class IdentityHttpApi(
         }
     }
 
-    fun asMiddleware(): Middleware = middleware@{ exchange, next ->
-        val route = route(exchange) ?: run {
+    fun asMiddleware(): Middleware = asMiddleware(IdentityHttpRouteAdapter.CANONICAL)
+
+    /**
+     * Mounts this authority behind an explicit application route contract without duplicating
+     * identity protocol or security behavior.
+     */
+    fun asMiddleware(routeAdapter: IdentityHttpRouteAdapter): Middleware = middleware@{ exchange, next ->
+        val path = routeAdapter.canonicalPath(exchange.request.method, exchange.request.path)
+            ?: run {
+                next()
+                return@middleware
+            }
+        require(path.startsWith('/') && '?' !in path && '#' !in path) {
+            "An identity route adapter must return an absolute path without query or fragment"
+        }
+        val route = route(exchange.request.method, path) ?: run {
             next()
             return@middleware
         }
@@ -1307,10 +1321,7 @@ class IdentityHttpApi(
         )
     }
 
-    private fun route(exchange: Exchange): Route? {
-        val method = exchange.request.method
-        val path = exchange.request.path
-        return when {
+    private fun route(method: HttpMethod, path: String): Route? = when {
             method == HttpMethod.GET && path == ME -> Route.Me
             method == HttpMethod.POST && path == REGISTRATION_START -> Route.RegistrationStart
             method == HttpMethod.POST && path == REGISTRATION_FINISH -> Route.RegistrationFinish
@@ -1353,7 +1364,6 @@ class IdentityHttpApi(
             method == HttpMethod.POST && path == BOOTSTRAP -> Route.Bootstrap
             else -> organizationRoute(method, path)
         }
-    }
 
     private fun organizationRoute(method: HttpMethod, path: String): Route? {
         val segments = path.removePrefix("/").split('/')

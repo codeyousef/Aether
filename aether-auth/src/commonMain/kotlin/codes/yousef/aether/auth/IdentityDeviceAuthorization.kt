@@ -80,9 +80,16 @@ class IdentityDeviceAuthorizationService(
     private val config: IdentityConfig,
     private val allowedCapabilities: Set<Capability>,
     private val capabilityResolver: CapabilityResolver = CapabilityResolver.NONE,
-    private val ids: IdentityIdFactory = IdentityIdFactory(runtime)
+    private val ids: IdentityIdFactory = IdentityIdFactory(runtime),
+    private val allowedClientIds: Set<String>? = null
 ) {
-    init { require(allowedCapabilities.isNotEmpty()) { "At least one device capability must be allowlisted" } }
+    init {
+        require(allowedCapabilities.isNotEmpty()) { "At least one device capability must be allowlisted" }
+        require(allowedClientIds == null || allowedClientIds.isNotEmpty()) {
+            "A configured device client allowlist must not be empty"
+        }
+        allowedClientIds?.forEach { require(isValidClientId(it)) { "Invalid allowlisted device client ID" } }
+    }
 
     /** Resolves a human user code to a safe approval view without exposing either stored digest. */
     suspend fun inspect(
@@ -90,11 +97,9 @@ class IdentityDeviceAuthorizationService(
         viewer: IdentityContext
     ): IdentityOperationResult<DeviceGrantView> {
         val now = runtime.clock.now()
-        val principal = viewer.principal
-        val session = viewer.session
-        if (principal?.kind != IdentityPrincipalKind.USER || session?.state != SessionState.ACTIVE ||
-            session.assurance == AuthenticationAssurance.RECOVERY || !viewer.isSessionUsableAt(now)
-        ) return IdentityOperationResult.Failure(IdentityErrorCode.AUTHENTICATION_REQUIRED)
+        if (!approverHasDeviceAdminAuthority(viewer, now)) {
+            return IdentityOperationResult.Failure(IdentityErrorCode.AUTHENTICATION_REQUIRED)
+        }
         val normalized = normalizeUserCode(userCode)
             ?: return IdentityOperationResult.Failure(IdentityErrorCode.NOT_FOUND)
         val grant = findGrantByUserCode(normalized)
@@ -182,6 +187,8 @@ class IdentityDeviceAuthorizationService(
     ): OAuthDeviceErrorCode? = when {
         !isValidClientId(clientId) || clientName.isBlank() || clientName.length > 200 ->
             OAuthDeviceErrorCode.INVALID_REQUEST
+        allowedClientIds != null && clientId !in allowedClientIds ->
+            OAuthDeviceErrorCode.INVALID_REQUEST
         requestedCapabilities.isEmpty() || !allowedCapabilities.containsAll(requestedCapabilities) ->
             OAuthDeviceErrorCode.INVALID_SCOPE
         else -> null
@@ -199,11 +206,11 @@ class IdentityDeviceAuthorizationService(
         val grant = findGrantByUserCode(normalizedCode)
             ?: return IdentityOperationResult.Failure(IdentityErrorCode.NOT_FOUND)
         val now = runtime.clock.now()
-        val principal = approver.principal
-        if (principal?.kind != IdentityPrincipalKind.USER || approver.session?.assurance == AuthenticationAssurance.RECOVERY ||
+        if (!approverHasDeviceAdminAuthority(approver, now) ||
             grant.state != DeviceGrantState.PENDING || now >= grant.expiresAt ||
             approvedCapabilities.isEmpty() || !grant.requestedCapabilities.containsAll(approvedCapabilities)
         ) return IdentityOperationResult.Failure(IdentityErrorCode.NOT_FOUND)
+        val principal = requireNotNull(approver.principal)
         val userId = requireNotNull(principal.userId)
         val organization = when (val found = store.findOrganization(organizationId)) {
             is StoreResult.Success -> found.value
@@ -250,11 +257,11 @@ class IdentityDeviceAuthorizationService(
             ?: return IdentityOperationResult.Failure(IdentityErrorCode.INVALID_CREDENTIALS)
         val grant = findGrantByUserCode(normalized)
             ?: return IdentityOperationResult.Failure(IdentityErrorCode.NOT_FOUND)
-        val principal = approver.principal
         val now = runtime.clock.now()
-        if (principal?.kind != IdentityPrincipalKind.USER || approver.session?.assurance == AuthenticationAssurance.RECOVERY ||
+        if (!approverHasDeviceAdminAuthority(approver, now) ||
             grant.state != DeviceGrantState.PENDING || now >= grant.expiresAt
         ) return IdentityOperationResult.Failure(IdentityErrorCode.NOT_FOUND)
+        val principal = requireNotNull(approver.principal)
         val replacement = grant.copy(
             state = DeviceGrantState.DENIED,
             version = grant.version + 1,
@@ -270,6 +277,15 @@ class IdentityDeviceAuthorizationService(
         return store.compareAndSetDeviceGrant(
             CompareAndSetDeviceGrantCommand(grant.version, replacement, audit)
         ).toOperationResult().mapToUnit()
+    }
+
+    private fun approverHasDeviceAdminAuthority(context: IdentityContext, now: Instant): Boolean {
+        val principal = context.principal
+        val session = context.session
+        return principal?.kind == IdentityPrincipalKind.USER &&
+            session?.state == SessionState.ACTIVE &&
+            session.assurance.satisfies(AuthenticationAssurance.PASSKEY) &&
+            context.isSessionUsableAt(now)
     }
 
     suspend fun cancel(
@@ -873,7 +889,7 @@ class IdentityDeviceAuthorizationService(
         secret: ByteArray,
         reference: SecretReference = config.keys.deviceTokenPepper
     ): SecretDigest {
-        val input = "$context\u0000".encodeToByteArray() + secret
+        val input = deviceDigestDomain(context).encodeToByteArray() + secret
         return try {
             val digest = runtime.crypto.hmacSha256(runtime.secrets.resolve(reference), input)
             try {
@@ -892,7 +908,7 @@ class IdentityDeviceAuthorizationService(
         secret: ByteArray,
         reference: SecretReference = config.keys.deviceTokenPepper
     ): SecretDigest {
-        val input = "$context\u0000$selector\u0000".encodeToByteArray() + secret
+        val input = (deviceDigestDomain(context) + "$selector\u0000").encodeToByteArray() + secret
         return try {
             val digest = runtime.crypto.hmacSha256(runtime.secrets.resolve(reference), input)
             try {
@@ -904,6 +920,9 @@ class IdentityDeviceAuthorizationService(
             input.fill(0)
         }
     }
+
+    private fun deviceDigestDomain(context: String): String =
+        "${context.length}:$context\u0000${config.deviceTokenAudience.length}:${config.deviceTokenAudience}\u0000"
 
     private suspend fun verifyTokenDigest(
         context: String,

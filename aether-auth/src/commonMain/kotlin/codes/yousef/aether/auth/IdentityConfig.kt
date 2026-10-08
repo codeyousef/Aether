@@ -247,6 +247,11 @@ data class IdentityConfig(
     val relyingParty: RelyingPartyConfig,
     val keys: IdentityKeyConfig,
     val storageNamespace: String = "aether_${environment.wireName}",
+    /**
+     * Stable RFC 8628 credential audience. It participates in every device-code and token digest,
+     * so deployments sharing a store and key material still reject each other's credentials.
+     */
+    val deviceTokenAudience: String = publicBaseUrl,
     val cookie: SessionCookieConfig = SessionCookieConfig(),
     val lifetimes: IdentityLifetimes = IdentityLifetimes(),
     val registrationPolicy: RegistrationPolicy = RegistrationPolicy.INVITATION_ONLY,
@@ -265,6 +270,9 @@ data class IdentityConfig(
         require(environment.wireName in storageNamespace) {
             "Storage namespace must include the environment name"
         }
+        require(deviceTokenAudience.length in 1..200 &&
+            deviceTokenAudience.all { it.code in 0x21..0x7e }
+        ) { "Device token audience must be 1..200 visible ASCII characters" }
         keys.validateFor(environment)
         bootstrapSecret?.let { secret ->
             require(secret.environment == environment) {

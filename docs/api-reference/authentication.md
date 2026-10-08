@@ -37,9 +37,12 @@ Protocol services include:
 - identity recovery services for one-time code and restricted enrollment flows; and
 - `IdentityDeviceAuthorizationService` for RFC 8628 and rotating CLI tokens.
 
-Applications map these services to the fixed JSON routes described in the
-[identity overview](../identity/README.md#route-ownership). The host owns bounded request reading,
-cookie emission, middleware ordering and audit request metadata.
+Applications may expose the fixed JSON operations described in the
+[identity overview](../identity/README.md#route-ownership) directly, or pass an explicit
+`IdentityHttpRouteAdapter` to `IdentityHttpApi.asMiddleware(adapter)`. The adapter must map each
+application-owned path and method to a canonical `/identity/v1/*` or `/oauth/*` operation and
+return `null` for everything else. It changes routing only; the original request retains body
+limits, cookie/CSRF checks, trusted connection metadata, request IDs, and response ownership.
 
 ## Request context and guards
 
