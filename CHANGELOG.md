@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- AE-T00 source-consumer qualification builds real Aether JVM and Kotlin/JS applications from
+  isolated Maven publications, verifies exact source commits, strict locks, browser package
+  isolation, duplicate-version rejection, runtime classpath isolation, and the absence of a
+  production WASI target.
+
+### Changed
+
+- Aether's Summon integration and example application now consume Summon `0.8.0`; dependency locks
+  and artifact checksums are pinned to the verified release.
+
 ## [0.6.0.1] - 2026-09-05
 
 ### Fixed

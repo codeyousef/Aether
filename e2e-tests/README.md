@@ -23,6 +23,15 @@ npm run test:browser
 Dependencies are pinned by the committed `package-lock.json`. CI and release verification must use
 `npm ci --prefix e2e-tests`; do not replace it with an unconstrained install.
 
+## Source-consumer compatibility
+
+`./e2e-tests/run-private-suite-consumer.sh` publishes the selected Aether modules and pinned
+Summon `0.8.0` source into an isolated Maven repository, then compiles a standalone JVM server and
+Kotlin/JS browser consumer on JDK 21. It also checks strict dependency locks, browser package
+isolation, the absence of a production WASI target, explicit duplicate-version rejection, and the
+existing identity runtime-classpath guard. Set `SUMMON_SOURCE_DIR` to the checkout identified by
+`fixtures/private-suite-consumer/source-pins.properties`; the checkout is read-only input.
+
 `npm run test:live` is Chromium-only because it uses Chrome DevTools Protocol's WebAuthn virtual
 authenticator. It is destructive and refuses to run unless the target is explicitly marked
 disposable:

@@ -148,6 +148,19 @@ jobs:
           echo "Build failed after $MAX_RETRIES attempts"
           exit 1
 
+      - name: Checkout pinned Summon 0.8.0 source
+        uses: actions/checkout@v4
+        with:
+          repository: codeyousef/summon
+          ref: 2f5d33062e590f4df29bfcad82bbb41877e7edde
+          fetch-depth: 1
+          path: summon-source
+
+      - name: Verify real Aether and Summon consumer
+        env:
+          SUMMON_SOURCE_DIR: ${{ github.workspace }}/summon-source
+        run: ./e2e-tests/run-private-suite-consumer.sh
+
       - name: Install the official Firestore emulator
         uses: google-github-actions/setup-gcloud@v3.0.1
         with:
