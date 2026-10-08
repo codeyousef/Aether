@@ -115,10 +115,21 @@ data class RetryConfig(
     /** Whether to use jitter in backoff calculation */
     val useJitter: Boolean = true
 ) {
+    init {
+        require(maxRetries in 0..100) { "Maximum retries must be 0..100" }
+        require(baseDelayMillis in 1..86_400_000) { "Base retry delay must be 1ms..24h" }
+        require(backoffMultiplier.isFinite() && backoffMultiplier >= 1.0) {
+            "Backoff multiplier must be finite and at least 1"
+        }
+        require(maxDelayMillis in baseDelayMillis..86_400_000) {
+            "Maximum retry delay must be between the base delay and 24h"
+        }
+    }
     /**
      * Calculate delay for a specific retry attempt.
      */
     fun calculateDelay(attempt: Int): Long {
+        require(attempt >= 0) { "Retry attempt must be non-negative" }
         val exponentialDelay = (baseDelayMillis * backoffMultiplier.pow(attempt.toDouble())).toLong()
         val capped = minOf(exponentialDelay, maxDelayMillis)
         return if (useJitter) {
@@ -151,23 +162,23 @@ sealed class TaskResult {
  */
 data class TaskOptions(
     /** Queue name */
-    val queue: String = "default",
+    var queue: String = "default",
     
     /** Task priority */
-    val priority: TaskPriority = TaskPriority.NORMAL,
+    var priority: TaskPriority = TaskPriority.NORMAL,
     
     /** Delay before executing (milliseconds) */
-    val delayMillis: Long = 0,
+    var delayMillis: Long = 0,
     
     /** Scheduled time for execution (epoch millis) */
-    val scheduledFor: Long? = null,
+    var scheduledFor: Long? = null,
     
     /** Maximum retries */
-    val maxRetries: Int = 3,
+    var maxRetries: Int = 3,
     
     /** Timeout in milliseconds */
-    val timeoutMillis: Long = 300_000,
+    var timeoutMillis: Long = 300_000,
     
     /** Additional metadata */
-    val metadata: Map<String, String> = emptyMap()
+    var metadata: Map<String, String> = emptyMap()
 )

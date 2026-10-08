@@ -55,7 +55,18 @@ data class WorkerConfig(
     
     /** Whether to release stale tasks */
     val releaseStale: Boolean = true
-)
+) {
+    init {
+        require(concurrency in 1..1_024) { "Task concurrency must be 1..1024" }
+        require(queues.size in 1..64 && queues.all { it.isNotBlank() && it.length <= 64 }) {
+            "Task queues must contain 1..64 non-blank names"
+        }
+        require(pollInterval.isPositive()) { "Poll interval must be positive" }
+        require(scheduleCheckInterval.isPositive()) { "Schedule check interval must be positive" }
+        require(staleCheckInterval.isPositive()) { "Stale check interval must be positive" }
+        require(staleTimeout.isPositive()) { "Stale timeout must be positive" }
+    }
+}
 
 /**
  * Worker that processes background tasks.
@@ -101,9 +112,9 @@ class TaskWorker(
         coroutineScope {
             workerJob = coroutineContext.job
             
-            // Launch poll workers for each queue
-            val pollJobs = config.queues.map { queue ->
-                launch { pollLoop(queue) }
+            // Exactly this many loops share all queues, so concurrency is globally bounded.
+            val pollJobs = List(config.concurrency) { workerIndex ->
+                launch { pollLoop(workerIndex) }
             }
             
             // Launch scheduled task checker
@@ -150,30 +161,30 @@ class TaskWorker(
      */
     val activeJobCount: Int get() = activeJobs.value
 
-    private suspend fun pollLoop(queue: String) {
+    private suspend fun pollLoop(workerIndex: Int) {
+        var nextQueue = workerIndex % config.queues.size
         while (running.value) {
-            // Check if we can accept more work
-            if (activeJobs.value >= config.concurrency) {
-                delay(100)
-                continue
-            }
-            
             try {
-                val task = store.claimNext(queue, workerId)
-                if (task != null) {
-                    activeJobs.incrementAndGet()
-                    try {
-                        processTask(task)
-                    } finally {
-                        activeJobs.decrementAndGet()
-                    }
-                } else {
+                var task: TaskRecord? = null
+                for (ignored in config.queues.indices) {
+                    val queue = config.queues[nextQueue]
+                    nextQueue = (nextQueue + 1) % config.queues.size
+                    task = store.claimNext(queue, workerId)
+                    if (task != null) break
+                }
+                if (task == null) {
                     delay(config.pollInterval)
+                    continue
+                }
+                activeJobs.incrementAndGet()
+                try {
+                    processTask(task)
+                } finally {
+                    activeJobs.decrementAndGet()
                 }
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
-                // Log error and continue
+            } catch (_: Exception) {
                 delay(config.pollInterval)
             }
         }

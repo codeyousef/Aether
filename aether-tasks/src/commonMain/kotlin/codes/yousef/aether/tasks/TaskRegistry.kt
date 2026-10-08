@@ -59,7 +59,7 @@ object TaskRegistry {
         options: TaskOptions = TaskOptions(),
         handler: suspend (A) -> R
     ) {
-        val task = RegisteredTask(name, handler, argSerializer, resultSerializer, options)
+        val task = RegisteredTask(name, handler, argSerializer, resultSerializer, options.copy())
         tasks[name] = task
     }
 
@@ -80,6 +80,9 @@ object TaskRegistry {
      * Check if a task is registered.
      */
     fun isRegistered(name: String): Boolean = name in tasks
+
+    internal fun optionsFor(name: String): TaskOptions =
+        requireNotNull(tasks[name]) { "Task not registered: $name" }.defaultOptions.copy()
 
     /**
      * Clear all registered tasks. Useful for testing.

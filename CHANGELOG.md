@@ -49,6 +49,18 @@
   credentialed CORS, server-resolved typed authorization/feature gates, bounded 15-second
   epoch-aware revocation caches, strict nonce/hash-aware CSP, separate private/public cache
   profiles, credential-stripping object proxy configuration, and bounded shared rate-limit seams.
+- `aether-tasks` now provides database-time 60-second leased jobs with 20-second heartbeats,
+  generation-fenced completion/retry/release, atomic `SKIP LOCKED` claims, globally bounded workers,
+  fixed 5/30/120/600/3,600-second retries, visible poison failures and identity-preserving replay.
+  Private work stores only ciphertext references. Transactional idempotency receipts commit
+  mutation and outbox rows together; generation-fenced outbox delivery and provider-effect ledgers
+  distinguish acknowledged effects from unknown outcomes requiring reconciliation.
+
+### Fixed
+
+- Task registration defaults and per-enqueue `TaskOptions` overrides now take effect, invalid retry
+  and worker configurations fail immediately, and the legacy `TaskWorker` enforces its concurrency
+  cap globally across queues instead of racing per-queue counters.
 
 ## [0.6.0.1] - 2026-09-05
 

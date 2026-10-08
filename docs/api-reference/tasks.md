@@ -11,7 +11,7 @@ Background tasks allow you to defer expensive operations (sending emails, proces
 
 ```kotlin
 // build.gradle.kts
-implementation("codes.yousef.aether:aether-tasks:0.6.0.0")
+implementation("codes.yousef.aether:aether-tasks:0.8.0")
 ```
 
 ## Basic Usage
@@ -23,7 +23,7 @@ import codes.yousef.aether.tasks.*
 
 // Initialize the task system
 val taskStore = InMemoryTaskStore()  // Or DatabaseTaskStore for production
-val dispatcher = TaskDispatcher(taskStore)
+TaskDispatcher.initialize(taskStore)
 val worker = TaskWorker(taskStore)
 
 // Register a task handler
@@ -46,8 +46,8 @@ data class SendEmailArgs(val to: String, val subject: String, val body: String)
 data class EmailResult(val success: Boolean, val messageId: String?)
 
 // Enqueue a task
-val taskId = dispatcher.enqueue(
-    taskName = "send_email",
+val taskId = TaskDispatcher.enqueue(
+    name = "send_email",
     args = SendEmailArgs(
         to = "user@example.com",
         subject = "Welcome!",
@@ -56,17 +56,11 @@ val taskId = dispatcher.enqueue(
 )
 
 // Enqueue with options
-val taskId = dispatcher.enqueue(
-    taskName = "send_email",
-    args = args,
-    priority = TaskPriority.HIGH,
-    delay = 5.minutes,  // Start after 5 minutes
-    retryConfig = RetryConfig(
-        maxAttempts = 3,
-        baseDelayMillis = 1000,
-        backoffMultiplier = 2.0
-    )
-)
+val taskId = TaskDispatcher.enqueue("send_email", args) {
+    priority = TaskPriority.HIGH
+    delayMillis = 5.minutes.inWholeMilliseconds
+    maxRetries = 3
+}
 ```
 
 ## Task Stores
@@ -89,6 +83,83 @@ val store = DatabaseTaskStore(driver)
 // Run migrations to create the tasks table
 store.migrate()
 ```
+
+### Private-suite leased tasks
+
+Use `DatabaseLeasedTaskStore` and `LeasedTaskWorker` for private-suite work. The older
+`TaskDispatcher`/`TaskWorker` model remains for applications whose JSON arguments and results may be
+stored in the general task table; it is not the private-data boundary.
+
+```kotlin
+val store = DatabaseLeasedTaskStore(driver)
+store.migrate()
+
+store.enqueue(
+    LeasedTaskRecord(
+        id = "job-01",
+        queue = "objects",
+        state = LeasedTaskState.AVAILABLE,
+        availableAtEpochMilliseconds = 0,
+        attempts = 0,
+        leaseOwner = null,
+        leaseUntilEpochMilliseconds = null,
+        leaseGeneration = 0,
+        operationKey = "object:client-operation-01",
+        encryptedPayloadReference = "ciphertext:job-01"
+    )
+)
+
+val worker = LeasedTaskWorker(
+    store = store,
+    owner = "worker-01",
+    config = LeasedTaskWorkerConfig(concurrency = 8, queues = listOf("objects")),
+    executor = LeasedTaskExecutor { task ->
+        // Resolve and decrypt task.encryptedPayloadReference in the application-owned store.
+        "ciphertext-result:${task.id}"
+    }
+)
+worker.run()
+```
+
+Claims are one parameterized `UPDATE ... RETURNING` statement with `FOR UPDATE SKIP LOCKED`.
+PostgreSQL `clock_timestamp()` determines availability and lease expiry. Leases last 60 seconds;
+workers heartbeat every 20 seconds. Every heartbeat, completion, retry, and release is conditional
+on task ID, owner, generation, and applicable state. A stale worker therefore cannot commit after
+takeover. Retries use 5, 30, 120, 600, and 3,600 second delays within a 24-hour budget; exhausted
+tasks remain visible as `FAILED`, and `replayFailed` retains their operation and ciphertext
+references. `LeasedTaskWorker` runs exactly the configured number of loops across all queues.
+
+The leased table stores opaque `payload_ref` and `result_ref` values, never readable arguments,
+results, errors, or stack traces.
+
+### Idempotency, outbox, and external effects
+
+`DatabaseReliableWorkStore.executeIdempotent` scopes a receipt by actor/account, operation kind,
+and client operation ID. The caller supplies a canonical SHA-256 digest. The application mutation,
+encrypted result reference, and outbox rows commit in one injected-driver transaction:
+
+```kotlin
+val outcome = reliable.executeIdempotent(
+    IdempotencyScope(accountId, "object:create", clientOperationId),
+    canonicalDigest,
+    retentionSeconds = 86_400
+) { tx ->
+    objectRepository.insert(tx, encryptedObject)
+    IdempotentMutationResult(
+        encryptedResultReference = resultReference,
+        outboxEvents = listOf(
+            OutboxEvent(eventId, "object.created", encryptedEventReference)
+        )
+    )
+}
+```
+
+The same key and digest returns the stored reference without re-running the mutation; a different
+digest returns `Conflict`. Retention must cover the retry/offline horizon. Outbox claims and
+acknowledgements are generation-fenced. Provider-facing effects use
+`claimExternalEffect`/`acknowledgeExternalEffect`; acknowledgement is reconciled once, while an
+expired send becomes `UNKNOWN_OUTCOME` through `recoverExpiredExternalEffects` and requires
+application/provider reconciliation. The API does not claim exactly-once network delivery.
 
 ## Task Status
 
@@ -123,7 +194,7 @@ Configure automatic retries with exponential backoff:
 
 ```kotlin
 val retryConfig = RetryConfig(
-    maxAttempts = 5,           // Total attempts including first try
+    maxRetries = 5,            // Retries after the initial attempt
     baseDelayMillis = 1000,    // Initial delay (1 second)
     backoffMultiplier = 2.0,   // Double delay each retry
     maxDelayMillis = 60_000,   // Cap delay at 1 minute
@@ -140,8 +211,11 @@ The worker polls the store and executes tasks:
 ```kotlin
 val worker = TaskWorker(
     store = taskStore,
-    concurrency = 4,           // Process 4 tasks simultaneously
-    pollInterval = 1.seconds   // Check for new tasks every second
+    config = WorkerConfig(
+        concurrency = 4,
+        pollInterval = 1.seconds,
+        retryConfig = RetryConfig(maxRetries = 3)
+    )
 )
 
 // Start processing
@@ -159,7 +233,7 @@ Subscribe to task lifecycle events:
 import codes.yousef.aether.tasks.TaskSignals
 
 TaskSignals.taskStarted.connect { task ->
-    println("Task ${task.id} started: ${task.taskName}")
+    println("Task ${task.id} started: ${task.name}")
 }
 
 TaskSignals.taskCompleted.connect { task ->
@@ -170,8 +244,8 @@ TaskSignals.taskFailed.connect { task ->
     println("Task ${task.id} failed: ${task.error}")
 }
 
-TaskSignals.taskRetrying.connect { task ->
-    println("Task ${task.id} retrying (attempt ${task.attempts})")
+TaskSignals.taskRetried.connect { task ->
+    println("Task ${task.id} retrying (attempt ${task.retryCount})")
 }
 ```
 
@@ -180,7 +254,7 @@ TaskSignals.taskRetrying.connect { task ->
 Get task queue statistics:
 
 ```kotlin
-val stats = dispatcher.stats()
+val stats = TaskDispatcher.getStats()
 println("""
     Pending: ${stats.pending}
     Scheduled: ${stats.scheduled}
@@ -194,16 +268,10 @@ println("""
 
 ```kotlin
 // Get task by ID
-val task = dispatcher.getTask(taskId)
+val task = TaskDispatcher.getTask(taskId)
 
 // Cancel a pending task
-dispatcher.cancel(taskId)
-
-// Retry a failed task
-dispatcher.retry(taskId)
-
-// List tasks by status
-val failedTasks = dispatcher.listByStatus(TaskStatus.FAILED)
+TaskDispatcher.cancel(taskId)
 ```
 
 ## Example: Email Queue
@@ -224,15 +292,16 @@ TaskRegistry.register<EmailTask, Unit>("send_templated_email") { task ->
 
 // Usage in your application
 suspend fun sendWelcomeEmail(user: User) {
-    dispatcher.enqueue(
-        taskName = "send_templated_email",
+    TaskDispatcher.enqueue(
+        name = "send_templated_email",
         args = EmailTask(
             to = user.email,
             template = "welcome",
             data = mapOf("name" to user.name)
-        ),
+        )
+    ) {
         priority = TaskPriority.HIGH
-    )
+    }
 }
 ```
 

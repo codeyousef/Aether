@@ -121,11 +121,23 @@ object TaskDispatcher {
             throw TaskNotFoundException("Task not registered: $name. Register it first with TaskRegistry.register()")
         }
         
-        val options = TaskOptions().apply(configure)
+        val options = TaskRegistry.optionsFor(name).apply(configure)
+        require(options.queue.isNotBlank() && options.queue.length <= 64) {
+            "Task queue must contain 1..64 characters"
+        }
+        require(options.delayMillis >= 0) { "Task delay must be non-negative" }
+        require(options.maxRetries in 0..100) { "Maximum retries must be 0..100" }
+        require(options.timeoutMillis in 1..86_400_000) { "Task timeout must be 1ms..24h" }
+        require(options.metadata.size <= 64 && options.metadata.all { (key, value) ->
+            key.isNotBlank() && key.length <= 128 && value.length <= 1_024 &&
+                key.none(Char::isISOControl) && value.none(Char::isISOControl)
+        }) { "Task metadata exceeds its bounded safe shape" }
         val now = Clock.System.now().toEpochMilliseconds()
-        
-        val scheduledFor = options.scheduledFor 
-            ?: (now + options.delayMillis)
+        require(options.scheduledFor != null || options.delayMillis <= Long.MAX_VALUE - now) {
+            "Task delay overflows its schedule"
+        }
+
+        val scheduledFor = options.scheduledFor ?: (now + options.delayMillis)
         
         val argsJson = TaskRegistry.json.encodeToJsonElement(argSerializer, args)
         

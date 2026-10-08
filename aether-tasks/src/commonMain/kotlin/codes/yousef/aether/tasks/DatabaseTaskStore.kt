@@ -1,7 +1,6 @@
 package codes.yousef.aether.tasks
 
 import codes.yousef.aether.db.*
-import kotlin.time.Clock
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -27,6 +26,7 @@ private val mapSerializer = MapSerializer(String.serializer(), String.serializer
  * ```
  */
 class DatabaseTaskStore(
+    private val driver: DatabaseDriver = DatabaseDriverRegistry.driver,
     private val json: Json = TaskRegistry.json
 ) : TaskStore {
     
@@ -34,14 +34,15 @@ class DatabaseTaskStore(
      * Run the migration to create the tasks table.
      */
     suspend fun migrate() {
-        val runner = MigrationRunner(DatabaseDriverRegistry.driver, stream = "tasks")
+        val runner = MigrationRunner(driver, stream = "tasks")
         runner.register(TaskTableMigration)
+        runner.register(LeasedTaskTableMigration)
+        runner.register(ReliableWorkTableMigration)
         val result = runner.migrate()
         if (!result.success) throw result.errors.first().exception
     }
 
     override suspend fun save(task: TaskRecord): TaskRecord {
-        val driver = DatabaseDriverRegistry.driver
         
         val insertQuery = InsertQuery(
             table = "_aether_tasks",
@@ -69,7 +70,6 @@ class DatabaseTaskStore(
     }
 
     override suspend fun getById(id: String): TaskRecord? {
-        val driver = DatabaseDriverRegistry.driver
         
         val query = SelectQuery(
             columns = listOf(Expression.Star),
@@ -86,49 +86,34 @@ class DatabaseTaskStore(
     }
 
     override suspend fun claimNext(queue: String, workerId: String): TaskRecord? {
-        val driver = DatabaseDriverRegistry.driver
-        val now = Clock.System.now().toEpochMilliseconds()
-        
-        // Use SELECT FOR UPDATE SKIP LOCKED for concurrent access
-        val selectSql = """
-            SELECT * FROM _aether_tasks 
-            WHERE status = 'PENDING' 
-            AND queue = '$queue'
-            AND scheduled_for <= $now
-            ORDER BY priority DESC, created_at ASC
-            LIMIT 1
-            FOR UPDATE SKIP LOCKED
-        """.trimIndent()
-        
-        val rows = driver.executeQuery(RawQuery(selectSql))
-        val task = rows.firstOrNull()?.let { rowToTask(it) } ?: return null
-        
-        // Claim the task
-        val updateQuery = UpdateQuery(
-            table = "_aether_tasks",
-            assignments = mapOf(
-                "status" to Expression.Literal(SqlValue.StringValue(TaskStatus.PROCESSING.name)),
-                "worker_id" to Expression.Literal(SqlValue.StringValue(workerId)),
-                "started_at" to Expression.Literal(SqlValue.LongValue(now))
-            ),
-            where = WhereClause.Condition(
-                left = Expression.ColumnRef(column = "id"),
-                operator = ComparisonOperator.EQUALS,
-                right = Expression.Literal(SqlValue.StringValue(task.id))
+        require(queue.length in 1..64) { "Queue name must contain 1..64 characters" }
+        require(workerId.length in 1..64) { "Worker ID must contain 1..64 characters" }
+        val rows = driver.executeQuery(
+            """
+            WITH candidate AS (
+                SELECT id
+                FROM _aether_tasks
+                WHERE status = 'PENDING'
+                  AND queue = $1
+                  AND scheduled_for <= (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::BIGINT
+                ORDER BY priority DESC, created_at ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
             )
+            UPDATE _aether_tasks AS task
+            SET status = 'PROCESSING',
+                worker_id = $2,
+                started_at = (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::BIGINT
+            FROM candidate
+            WHERE task.id = candidate.id
+            RETURNING task.*
+            """.trimIndent(),
+            listOf(SqlValue.StringValue(queue), SqlValue.StringValue(workerId))
         )
-        
-        driver.executeUpdate(updateQuery)
-        
-        return task.copy(
-            status = TaskStatus.PROCESSING,
-            workerId = workerId,
-            startedAt = now
-        )
+        return rows.singleOrNull()?.let(::rowToTask)
     }
 
     override suspend fun update(task: TaskRecord): TaskRecord {
-        val driver = DatabaseDriverRegistry.driver
         
         val assignments = mutableMapOf<String, Expression>(
             "status" to Expression.Literal(SqlValue.StringValue(task.status.name)),
@@ -173,7 +158,6 @@ class DatabaseTaskStore(
     }
 
     override suspend fun getByStatus(status: TaskStatus, limit: Int): List<TaskRecord> {
-        val driver = DatabaseDriverRegistry.driver
         
         val query = SelectQuery(
             columns = listOf(Expression.Star),
@@ -191,7 +175,6 @@ class DatabaseTaskStore(
     }
 
     override suspend fun getByQueue(queue: String, limit: Int): List<TaskRecord> {
-        val driver = DatabaseDriverRegistry.driver
         
         val query = SelectQuery(
             columns = listOf(Expression.Star),
@@ -209,7 +192,6 @@ class DatabaseTaskStore(
     }
 
     override suspend fun deleteOlderThan(timestamp: Long, status: TaskStatus): Int {
-        val driver = DatabaseDriverRegistry.driver
         
         val deleteQuery = DeleteQuery(
             table = "_aether_tasks",
@@ -231,7 +213,6 @@ class DatabaseTaskStore(
     }
 
     override suspend fun countByStatus(status: TaskStatus): Long {
-        val driver = DatabaseDriverRegistry.driver
         
         val query = SelectQuery(
             columns = listOf(Expression.FunctionCall("COUNT", listOf(Expression.Star))),
@@ -248,7 +229,6 @@ class DatabaseTaskStore(
     }
 
     override suspend fun releaseStale(olderThan: Long): Int {
-        val driver = DatabaseDriverRegistry.driver
         
         val updateQuery = UpdateQuery(
             table = "_aether_tasks",
