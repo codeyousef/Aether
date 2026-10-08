@@ -11,6 +11,7 @@ This section provides detailed API documentation for each module in the Aether f
 | [Database](database.md)                     | ORM, Models, QueryAST, PostgreSQL/Supabase/Firestore drivers       |
 | [Authentication](authentication.md)         | Passkey-first identity, organizations, opaque sessions and guards  |
 | [Session Management](session-management.md) | Cookie and token-based sessions                                    |
+| [Secure pipeline](security.md)               | Fixed middleware order, exact CORS, typed policy and private headers |
 | [Network](network.md)                       | TCP/UDP transport abstractions                                     |
 | [WebSockets](websockets.md)                 | Real-time bidirectional communication                              |
 | [gRPC](grpc.md)                             | gRPC-Web, Connect protocol, code-first proto generation            |
@@ -47,6 +48,7 @@ This section provides detailed API documentation for each module in the Aether f
 - **Real-time messaging**: See [Channels](channels.md) for WebSocket pub/sub
 - **gRPC services**: See [gRPC](grpc.md) for code-first gRPC support
 - **Identity context**: See [request context and guards](authentication.md#request-context-and-guards)
+- **Private API pipeline**: See [Secure application pipeline](security.md)
 
 ### Platform Targets
 

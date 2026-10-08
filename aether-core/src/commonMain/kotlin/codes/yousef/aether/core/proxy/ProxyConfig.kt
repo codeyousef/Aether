@@ -70,6 +70,7 @@ data class ProxyConfig(
      * By default, hop-by-hop headers are removed.
      */
     val removeRequestHeaders: Set<String> = DEFAULT_HOP_BY_HOP_HEADERS,
+
     
     /**
      * Headers to remove from the proxied response.
@@ -85,6 +86,7 @@ data class ProxyConfig(
      * Custom headers to add to every proxied response.
      */
     val additionalResponseHeaders: Map<String, String> = emptyMap()
+
 ) {
     init {
         require(maxRequestBodySize > 0) { "Maximum proxy request body size must be positive" }
@@ -116,6 +118,23 @@ data class ProxyConfig(
          * Default configuration optimized for general use.
          */
         val Default = ProxyConfig()
+
+        /**
+         * Private object-transfer profile. Browser credentials and session-bound CSRF material are
+         * never forwarded to object storage; applications must add a narrowly scoped upstream
+         * credential explicitly.
+         */
+        val PrivateObjectTransfer = ProxyConfig(
+            followRedirects = false,
+            preserveHostHeader = false,
+            addForwardedHeaders = false,
+            removeRequestHeaders = DEFAULT_HOP_BY_HOP_HEADERS + setOf(
+                "Authorization",
+                "Cookie",
+                "X-CSRF-Token"
+            ),
+            additionalResponseHeaders = mapOf("Cache-Control" to "no-store")
+        )
         
         /**
          * Configuration optimized for LLM/AI inference endpoints.

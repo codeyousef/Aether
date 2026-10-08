@@ -316,7 +316,7 @@ private fun parseUrlComponents(url: String): UrlComponents {
 /**
  * Build the headers for the proxy request.
  */
-private fun buildProxyHeaders(
+internal fun buildProxyHeaders(
     exchange: Exchange,
     config: ProxyConfig,
     requestConfig: ProxyRequestConfig
@@ -364,7 +364,12 @@ private fun buildProxyHeaders(
     
     // Add/override headers from request config
     headers.putAll(requestConfig.headersToAdd)
-    
+
+    // Removal policies remain authoritative over route-local additions.
+    headers.keys.removeAll { name ->
+        excludeHeaders.any { it.equals(name, ignoreCase = true) }
+    }
+
     return headers
 }
 

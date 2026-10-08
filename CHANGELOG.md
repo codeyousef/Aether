@@ -45,6 +45,10 @@
   credentials are digest-bound to an explicit deployment audience; device clients may be closed to
   an allowlist, and grant inspection/approval/denial requires an active passkey or step-up identity
   session instead of accepting a generic or federated session.
+- Private applications can now install a fixed-order secure pipeline profile with exact
+  credentialed CORS, server-resolved typed authorization/feature gates, bounded 15-second
+  epoch-aware revocation caches, strict nonce/hash-aware CSP, separate private/public cache
+  profiles, credential-stripping object proxy configuration, and bounded shared rate-limit seams.
 
 ## [0.6.0.1] - 2026-09-05
 

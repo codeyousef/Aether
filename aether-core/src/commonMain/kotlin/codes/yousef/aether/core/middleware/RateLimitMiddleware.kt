@@ -19,12 +19,38 @@ data class QuotaUsage(
 ) {
     val isExhausted: Boolean get() = remaining <= 0
     val percentUsed: Double get() = if (limit > 0) (used.toDouble() / limit) * 100 else 0.0
+    /** True only when a just-recorded request exceeded the configured limit. */
+    val isExceeded: Boolean get() = used > limit
 }
 
 /**
  * Attribute key for accessing quota usage from an Exchange.
  */
 val QuotaUsageAttributeKey = AttributeKey<QuotaUsage>("aether.ratelimit.usage", QuotaUsage::class)
+
+data class RateLimitNamespace(val value: String) {
+    init {
+        require(Regex("[a-z][a-z0-9_.-]{0,63}").matches(value)) { "Invalid rate-limit namespace" }
+    }
+}
+
+/**
+ * Builds quota keys only from a server-installed attribute and server-declared namespace.
+ * The stable ID function must not read request query, headers, or body.
+ */
+fun <Subject : Any> serverResolvedRateLimitKey(
+    namespace: RateLimitNamespace,
+    subjectKey: AttributeKey<Subject>,
+    stableId: (Subject) -> String
+): suspend (Exchange) -> String? = { exchange ->
+    exchange.attributes.get(subjectKey)?.let { subject ->
+        val id = stableId(subject)
+        require(id.isNotBlank() && id.length <= 256 && '\u0000' !in id) {
+            "Invalid server-resolved rate-limit subject"
+        }
+        "${namespace.value}:$id"
+    }
+}
 
 /**
  * Interface for quota checking strategies.
@@ -58,7 +84,8 @@ interface QuotaProvider {
  */
 class InMemoryQuotaProvider(
     private val limit: Long,
-    private val windowMillis: Long
+    private val windowMillis: Long,
+    private val maximumBuckets: Int = 10_000
 ) : QuotaProvider {
     
     private data class BucketEntry(
@@ -67,6 +94,12 @@ class InMemoryQuotaProvider(
     )
     
     private val buckets = atomic(mapOf<String, BucketEntry>())
+
+    init {
+        require(limit in 1 until Long.MAX_VALUE) { "Quota limit must be positive and bounded" }
+        require(windowMillis > 0) { "Quota window must be positive" }
+        require(maximumBuckets > 0) { "Quota bucket capacity must be positive" }
+    }
 
     override suspend fun getUsage(key: String): QuotaUsage {
         val now = Clock.System.now().toEpochMilliseconds()
@@ -90,20 +123,39 @@ class InMemoryQuotaProvider(
     }
 
     override suspend fun recordUsage(key: String, amount: Long): QuotaUsage {
+        require(amount > 0) { "Quota usage amount must be positive" }
         val now = Clock.System.now().toEpochMilliseconds()
         
         var newEntry: BucketEntry? = null
+        var capacityResetAt = now + windowMillis
         buckets.update { current ->
-            val existing = current[key]
-            newEntry = if (existing == null || isExpired(existing, now)) {
-                BucketEntry(amount, now)
+            newEntry = null
+            val active = if (current.size >= maximumBuckets) {
+                current.filterValues { !isExpired(it, now) }
             } else {
-                BucketEntry(existing.count + amount, existing.windowStart)
+                current
             }
-            current + (key to newEntry!!)
+            val existing = active[key]
+            if (existing == null && active.size >= maximumBuckets) {
+                capacityResetAt = active.values.minOf { it.windowStart + windowMillis }
+                active
+            } else {
+                val count = if (existing == null || isExpired(existing, now)) {
+                    amount
+                } else {
+                    if (existing.count > Long.MAX_VALUE - amount) Long.MAX_VALUE else existing.count + amount
+                }
+                newEntry = BucketEntry(count, existing?.windowStart ?: now)
+                active + (key to requireNotNull(newEntry))
+            }
         }
-        
-        val entry = newEntry!!
+
+        val entry = newEntry ?: return QuotaUsage(
+            used = limit + 1,
+            limit = limit,
+            remaining = 0,
+            resetsAt = capacityResetAt
+        )
         return QuotaUsage(
             used = entry.count,
             limit = limit,
@@ -142,6 +194,7 @@ data class RateLimitConfig(
     var keyExtractor: suspend (Exchange) -> String? = { exchange ->
         exchange.connection.peerAddress ?: "anonymous"
     },
+
 
     /**
      * The quota provider implementation.
@@ -188,7 +241,10 @@ data class RateLimitConfig(
      * Custom handler for quota exhausted scenarios.
      * If null, uses default JSON response.
      */
-    var exhaustedHandler: (suspend (Exchange, QuotaUsage) -> Unit)? = null
+    var exhaustedHandler: (suspend (Exchange, QuotaUsage) -> Unit)? = null,
+
+    /** Fail closed when [keyExtractor] cannot resolve a trusted key. */
+    var requireKey: Boolean = false
 )
 
 /**
@@ -207,10 +263,11 @@ data class RateLimitConfig(
  *         limit = 1000,
  *         windowMillis = 3600_000 // 1 hour
  *     )
- *     keyExtractor = { exchange ->
- *         exchange.attributes.get(UserAttributeKey)?.id?.toString()
- *             ?: exchange.request.headers.get("X-API-Key")
- *     }
+ *     keyExtractor = serverResolvedRateLimitKey(
+ *         RateLimitNamespace("api.ai"),
+ *         UserAttributeKey
+ *     ) { user -> user.id.toString() }
+ *     requireKey = true
  *     costFunction = { exchange ->
  *         // Heavy endpoints cost more
  *         if (exchange.request.path.startsWith("/api/ai/")) 10L else 1L
@@ -238,7 +295,15 @@ class RateLimitMiddleware(
         // Extract key
         val key = config.keyExtractor(exchange)
         if (key == null) {
-            next()
+            if (config.requireKey) {
+                exchange.response.statusCode = 400
+                exchange.response.setHeader("Content-Type", "text/plain; charset=utf-8")
+                exchange.response.setHeader("Cache-Control", "no-store")
+                exchange.response.write("rate_limit_key_missing")
+                exchange.response.end()
+            } else {
+                next()
+            }
             return
         }
 
@@ -251,6 +316,7 @@ class RateLimitMiddleware(
 
         // Calculate cost
         val cost = config.costFunction(exchange)
+        require(cost > 0) { "Rate-limit request cost must be positive" }
 
         // Record usage
         val usage = config.quotaProvider.recordUsage(key, cost)
@@ -265,8 +331,8 @@ class RateLimitMiddleware(
             exchange.response.setHeader("X-RateLimit-Reset", usage.resetsAt.toString())
         }
 
-        // Check if this request exhausted the quota
-        if (usage.isExhausted) {
+        // The request that reaches the limit is allowed; only usage beyond it is rejected.
+        if (usage.isExceeded) {
             handleExhausted(exchange, usage)
             return
         }
@@ -295,7 +361,9 @@ class RateLimitMiddleware(
             exchange.response.setHeader("X-RateLimit-Limit", usage.limit.toString())
             exchange.response.setHeader("X-RateLimit-Remaining", "0")
             exchange.response.setHeader("X-RateLimit-Reset", usage.resetsAt.toString())
-            exchange.response.setHeader("Retry-After", ((usage.resetsAt - Clock.System.now().toEpochMilliseconds()) / 1000).toString())
+            val remainingMillis = usage.resetsAt - Clock.System.now().toEpochMilliseconds()
+            val retryAfterSeconds = ((remainingMillis.coerceAtLeast(1) + 999) / 1_000).coerceAtLeast(1)
+            exchange.response.setHeader("Retry-After", retryAfterSeconds.toString())
         }
 
         val handler = config.exhaustedHandler
