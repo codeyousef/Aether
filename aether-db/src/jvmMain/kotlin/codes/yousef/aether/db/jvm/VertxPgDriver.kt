@@ -5,6 +5,7 @@ import codes.yousef.aether.core.pipeline.QueryLogContext
 import codes.yousef.aether.core.pipeline.QueryLogEntry
 import codes.yousef.aether.db.*
 import io.vertx.core.Vertx
+import io.vertx.core.buffer.Buffer
 import io.vertx.kotlin.coroutines.coAwait
 import io.vertx.pgclient.PgBuilder
 import io.vertx.pgclient.PgConnectOptions
@@ -26,7 +27,10 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import java.time.OffsetDateTime
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.time.Instant
 import kotlin.coroutines.coroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -44,7 +48,7 @@ class VertxPgDriver(
 
     override suspend fun executeQuery(query: QueryAST): List<Row> {
         val translated = SqlTranslator.translate(query)
-        val tuple = Tuple.from(translated.params)
+        val tuple = Tuple.from(translated.params.map(::translatedParameter))
         val start = Clock.System.now()
 
         try {
@@ -63,6 +67,21 @@ class VertxPgDriver(
         }
     }
 
+    override suspend fun executeQuery(sql: String, params: List<SqlValue>): List<Row> {
+        val start = Clock.System.now()
+        try {
+            val rowSet = client.preparedQuery(sql)
+                .execute(Tuple.from(params.map(::sqlParameter)))
+                .coAwait()
+            val duration = Clock.System.now().toEpochMilliseconds() - start.toEpochMilliseconds()
+            logQuery(sql, duration)
+            return rowSet.map(::VertxRow)
+        } catch (e: Exception) {
+            throw databaseFailure(DatabaseOperation.QUERY, e)
+        }
+    }
+
+    @Deprecated("Raw SQL cannot bind untrusted values; use executeQuery(sql, params)")
     override suspend fun executeQueryRaw(sql: String): List<Row> {
         val start = Clock.System.now()
         try {
@@ -83,7 +102,7 @@ class VertxPgDriver(
 
     override suspend fun executeUpdate(query: QueryAST): Int {
         val translated = SqlTranslator.translate(query)
-        val tuple = Tuple.from(translated.params)
+        val tuple = Tuple.from(translated.params.map(::translatedParameter))
         val start = Clock.System.now()
 
         try {
@@ -175,17 +194,7 @@ class VertxPgDriver(
     }
 
     override suspend fun execute(sql: String, params: List<SqlValue>): Int {
-        val paramValues = params.map { 
-            when (it) {
-                is SqlValue.StringValue -> it.value
-                is SqlValue.IntValue -> it.value
-                is SqlValue.LongValue -> it.value
-                is SqlValue.DoubleValue -> it.value
-                is SqlValue.BooleanValue -> it.value
-                is SqlValue.NullValue -> null
-            }
-        }
-        val tuple = Tuple.from(paramValues)
+        val tuple = Tuple.from(params.map(::sqlParameter))
         try {
             val rowSet = client.preparedQuery(sql)
                 .execute(tuple)
@@ -403,8 +412,13 @@ private class TransactionBoundDriver(
     override suspend fun executeQuery(query: QueryAST): List<Row> =
         scope.run { delegate.executeQuery(query) }
 
+    @Suppress("DEPRECATION")
+    @Deprecated("Raw SQL cannot bind untrusted values; use executeQuery(sql, params)")
     override suspend fun executeQueryRaw(sql: String): List<Row> =
         scope.run { delegate.executeQueryRaw(sql) }
+
+    override suspend fun executeQuery(sql: String, params: List<SqlValue>): List<Row> =
+        scope.run { delegate.executeQuery(sql, params) }
 
     override suspend fun executeUpdate(query: QueryAST): Int =
         scope.run { delegate.executeUpdate(query) }
@@ -530,6 +544,21 @@ private fun mapTransactionConflict(
 }
 
 
+private fun translatedParameter(value: Any?): Any? =
+    if (value is SqlValue) sqlParameter(value) else value
+
+private fun sqlParameter(value: SqlValue): Any? = when (value) {
+    is SqlValue.StringValue -> value.value
+    is SqlValue.IntValue -> value.value
+    is SqlValue.LongValue -> value.value
+    is SqlValue.DoubleValue -> value.value
+    is SqlValue.BooleanValue -> value.value
+    is SqlValue.UuidValue -> UUID.fromString(value.value)
+    is SqlValue.ByteArrayValue -> Buffer.buffer(value.value)
+    is SqlValue.UtcTimestampValue -> OffsetDateTime.parse(value.value.toString())
+    SqlValue.NullValue -> null
+}
+
 internal fun mapDatabaseFailure(
     operation: DatabaseOperation,
     throwable: Throwable,
@@ -563,45 +592,31 @@ class VertxRow(
     private val row: io.vertx.sqlclient.Row
 ) : Row {
 
-    override fun getString(column: String): String? {
-        return if (hasColumn(column)) {
-            row.getString(column)
-        } else {
-            null
-        }
-    }
+    override fun getString(column: String): String? =
+        typed(column, "string") { row.getString(column) }
 
-    override fun getInt(column: String): Int? {
-        return if (hasColumn(column)) {
-            row.getInteger(column)
-        } else {
-            null
-        }
-    }
+    override fun getInt(column: String): Int? =
+        typed(column, "integer") { row.getInteger(column) }
 
-    override fun getLong(column: String): Long? {
-        return if (hasColumn(column)) {
-            row.getLong(column)
-        } else {
-            null
-        }
-    }
+    override fun getLong(column: String): Long? =
+        typed(column, "long") { row.getLong(column) }
 
-    override fun getDouble(column: String): Double? {
-        return if (hasColumn(column)) {
-            row.getDouble(column)
-        } else {
-            null
-        }
-    }
+    override fun getDouble(column: String): Double? =
+        typed(column, "double") { row.getDouble(column) }
 
-    override fun getBoolean(column: String): Boolean? {
-        return if (hasColumn(column)) {
-            row.getBoolean(column)
-        } else {
-            null
+    override fun getBoolean(column: String): Boolean? =
+        typed(column, "boolean") { row.getBoolean(column) }
+
+    override fun getUuid(column: String): String? =
+        typed(column, "uuid") { row.getUUID(column)?.toString() }
+
+    override fun getBytes(column: String): ByteArray? =
+        typed(column, "bytes") { row.getBuffer(column)?.bytes }
+
+    override fun getUtcTimestamp(column: String): Instant? =
+        typed(column, "UTC timestamp") {
+            row.getOffsetDateTime(column)?.let { Instant.parse(it.toInstant().toString()) }
         }
-    }
 
     override fun getValue(column: String): Any? {
         return if (hasColumn(column)) {
@@ -619,12 +634,22 @@ class VertxRow(
         return names
     }
 
-    override fun hasColumn(column: String): Boolean {
-        return try {
-            row.getColumnIndex(column)
-            true
-        } catch (e: Exception) {
+    override fun hasColumn(column: String): Boolean =
+        try {
+            row.getColumnIndex(column) >= 0
+        } catch (_: Exception) {
             false
+        }
+
+    override fun isNull(column: String): Boolean =
+        hasColumn(column) && row.getValue(column) == null
+
+    private inline fun <T> typed(column: String, expectedType: String, read: () -> T?): T? {
+        if (!hasColumn(column)) return null
+        return try {
+            read()
+        } catch (_: Exception) {
+            throw DatabaseRowAccessException(RowAccessFailure.INVALID_TYPE, expectedType)
         }
     }
 }

@@ -101,6 +101,7 @@ class FirestoreDriver internal constructor(
         }
     }
 
+    @Deprecated("Raw SQL cannot bind untrusted values; use executeQuery(sql, params)")
     override suspend fun executeQueryRaw(sql: String): List<Row> {
         throw DatabaseException("Raw SQL queries are not supported in Firestore")
     }

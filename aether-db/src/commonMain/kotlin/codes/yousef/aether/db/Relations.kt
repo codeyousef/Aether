@@ -246,7 +246,9 @@ class ManyToManyRelation<T : BaseEntity<T>, R : BaseEntity<R>>(
             is String -> SqlValue.StringValue(value)
             is Boolean -> SqlValue.BooleanValue(value)
             is Double -> SqlValue.DoubleValue(value)
-            else -> SqlValue.StringValue(value.toString())
+            is ByteArray -> SqlValue.ByteArrayValue(value)
+            is kotlin.time.Instant -> SqlValue.UtcTimestampValue(value)
+            else -> throw DatabaseException("Unsupported relation key type")
         }
     }
 }

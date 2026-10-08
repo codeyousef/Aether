@@ -347,6 +347,9 @@ object FirestoreTranslator {
                 is SqlValue.StringValue -> v.value
                 is SqlValue.IntValue -> v.value.toString()
                 is SqlValue.LongValue -> v.value.toString()
+                is SqlValue.UuidValue -> unsupported(DatabaseFeature.NATIVE_UUID)
+                is SqlValue.ByteArrayValue -> unsupported(DatabaseFeature.NATIVE_BYTES)
+                is SqlValue.UtcTimestampValue -> unsupported(DatabaseFeature.NATIVE_TIMESTAMP)
                 else -> null
             }
             else -> null
@@ -369,9 +372,14 @@ object FirestoreTranslator {
             is SqlValue.LongValue -> FirestoreValue(integerValue = value.value.toString())
             is SqlValue.DoubleValue -> FirestoreValue(doubleValue = value.value)
             is SqlValue.BooleanValue -> FirestoreValue(booleanValue = value.value)
+            is SqlValue.UuidValue -> unsupported(DatabaseFeature.NATIVE_UUID)
+            is SqlValue.ByteArrayValue -> unsupported(DatabaseFeature.NATIVE_BYTES)
+            is SqlValue.UtcTimestampValue -> unsupported(DatabaseFeature.NATIVE_TIMESTAMP)
             SqlValue.NullValue -> FirestoreValue(nullValue = "NULL_VALUE")
         }
     }
+    private fun unsupported(feature: DatabaseFeature): Nothing =
+        throw DatabaseFeatureUnsupportedException(feature)
 }
 
 // ============= Firestore REST API Data Types =============

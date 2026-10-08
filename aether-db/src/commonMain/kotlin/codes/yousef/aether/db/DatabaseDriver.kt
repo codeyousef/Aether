@@ -11,9 +11,21 @@ interface DatabaseDriver {
     suspend fun executeQuery(query: QueryAST): List<Row>
 
     /**
-     * Executes a raw SQL query that returns rows.
+     * Executes SQL without a value-binding contract. Only fixed, trusted statements are safe.
      */
+    @Deprecated(
+        message = "Raw SQL cannot bind untrusted values; use executeQuery(sql, params)",
+        replaceWith = ReplaceWith("executeQuery(sql, emptyList())")
+    )
     suspend fun executeQueryRaw(sql: String): List<Row>
+
+    /**
+     * Executes fixed SQL with bound values and returns rows. Implementations without this
+     * capability reject the call rather than interpolating values.
+     */
+    suspend fun executeQuery(sql: String, params: List<SqlValue>): List<Row> {
+        throw DatabaseFeatureUnsupportedException(DatabaseFeature.BOUND_QUERY)
+    }
 
     /**
      * Executes a query that modifies data (INSERT, UPDATE, DELETE).
@@ -37,8 +49,7 @@ interface DatabaseDriver {
     suspend fun getColumns(table: String): List<ColumnDefinition>
 
     /**
-     * Executes a raw SQL query.
-     * Use with caution.
+     * Executes fixed SQL with bound values and returns the number of affected rows.
      */
     suspend fun execute(sql: String, params: List<SqlValue> = emptyList()): Int
 
@@ -83,6 +94,21 @@ interface Row {
      */
     fun getBoolean(column: String): Boolean?
 
+    /** Gets a PostgreSQL UUID in canonical text form, or null for SQL NULL/missing columns. */
+    fun getUuid(column: String): String? {
+        throw DatabaseFeatureUnsupportedException(DatabaseFeature.NATIVE_UUID)
+    }
+
+    /** Gets bytea bytes, or null for SQL NULL/missing columns. */
+    fun getBytes(column: String): ByteArray? {
+        throw DatabaseFeatureUnsupportedException(DatabaseFeature.NATIVE_BYTES)
+    }
+
+    /** Gets a UTC timestamptz value, or null for SQL NULL/missing columns. */
+    fun getUtcTimestamp(column: String): kotlin.time.Instant? {
+        throw DatabaseFeatureUnsupportedException(DatabaseFeature.NATIVE_TIMESTAMP)
+    }
+
     /**
      * Gets a value from the specified column as an Any?.
      * Returns null if the value is NULL.
@@ -98,6 +124,9 @@ interface Row {
      * Checks if the specified column exists in this row.
      */
     fun hasColumn(column: String): Boolean
+
+    /** True only when [column] exists and contains SQL NULL. */
+    fun isNull(column: String): Boolean = hasColumn(column) && getValue(column) == null
 }
 
 /**
@@ -108,6 +137,39 @@ open class DatabaseException(
     message: String,
     cause: Throwable? = null
 ) : Exception(message, cause)
+
+enum class DatabaseFeature {
+    BOUND_QUERY,
+    NATIVE_UUID,
+    NATIVE_BYTES,
+    NATIVE_TIMESTAMP
+}
+
+class DatabaseFeatureUnsupportedException(
+    val feature: DatabaseFeature
+) : DatabaseException("Database feature is unsupported (${feature.name})")
+
+enum class DatabaseFailureCategory {
+    UNIQUE_VIOLATION,
+    FOREIGN_KEY_VIOLATION,
+    CHECK_VIOLATION,
+    SERIALIZATION_CONFLICT,
+    DEADLOCK,
+    OTHER
+}
+
+enum class RowAccessFailure {
+    INVALID_TYPE
+}
+
+class DatabaseRowAccessException(
+    val failure: RowAccessFailure,
+    val expectedType: String,
+    cause: Throwable? = null
+) : DatabaseException(
+    "Database row access failed (${failure.name}; expected $expectedType)",
+    cause
+)
 
 enum class DatabaseOperation {
     QUERY,
@@ -134,7 +196,20 @@ class DatabaseOperationException(
         }
     },
     cause
-)
+) {
+    val category: DatabaseFailureCategory = when (sqlState) {
+        "23505" -> DatabaseFailureCategory.UNIQUE_VIOLATION
+        "23503" -> DatabaseFailureCategory.FOREIGN_KEY_VIOLATION
+        "23514" -> DatabaseFailureCategory.CHECK_VIOLATION
+        "40001" -> DatabaseFailureCategory.SERIALIZATION_CONFLICT
+        "40P01" -> DatabaseFailureCategory.DEADLOCK
+        else -> DatabaseFailureCategory.OTHER
+    }
+
+    val retryable: Boolean
+        get() = category == DatabaseFailureCategory.SERIALIZATION_CONFLICT ||
+            category == DatabaseFailureCategory.DEADLOCK
+}
 
 /**
  * Global database driver instance.

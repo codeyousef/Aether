@@ -35,6 +35,7 @@ class HttpDriver(
         return response.rows.map { HttpRow(it) }
     }
 
+    @Deprecated("Raw SQL cannot bind untrusted values; use executeQuery(sql, params)")
     override suspend fun executeQueryRaw(sql: String): List<Row> {
         val request = QueryRequest(
             query = RawQuery(sql),

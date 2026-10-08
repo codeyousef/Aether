@@ -8,6 +8,8 @@ fun toExpression(value: Any?): Expression {
         is Long -> Expression.Literal(SqlValue.LongValue(value))
         is Double -> Expression.Literal(SqlValue.DoubleValue(value))
         is Boolean -> Expression.Literal(SqlValue.BooleanValue(value))
+        is ByteArray -> Expression.Literal(SqlValue.ByteArrayValue(value))
+        is kotlin.time.Instant -> Expression.Literal(SqlValue.UtcTimestampValue(value))
         else -> throw DatabaseException("Unsupported value type: ${value::class}")
     }
 }

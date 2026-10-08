@@ -1,6 +1,7 @@
 package codes.yousef.aether.db.jvm
 
 import codes.yousef.aether.core.pipeline.DiagnosticsProfile
+import codes.yousef.aether.db.DatabaseFailureCategory
 import codes.yousef.aether.db.DatabaseException
 import codes.yousef.aether.db.DatabaseOperation
 import io.vertx.pgclient.PgException
@@ -25,6 +26,25 @@ class VertxPgDiagnosticsTest {
         assertNull(failure.cause)
         assertFalse(failure.message.orEmpty().contains(marker))
         assertEquals("Database update failed (SQLSTATE 23505)", failure.message)
+    }
+
+    @Test
+    fun `constraint and concurrency SQLSTATE values map to stable categories`() {
+        val expected = mapOf(
+            "23505" to DatabaseFailureCategory.UNIQUE_VIOLATION,
+            "23503" to DatabaseFailureCategory.FOREIGN_KEY_VIOLATION,
+            "23514" to DatabaseFailureCategory.CHECK_VIOLATION,
+            "40001" to DatabaseFailureCategory.SERIALIZATION_CONFLICT,
+            "40P01" to DatabaseFailureCategory.DEADLOCK
+        )
+
+        expected.forEach { (sqlState, category) ->
+            val failure = mapDatabaseFailure(
+                DatabaseOperation.UPDATE,
+                PgException("private", "ERROR", sqlState, "private")
+            )
+            assertEquals(category, failure.category)
+        }
     }
 
     @Test

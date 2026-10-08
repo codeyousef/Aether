@@ -65,10 +65,31 @@ Key AST components:
 
 ## DatabaseDriver
 
-The `DatabaseDriver` interface defines the contract for executing queries.
+`DatabaseDriver` executes `QueryAST` operations and fixed SQL with bound values. Values must never
+be interpolated into SQL:
 
-*   `executeQuery(query: Query): List<Row>`
-*   `execute(query: Query): Int` (for INSERT/UPDATE/DELETE)
+```kotlin
+val rows = driver.executeQuery(
+    "SELECT id, payload, created_at FROM objects WHERE owner_account_id = ${'$'}1",
+    listOf(SqlValue.StringValue(ownerAccountId))
+)
+val id = rows.single().getUuid("id")
+val payload = rows.single().getBytes("payload")
+val createdAt = rows.single().getUtcTimestamp("created_at")
+```
+
+PostgreSQL binds `String`, `Int`, `Long`, `Double`, `Boolean`, UUID, `bytea`, UTC `timestamptz`, and
+SQL `NULL` as native protocol values. `UuidValue` validates canonical UUID text when constructed;
+`UtcTimestampValue` accepts a `kotlin.time.Instant`. Remote adapters fail with
+`DatabaseFeatureUnsupportedException` when a native type has no lossless representation.
+
+`Row.hasColumn(name)` and `Row.isNull(name)` distinguish an absent column from SQL `NULL`. Typed
+accessors return `null` for either state and throw a data-free `DatabaseRowAccessException` for a
+present value of the wrong type.
+
+SQL identifiers cannot be parameters. `SqlTranslator` accepts only validated schema-defined
+identifiers; table, column, account, queue, device, object, and envelope values belong in
+`SqlValue` parameters. `executeQueryRaw` is deprecated because it cannot enforce that boundary.
 
 The `DatabaseDriverRegistry` holds the global driver instance.
 

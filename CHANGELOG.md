@@ -31,6 +31,10 @@
   scope/nesting guards, serialized sibling access, typed serialization/deadlock conflicts, and
   exact-row compare-and-set semantics. Commit acknowledgement loss remains an unknown outcome to be
   resolved through persisted operation receipts; callbacks are never retried automatically.
+- PostgreSQL SELECT/RETURNING paths now bind values without interpolation and round-trip native
+  UUID, `bytea`, UTC `timestamptz`, and SQL `NULL` values. SQL identifiers are validated, rows
+  distinguish missing columns from `NULL`, remote adapters reject unsupported native types, and
+  raw-query convenience is deprecated for untrusted values.
 
 ## [0.6.0.1] - 2026-09-05
 

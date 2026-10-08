@@ -70,6 +70,7 @@ class SupabaseDriver(
         }
     }
 
+    @Deprecated("Raw SQL cannot bind untrusted values; use executeQuery(sql, params)")
     override suspend fun executeQueryRaw(sql: String): List<Row> {
         // Supabase supports raw SQL via the RPC endpoint or the SQL API
         // For simplicity, we'll use the /rpc endpoint if a function exists

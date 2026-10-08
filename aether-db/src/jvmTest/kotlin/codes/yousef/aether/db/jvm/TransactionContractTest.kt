@@ -1,8 +1,10 @@
 package codes.yousef.aether.db.jvm
 
 import codes.yousef.aether.db.DatabaseDriver
+import codes.yousef.aether.db.DatabaseRowAccessException
 import codes.yousef.aether.db.DatabaseTransactionException
 import codes.yousef.aether.db.SqlValue
+import codes.yousef.aether.db.RowAccessFailure
 import codes.yousef.aether.db.TransactionFailure
 import codes.yousef.aether.db.TransactionIsolation
 import codes.yousef.aether.db.TransactionOptions
@@ -23,12 +25,14 @@ import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.PostgreSQLContainer
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TransactionContractTest {
@@ -247,6 +251,53 @@ class TransactionContractTest {
     }
 
     @Test
+    fun `bound query round trips PostgreSQL native values and preserves null semantics`() = runBlocking {
+        val uuid = "123e4567-e89b-12d3-a456-426614174000"
+        val bytes = byteArrayOf(0, 1, -1)
+        val timestamp = Instant.parse("2026-10-08T12:34:56.123456Z")
+        val privateText = "quote'\nnewline"
+        driver.execute("DELETE FROM ae_native_values")
+        val returned = driver.executeQuery(
+            "INSERT INTO ae_native_values (id, payload, created_at, optional_text, private_text, max_bytes) " +
+                "VALUES ($1, $2, $3, $4, $5, $6) " +
+                "RETURNING id, payload, created_at, private_text, max_bytes",
+            listOf(
+                SqlValue.UuidValue(uuid),
+                SqlValue.ByteArrayValue(bytes),
+                SqlValue.UtcTimestampValue(timestamp),
+                SqlValue.NullValue,
+                SqlValue.StringValue(privateText),
+                SqlValue.LongValue(Long.MAX_VALUE)
+            )
+        ).single()
+        assertEquals(uuid, returned.getUuid("id"))
+        assertContentEquals(bytes, returned.getBytes("payload"))
+        assertEquals(timestamp, returned.getUtcTimestamp("created_at"))
+
+        assertEquals(privateText, returned.getString("private_text"))
+        assertEquals(Long.MAX_VALUE, returned.getLong("max_bytes"))
+        val invalidType = assertFailsWith<DatabaseRowAccessException> {
+            returned.getLong("private_text")
+        }
+        assertEquals(RowAccessFailure.INVALID_TYPE, invalidType.failure)
+        val selected = driver.executeQuery(
+            "SELECT optional_text FROM ae_native_values WHERE id = $1",
+            listOf(SqlValue.UuidValue(uuid))
+        ).single()
+        assertTrue(selected.hasColumn("optional_text"))
+        assertTrue(selected.isNull("optional_text"))
+        assertTrue(!selected.hasColumn("absent"))
+        assertTrue(!selected.isNull("absent"))
+        assertEquals(
+            1,
+            driver.execute(
+                "UPDATE ae_native_values SET max_bytes = $1 WHERE id = $2",
+                listOf(SqlValue.LongValue(Long.MAX_VALUE), SqlValue.UuidValue(uuid))
+            )
+        )
+    }
+
+    @Test
     fun `failure and cancellation do not affect an unrelated pool`() = runBlocking {
         val unrelated = VertxPgDriver.create(
             host = postgres.host,
@@ -277,6 +328,9 @@ class TransactionContractTest {
             "CREATE TABLE IF NOT EXISTS ae_cas (owner_account_id text, id text, revision bigint, PRIMARY KEY(owner_account_id, id))",
             "CREATE TABLE IF NOT EXISTS ae_serial (id integer PRIMARY KEY, enabled boolean NOT NULL)",
             "CREATE TABLE IF NOT EXISTS ae_commit_delay (id integer PRIMARY KEY)",
+            "CREATE TABLE IF NOT EXISTS ae_native_values (" +
+                "id uuid PRIMARY KEY, payload bytea NOT NULL, created_at timestamptz NOT NULL, " +
+                "optional_text text, private_text text NOT NULL, max_bytes bigint NOT NULL)",
             "CREATE OR REPLACE FUNCTION ae_delay_commit() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN PERFORM pg_sleep(0.2); RETURN NEW; END'",
             "DROP TRIGGER IF EXISTS ae_delay_commit_trigger ON ae_commit_delay",
             "CREATE CONSTRAINT TRIGGER ae_delay_commit_trigger AFTER INSERT ON ae_commit_delay DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION ae_delay_commit()"

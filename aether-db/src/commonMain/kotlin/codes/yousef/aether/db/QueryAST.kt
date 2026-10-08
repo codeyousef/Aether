@@ -1,6 +1,8 @@
 package codes.yousef.aether.db
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlin.time.Instant
 
 /**
  * Abstract Syntax Tree for SQL queries.
@@ -191,23 +193,51 @@ sealed class Expression {
 @Serializable
 sealed class SqlValue {
     @Serializable
+    @SerialName("codes.yousef.aether.db.SqlValue.StringValue")
     data class StringValue(val value: String) : SqlValue()
 
     @Serializable
+    @SerialName("codes.yousef.aether.db.SqlValue.IntValue")
     data class IntValue(val value: Int) : SqlValue()
 
     @Serializable
+    @SerialName("codes.yousef.aether.db.SqlValue.LongValue")
     data class LongValue(val value: Long) : SqlValue()
 
     @Serializable
+    @SerialName("codes.yousef.aether.db.SqlValue.DoubleValue")
     data class DoubleValue(val value: Double) : SqlValue()
 
     @Serializable
+    @SerialName("codes.yousef.aether.db.SqlValue.BooleanValue")
     data class BooleanValue(val value: Boolean) : SqlValue()
 
+    /** Canonical UUID text; JVM PostgreSQL binds it as native uuid rather than varchar. */
     @Serializable
+    @SerialName("codes.yousef.aether.db.SqlValue.UuidValue")
+    data class UuidValue(val value: String) : SqlValue() {
+        init {
+            require(UUID_PATTERN.matches(value)) { "UUID value must use canonical text form" }
+        }
+    }
+
+    /** Ciphertext or other binary data bound as PostgreSQL bytea. */
+    @Serializable
+    @SerialName("codes.yousef.aether.db.SqlValue.ByteArrayValue")
+    data class ByteArrayValue(val value: ByteArray) : SqlValue()
+
+    /** UTC instant bound as PostgreSQL timestamptz. */
+    @Serializable
+    @SerialName("codes.yousef.aether.db.SqlValue.UtcTimestampValue")
+    data class UtcTimestampValue(val value: Instant) : SqlValue()
+
+    @Serializable
+    @SerialName("codes.yousef.aether.db.SqlValue.NullValue")
     object NullValue : SqlValue()
 }
+
+private val UUID_PATTERN =
+    Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 @Serializable
 enum class BinaryOperator {

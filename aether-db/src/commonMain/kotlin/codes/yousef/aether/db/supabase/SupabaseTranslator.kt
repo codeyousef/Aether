@@ -334,6 +334,9 @@ object SupabaseTranslator {
                 is SqlValue.LongValue -> v.value
                 is SqlValue.DoubleValue -> v.value
                 is SqlValue.BooleanValue -> v.value
+                is SqlValue.UuidValue -> unsupported(DatabaseFeature.NATIVE_UUID)
+                is SqlValue.ByteArrayValue -> unsupported(DatabaseFeature.NATIVE_BYTES)
+                is SqlValue.UtcTimestampValue -> unsupported(DatabaseFeature.NATIVE_TIMESTAMP)
                 SqlValue.NullValue -> "null"
             }
             is Expression.ColumnRef -> expr.column
@@ -349,11 +352,17 @@ object SupabaseTranslator {
                 is SqlValue.LongValue -> v.value
                 is SqlValue.DoubleValue -> v.value
                 is SqlValue.BooleanValue -> v.value
+                is SqlValue.UuidValue -> unsupported(DatabaseFeature.NATIVE_UUID)
+                is SqlValue.ByteArrayValue -> unsupported(DatabaseFeature.NATIVE_BYTES)
+                is SqlValue.UtcTimestampValue -> unsupported(DatabaseFeature.NATIVE_TIMESTAMP)
                 SqlValue.NullValue -> null
             }
             else -> throw UnsupportedOperationException("Only literal values supported in INSERT/UPDATE body")
         }
     }
+
+    private fun unsupported(feature: DatabaseFeature): Nothing =
+        throw DatabaseFeatureUnsupportedException(feature)
 
     private fun translateFunction(func: Expression.FunctionCall): String {
         // PostgREST supports some aggregate functions
