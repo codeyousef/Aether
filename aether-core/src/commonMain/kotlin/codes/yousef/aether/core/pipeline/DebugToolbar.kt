@@ -13,13 +13,13 @@ import kotlin.time.Clock
 class DebugToolbar(private val config: DebugToolbarConfig) {
     
     suspend operator fun invoke(exchange: Exchange, next: suspend () -> Unit) {
-        if (!config.enabled) {
+        if (!config.enabled || config.profile == DiagnosticsProfile.PRIVATE_PRODUCTION) {
             next()
             return
         }
 
         val start = Clock.System.now()
-        val queryLog = QueryLogContext()
+        val queryLog = QueryLogContext(config.profile)
         
         // Register hook to inject toolbar
         val hooks = exchange.attributes.getOrPut(Exchange.HtmlResponseHooksKey) { mutableListOf<(String) -> String>() } as MutableList<(String) -> String>
@@ -103,7 +103,8 @@ class DebugToolbar(private val config: DebugToolbarConfig) {
 }
 
 data class DebugToolbarConfig(
-    var enabled: Boolean = true
+    var enabled: Boolean = true,
+    var profile: DiagnosticsProfile = DiagnosticsProfile.DEVELOPMENT
 )
 
 fun Pipeline.installDebugToolbar(configure: DebugToolbarConfig.() -> Unit = {}) {

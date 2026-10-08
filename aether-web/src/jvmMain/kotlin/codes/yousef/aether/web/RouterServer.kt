@@ -3,6 +3,11 @@ package codes.yousef.aether.web
 import codes.yousef.aether.core.AetherDispatcher
 import codes.yousef.aether.core.pipeline.LoggerFactory
 import codes.yousef.aether.core.pipeline.Pipeline
+import codes.yousef.aether.core.pipeline.ApiErrorKind
+import codes.yousef.aether.core.pipeline.encodeApiError
+import codes.yousef.aether.core.pipeline.establishRequestDiagnostics
+import codes.yousef.aether.core.pipeline.respondWithApiError
+import codes.yousef.aether.core.pipeline.selectRequestId
 import codes.yousef.aether.core.websocket.VertxWebSocketServer
 import codes.yousef.aether.core.websocket.WebSocketConfig
 import codes.yousef.aether.core.jvm.createVertxExchangeWithBody
@@ -10,6 +15,7 @@ import codes.yousef.aether.core.jvm.BoundedRequestBodyResult
 import codes.yousef.aether.core.jvm.InternalAetherServerApi
 import codes.yousef.aether.core.jvm.readBoundedRequestBody
 import codes.yousef.aether.core.jvm.rejectRequestBody
+import codes.yousef.aether.core.jvm.respondToRawRequestFailure
 import io.vertx.core.Vertx
 import io.vertx.core.http.HttpServer
 import io.vertx.core.http.HttpServerOptions
@@ -181,8 +187,8 @@ class AetherServer(
                             @Suppress("DEPRECATION")
                             ws.reject(404)
                         }
-                    } catch (e: Exception) {
-                        logger.error("Error handling WebSocket upgrade", e)
+                    } catch (_: Exception) {
+                        logger.error("category=${ApiErrorKind.INTERNAL.code} websocket_upgrade_failure")
                         try {
                             @Suppress("DEPRECATION")
                             ws.reject(500)
@@ -190,6 +196,15 @@ class AetherServer(
                             // Ignore rejection errors
                         }
                     }
+                }
+            }
+            .invalidRequestHandler { invalidRequest ->
+                scope.launch {
+                    respondToRawRequestFailure(
+                        request = invalidRequest,
+                        kind = ApiErrorKind.BAD_REQUEST,
+                        closeConnection = true
+                    )
                 }
             }
             .requestHandler { vertxRequest ->
@@ -208,6 +223,7 @@ class AetherServer(
                 // them in-process so a wedged dispatcher is diagnosable.
                 try {
                     scope.launch {
+                        var requestId: String? = null
                         try {
                             val bodyResult = bodyDeferred.await()
                             if (bodyResult !is BoundedRequestBodyResult.Complete) {
@@ -215,12 +231,13 @@ class AetherServer(
                                 return@launch
                             }
                             val exchange = createVertxExchangeWithBody(vertxRequest, bodyResult.bytes)
+                            requestId = establishRequestDiagnostics(exchange)
 
                             // Execute through pipeline with router as the final handler.
                             pipeline.execute(exchange) {
                                 val handled = router.handle(exchange)
                                 if (!handled) {
-                                    exchange.notFound("Route not found: ${exchange.request.path}")
+                                    respondWithApiError(exchange, ApiErrorKind.NOT_FOUND)
                                 }
                             }
 
@@ -230,24 +247,35 @@ class AetherServer(
                         } catch (cancellation: CancellationException) {
                             throw cancellation
                         } catch (e: Exception) {
-                            logger.error("Error processing request", e)
+                            logger.error(
+                                "request_id=${requestId ?: "unavailable"} category=${ApiErrorKind.INTERNAL.code} " +
+                                    "server_request_failure"
+                            )
                             try {
-                                vertxRequest.response()
-                                    .setStatusCode(500)
-                                    .end("Internal Server Error")
-                                    .coAwait()
-                            } catch (responseError: Exception) {
-                                logger.error("Failed to send error response", responseError)
+                                respondToRawRequestFailure(
+                                    request = vertxRequest,
+                                    kind = ApiErrorKind.INTERNAL,
+                                    establishedRequestId = requestId
+                                )
+                            } catch (_: Exception) {
+                                logger.error("request_id=${requestId ?: "unavailable"} error_response_failed")
                             }
                         }
                     }
-                } catch (t: Throwable) {
-                    // Rejected dispatcher / framework-level failure: never leave
-                    // the connection silently unanswered.
-                    logger.error("Aether request launch failed for ${vertxRequest.path()}", t)
-                    System.err.println("[aether] request launch failed for ${vertxRequest.path()}: $t")
+                } catch (fatal: Throwable) {
+                    if (fatal is Error) throw fatal
+                    val requestId = selectRequestId(vertxRequest.getHeader("X-Request-Id"))
+                    logger.error(
+                        "request_id=$requestId category=${ApiErrorKind.DEPENDENCY_UNAVAILABLE.code} " +
+                            "request_launch_failed"
+                    )
                     runCatching {
-                        vertxRequest.response().setStatusCode(503).end()
+                        vertxRequest.response()
+                            .setStatusCode(ApiErrorKind.DEPENDENCY_UNAVAILABLE.statusCode)
+                            .putHeader("Content-Type", "application/json; charset=utf-8")
+                            .putHeader("Cache-Control", "no-store")
+                            .putHeader("X-Request-Id", requestId)
+                            .end(encodeApiError(ApiErrorKind.DEPENDENCY_UNAVAILABLE, requestId))
                     }
                 }
             }

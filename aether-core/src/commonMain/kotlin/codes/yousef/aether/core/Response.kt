@@ -10,6 +10,10 @@ interface Response {
     val headers: Headers.HeadersBuilder
     val cookies: MutableList<Cookie>
 
+    /** True once response headers or body bytes have been committed to the transport. */
+    val isCommitted: Boolean
+        get() = false
+
     /**
      * Write data to the response body.
      */

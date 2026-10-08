@@ -76,18 +76,24 @@ The `DatabaseDriverRegistry` holds the global driver instance.
 
 ### PostgreSQL (JVM)
 
-The default driver for JVM applications using JDBC:
+The JVM adapter uses the Vert.x reactive PostgreSQL client:
 
 ```kotlin
-val driver = PostgresDriver(
+val driver = VertxPgDriver.create(
     host = "localhost",
     port = 5432,
     database = "myapp",
-    username = "postgres",
-    password = "password"
+    user = "postgres",
+    password = environmentSecret
 )
-DatabaseDriverRegistry.setDriver(driver)
+DatabaseDriverRegistry.initialize(driver)
 ```
+
+In the default `PRIVATE_PRODUCTION` diagnostics profile, failures throw
+`DatabaseOperationException` containing only a `DatabaseOperation` and a validated five-character
+SQLSTATE when PostgreSQL supplied one. SQL text, parameters, connection URLs, provider detail and
+the raw cause are absent. `DiagnosticsProfile.DEVELOPMENT` may retain the cause for a separately
+controlled local diagnostic process; never enable it in private production.
 
 ### Supabase
 

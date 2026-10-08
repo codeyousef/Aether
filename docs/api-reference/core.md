@@ -81,6 +81,38 @@ pipeline.use { exchange, next ->
 *   `copy()`: Creates a shallow copy of the pipeline.
 *   `clear()`: Removes all middleware.
 
+### Safe request diagnostics and errors
+
+Both JVM server adapters establish a bounded `X-Request-Id` before pipeline execution. A supplied
+ID is retained only when it is 8–64 ASCII letters, digits, `.`, `_`, or `-`; malformed values are
+replaced. `installRecovery()` emits the canonical JSON envelope
+`{"error":{"code":"…","message":"…","retryable":false},"request_id":"…"}`. Throw
+`ApiException(ApiErrorKind.…)` for a deliberate public classification. Arbitrary exception types,
+messages, causes, SQL, and stack traces always map to opaque `INTERNAL`; `CancellationException` and
+fatal `Error` values are rethrown.
+
+| `ApiErrorKind` | HTTP |
+|---|---:|
+| `BAD_REQUEST` | 400 |
+| `UNAUTHENTICATED` | 401 |
+| `PERMISSION_DENIED` | 403 |
+| `NOT_FOUND` | 404 |
+| `REQUEST_TIMEOUT` | 408 |
+| `CONFLICT` | 409 |
+| `GONE` | 410 |
+| `PAYLOAD_TOO_LARGE` | 413 |
+| `VALIDATION_FAILED`, `UNSUPPORTED_FORMAT` | 422 |
+| `RATE_LIMITED` | 429 |
+| `DEPENDENCY_UNAVAILABLE` | 503 |
+| `INTERNAL` | 500 |
+
+`installCallLogging()` records only request ID, method, matched route template, status, bounded
+duration, and typed error category. It never formats raw paths, path parameters, query strings,
+headers, cookies, bodies, SQL, URLs, or exception causes. Set
+`RequestDiagnosticsPolicy(includeRouteTemplate = false)` when route templates themselves are
+sensitive. `DebugToolbarConfig(profile = DiagnosticsProfile.PRIVATE_PRODUCTION)` disables toolbar
+injection and SQL capture. Do not use development diagnostics in a private production process.
+
 ### DSL
 
 You can use the `pipeline` builder function:

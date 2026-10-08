@@ -16,6 +16,11 @@
 - Both JVM HTTP server entry points now share decoded-byte request-body limits and finite read
   timeouts. Oversized, malformed, disconnected, and timed-out bodies fail before middleware or
   route dispatch; rejected connections close without unbounded draining.
+- Recovery and both JVM adapters now return correlated canonical JSON errors from a fixed typed
+  vocabulary. Request logging is allowlist-only, malformed request IDs are replaced, committed
+  streams are never followed by an error payload, cancellation/fatal errors propagate, private
+  production disables SQL toolbar capture, and PostgreSQL failures expose only operation type and
+  validated SQLSTATE.
 
 ## [0.6.0.1] - 2026-09-05
 

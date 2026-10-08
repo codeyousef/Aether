@@ -19,6 +19,7 @@ import java.time.Duration
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.GZIPOutputStream
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class BoundedRequestBodyServerTest {
@@ -48,12 +49,18 @@ class BoundedRequestBodyServerTest {
                 val amplified = post(harness.port, compressed, mapOf("Content-Encoding" to "gzip"))
                 assertEquals(413, amplified.statusCode(), "$kind decompression amplification")
 
-                val contradictoryStatus = rawStatus(
+                val contradictory = rawResponse(
                     harness.port,
                     "POST /body HTTP/1.1\r\nHost: localhost\r\nContent-Length: 3\r\n" +
-                        "Content-Length: 4\r\nConnection: close\r\n\r\nabc"
+                        "Content-Length: 4\r\nX-Request-Id: invalid-frame-123\r\nConnection: close\r\n\r\nabc"
                 )
-                assertEquals(400, contradictoryStatus, "$kind contradictory framing")
+                assertEquals(400, contradictory.status, "$kind contradictory framing")
+                assertEquals("invalid-frame-123", contradictory.headers["x-request-id"])
+                assertEquals("application/json; charset=utf-8", contradictory.headers["content-type"])
+                assertEquals("no-store", contradictory.headers["cache-control"])
+                assertTrue(contradictory.body.contains("\"code\":\"BAD_REQUEST\""))
+                assertFalse(contradictory.body.contains("Exception"))
+                assertFalse(contradictory.body.contains("abc"))
 
                 assertEquals(200, post(harness.port, byteArrayOf(9)).statusCode(), "$kind later valid request")
                 assertEquals(4, harness.handlerCalls.get(), "$kind rejected bodies must not mutate handler state")
@@ -185,11 +192,37 @@ class BoundedRequestBodyServerTest {
         return client.send(builder.build(), HttpResponse.BodyHandlers.ofString())
     }
 
-    private fun rawStatus(port: Int, request: String): Int = Socket("127.0.0.1", port).use { socket ->
+    private fun rawStatus(port: Int, request: String): Int = rawResponse(port, request).status
+
+    private fun rawResponse(port: Int, request: String): RawResponse = Socket("127.0.0.1", port).use { socket ->
         socket.soTimeout = 3_000
         socket.getOutputStream().write(request.toByteArray())
         socket.getOutputStream().flush()
-        readStatus(socket)
+        val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+        val statusLine = reader.readLine()
+        assertTrue(statusLine.startsWith("HTTP/1.1 "), "Unexpected response: $statusLine")
+        val headers = mutableMapOf<String, String>()
+        while (true) {
+            val line = reader.readLine() ?: break
+            if (line.isEmpty()) break
+            val separator = line.indexOf(':')
+            if (separator > 0) {
+                headers[line.substring(0, separator).lowercase()] = line.substring(separator + 1).trim()
+            }
+        }
+        val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
+        val body = CharArray(contentLength)
+        var read = 0
+        while (read < contentLength) {
+            val count = reader.read(body, read, contentLength - read)
+            if (count < 0) break
+            read += count
+        }
+        RawResponse(
+            status = statusLine.substringAfter(' ').substringBefore(' ').toInt(),
+            headers = headers,
+            body = body.concatToString(0, read)
+        )
     }
 
     private fun readStatus(socket: Socket): Int {
@@ -213,6 +246,12 @@ class BoundedRequestBodyServerTest {
     }
 
     private enum class ServerKind { CORE, ROUTER }
+
+    private data class RawResponse(
+        val status: Int,
+        val headers: Map<String, String>,
+        val body: String
+    )
 
     private data class Harness(
         val port: Int,

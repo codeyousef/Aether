@@ -1,8 +1,6 @@
 package codes.yousef.aether.core.pipeline
 
 import codes.yousef.aether.core.Exchange
-import kotlinx.coroutines.currentCoroutineContext
-import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration
 import kotlin.time.TimeSource
 
@@ -36,12 +34,14 @@ expect object LoggerFactory {
 }
 
 /**
- * CallLogging middleware provides universal request/response logging.
- * Logs request method, path, status code, and response time.
+ * CallLogging records only allowlisted request metadata. Raw paths, queries, headers, cookies and
+ * bodies are never formatted.
  */
 class CallLogging(
     private val level: LogLevel = LogLevel.INFO,
-    private val loggerName: String = "codes.yousef.aether.core.pipeline.CallLogging"
+    private val loggerName: String = "codes.yousef.aether.core.pipeline.CallLogging",
+    private val diagnostics: RequestDiagnosticsPolicy = RequestDiagnosticsPolicy(),
+    private val messageSink: ((String) -> Unit)? = null
 ) {
     private val logger = LoggerFactory.getLogger(loggerName)
 
@@ -49,18 +49,34 @@ class CallLogging(
      * Format the log message.
      */
     private fun formatMessage(
+        requestId: String,
         method: String,
-        path: String,
+        routeTemplate: String,
         statusCode: Int,
-        duration: Duration
-    ): String {
-        return "$method $path - $statusCode (${duration.inWholeMilliseconds}ms)"
+        duration: Duration,
+        errorCategory: String?
+    ): String = buildString {
+        append("request_id=")
+        append(requestId)
+        append(" method=")
+        append(method)
+        append(" route=")
+        append(routeTemplate)
+        append(" status=")
+        append(statusCode)
+        append(" duration_ms=")
+        append(duration.inWholeMilliseconds)
+        if (errorCategory != null) {
+            append(" category=")
+            append(errorCategory)
+        }
     }
 
     /**
      * Log the message at the configured level.
      */
     private fun log(message: String) {
+        messageSink?.invoke(message)
         when (level) {
             LogLevel.TRACE -> logger.trace(message)
             LogLevel.DEBUG -> logger.debug(message)
@@ -74,17 +90,38 @@ class CallLogging(
      * Create the middleware function.
      */
     fun middleware(): Middleware = { exchange, next ->
+        val requestId = establishRequestDiagnostics(exchange, diagnostics)
         val startTime = TimeSource.Monotonic.markNow()
         val method = exchange.request.method.name
-        val path = exchange.request.path
+        var failureKind: ApiErrorKind? = null
 
         try {
             next()
+        } catch (throwable: Throwable) {
+            failureKind = ApiErrorPolicy().classify(throwable)
+            exchange.attributes.put(RequestDiagnostics.ErrorCategoryKey, failureKind.code)
+            throw throwable
         } finally {
-            val duration = startTime.elapsedNow()
-            val statusCode = exchange.response.statusCode
-            val message = formatMessage(method, path, statusCode, duration)
-            log(message)
+            val route = sanitizeLogToken(
+                value = if (diagnostics.includeRouteTemplate) {
+                    exchange.attributes.get(RequestDiagnostics.RouteTemplateKey)
+                        ?: diagnostics.unmatchedRouteLabel
+                } else {
+                    "<redacted>"
+                },
+                maximumLength = diagnostics.maximumRouteTemplateLength
+            )
+            log(
+                formatMessage(
+                    requestId = requestId,
+                    method = method,
+                    routeTemplate = route,
+                    statusCode = failureKind?.statusCode ?: exchange.response.statusCode,
+                    duration = startTime.elapsedNow(),
+                    errorCategory = failureKind?.code
+                        ?: exchange.attributes.get(RequestDiagnostics.ErrorCategoryKey)
+                )
+            )
         }
     }
 }
@@ -94,7 +131,9 @@ class CallLogging(
  */
 fun Pipeline.installCallLogging(
     level: LogLevel = LogLevel.INFO,
-    loggerName: String = "codes.yousef.aether.core.pipeline.CallLogging"
+    loggerName: String = "codes.yousef.aether.core.pipeline.CallLogging",
+    diagnostics: RequestDiagnosticsPolicy = RequestDiagnosticsPolicy(),
+    messageSink: ((String) -> Unit)? = null
 ) {
-    use(CallLogging(level, loggerName).middleware())
+    use(CallLogging(level, loggerName, diagnostics, messageSink).middleware())
 }

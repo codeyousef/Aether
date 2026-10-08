@@ -77,6 +77,9 @@ private class VertxResponse(
 
     private var headersWritten = false
 
+    override val isCommitted: Boolean
+        get() = headersWritten || vertxResponse.headWritten()
+
     /**
      * Write headers to the Vert.x response if not already written.
      */
@@ -124,35 +127,6 @@ class VertxExchange(
  */
 fun createVertxExchangeWithBody(vertxRequest: HttpServerRequest, bodyBytes: ByteArray): VertxExchange {
     val bodyDeferred = CompletableDeferred<ByteArray>()
-    bodyDeferred.complete(bodyBytes)
-
-    val request = VertxRequest(vertxRequest, bodyDeferred)
-    val response = VertxResponse(vertxRequest.response())
-
-    return VertxExchange(request, response)
-}
-
-/**
- * Create an Exchange from a Vert.x HttpServerRequest.
- * Reads the request body and creates the appropriate Request/Response wrappers.
- * 
- * @deprecated Use createVertxExchangeWithBody instead - body should be read synchronously
- *             in the request handler before launching coroutines.
- */
-suspend fun createVertxExchange(vertxRequest: HttpServerRequest): VertxExchange {
-    val bodyDeferred = CompletableDeferred<ByteArray>()
-
-    // Read body using Vert.x's built-in body() method with proper suspension
-    val bodyBytes: ByteArray = try {
-        // The body() method returns a Future<Buffer> which we await
-        val buffer = vertxRequest.body().coAwait()
-        buffer?.bytes ?: ByteArray(0)
-    } catch (e: Exception) {
-        // Log the error for debugging
-        System.err.println("Error reading request body: ${e.message}")
-        ByteArray(0)
-    }
-    
     bodyDeferred.complete(bodyBytes)
 
     val request = VertxRequest(vertxRequest, bodyDeferred)

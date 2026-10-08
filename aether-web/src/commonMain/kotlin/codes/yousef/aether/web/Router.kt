@@ -3,6 +3,7 @@ package codes.yousef.aether.web
 import codes.yousef.aether.core.Exchange
 import codes.yousef.aether.core.HttpMethod
 import codes.yousef.aether.core.pipeline.Middleware
+import codes.yousef.aether.core.pipeline.RequestDiagnostics
 
 /**
  * HTTP Router with DSL for defining routes.
@@ -84,7 +85,10 @@ class Router {
      */
     fun addRoute(method: HttpMethod, path: String, handler: RouteHandler) {
         val tree = trees[method] ?: throw IllegalArgumentException("Unsupported HTTP method: $method")
-        tree.insert(path, handler)
+        tree.insert(path) { exchange ->
+            exchange.attributes.put(RequestDiagnostics.RouteTemplateKey, path)
+            handler(exchange)
+        }
     }
 
     /**

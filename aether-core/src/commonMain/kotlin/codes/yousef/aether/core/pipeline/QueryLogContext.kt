@@ -11,7 +11,15 @@ data class QueryLogEntry(
 )
 
 class QueryLogContext(
-    val logs: MutableList<QueryLogEntry> = mutableListOf()
+    val profile: DiagnosticsProfile = DiagnosticsProfile.DEVELOPMENT
 ) : AbstractCoroutineContextElement(Key) {
+    private val capturedLogs = mutableListOf<QueryLogEntry>()
+    val logs: List<QueryLogEntry>
+        get() = capturedLogs
+
+    fun record(entry: QueryLogEntry) {
+        if (profile == DiagnosticsProfile.DEVELOPMENT) capturedLogs.add(entry)
+    }
+
     companion object Key : CoroutineContext.Key<QueryLogContext>
 }

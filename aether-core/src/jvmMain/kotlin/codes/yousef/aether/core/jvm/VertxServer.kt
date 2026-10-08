@@ -4,6 +4,8 @@ import codes.yousef.aether.core.AetherDispatcher
 import codes.yousef.aether.core.Exchange
 import codes.yousef.aether.core.pipeline.LoggerFactory
 import codes.yousef.aether.core.pipeline.Pipeline
+import codes.yousef.aether.core.pipeline.ApiErrorKind
+import codes.yousef.aether.core.pipeline.establishRequestDiagnostics
 import io.vertx.core.Vertx
 import io.vertx.core.http.HttpServer
 import io.vertx.core.http.HttpServerOptions
@@ -78,6 +80,15 @@ class VertxServer(
             .setMaxInitialLineLength(config.maxInitialLineLength)
 
         server = vertx.createHttpServer(options)
+            .invalidRequestHandler { invalidRequest ->
+                scope.launch {
+                    respondToRawRequestFailure(
+                        request = invalidRequest,
+                        kind = ApiErrorKind.BAD_REQUEST,
+                        closeConnection = true
+                    )
+                }
+            }
             .requestHandler { vertxRequest ->
                 // Install body callbacks synchronously on the event loop before launching work.
                 val bodyDeferred = readBoundedRequestBody(
@@ -88,6 +99,7 @@ class VertxServer(
                 )
 
                 scope.launch {
+                    var requestId: String? = null
                     try {
                         val bodyResult = bodyDeferred.await()
                         if (bodyResult !is BoundedRequestBodyResult.Complete) {
@@ -95,6 +107,7 @@ class VertxServer(
                             return@launch
                         }
                         val exchange = createVertxExchangeWithBody(vertxRequest, bodyResult.bytes)
+                        requestId = establishRequestDiagnostics(exchange)
                         pipeline.execute(exchange, handler)
                         // Ensure response is finalized after all middleware completes
                         // This allows middleware (like SessionMiddleware) to add cookies in finally blocks
@@ -104,14 +117,18 @@ class VertxServer(
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (e: Exception) {
-                        logger.error("Error processing request", e)
+                        logger.error(
+                            "request_id=${requestId ?: "unavailable"} category=${ApiErrorKind.INTERNAL.code} " +
+                                "server_request_failure"
+                        )
                         try {
-                            vertxRequest.response()
-                                .setStatusCode(500)
-                                .end("Internal Server Error")
-                                .coAwait()
-                        } catch (responseError: Exception) {
-                            logger.error("Failed to send error response", responseError)
+                            respondToRawRequestFailure(
+                                request = vertxRequest,
+                                kind = ApiErrorKind.INTERNAL,
+                                establishedRequestId = requestId
+                            )
+                        } catch (_: Exception) {
+                            logger.error("request_id=${requestId ?: "unavailable"} error_response_failed")
                         }
                     }
                 }

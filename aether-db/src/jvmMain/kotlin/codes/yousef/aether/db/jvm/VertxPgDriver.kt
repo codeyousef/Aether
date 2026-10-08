@@ -3,13 +3,16 @@ package codes.yousef.aether.db.jvm
 import codes.yousef.aether.db.*
 import codes.yousef.aether.core.pipeline.QueryLogContext
 import codes.yousef.aether.core.pipeline.QueryLogEntry
+import codes.yousef.aether.core.pipeline.DiagnosticsProfile
 import io.vertx.core.Vertx
 import io.vertx.kotlin.coroutines.coAwait
 import io.vertx.pgclient.PgBuilder
+import io.vertx.pgclient.PgException
 import io.vertx.pgclient.PgConnectOptions
 import io.vertx.sqlclient.PoolOptions
 import io.vertx.sqlclient.SqlClient
 import io.vertx.sqlclient.Tuple
+import kotlinx.coroutines.CancellationException
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Clock
 
@@ -18,7 +21,8 @@ import kotlin.time.Clock
  * Bridges Vert.x Future API to Kotlin Coroutines.
  */
 class VertxPgDriver(
-    private val client: SqlClient
+    private val client: SqlClient,
+    private val diagnosticsProfile: DiagnosticsProfile = DiagnosticsProfile.PRIVATE_PRODUCTION
 ) : DatabaseDriver {
 
     override suspend fun executeQuery(query: QueryAST): List<Row> {
@@ -38,7 +42,7 @@ class VertxPgDriver(
                 VertxRow(vertxRow)
             }
         } catch (e: Exception) {
-            throw DatabaseException("Failed to execute query: ${translated.sql}", e)
+            throw databaseFailure(DatabaseOperation.QUERY, e)
         }
     }
 
@@ -56,7 +60,7 @@ class VertxPgDriver(
                 VertxRow(vertxRow)
             }
         } catch (e: Exception) {
-            throw DatabaseException("Failed to execute raw query: $sql", e)
+            throw databaseFailure(DatabaseOperation.QUERY, e)
         }
     }
 
@@ -75,13 +79,18 @@ class VertxPgDriver(
 
             return rowSet.rowCount()
         } catch (e: Exception) {
-            throw DatabaseException("Failed to execute update: ${translated.sql}", e)
+            throw databaseFailure(DatabaseOperation.UPDATE, e)
         }
     }
 
     private suspend fun logQuery(sql: String, duration: Long) {
-        coroutineContext[QueryLogContext]?.logs?.add(QueryLogEntry(sql, duration))
+        coroutineContext[QueryLogContext]?.record(QueryLogEntry(sql, duration))
     }
+
+    private fun databaseFailure(
+        operation: DatabaseOperation,
+        throwable: Throwable
+    ): DatabaseOperationException = mapDatabaseFailure(operation, throwable, diagnosticsProfile)
 
     override suspend fun executeDDL(query: QueryAST) {
         val translated = SqlTranslator.translate(query)
@@ -91,7 +100,7 @@ class VertxPgDriver(
                 .execute()
                 .coAwait()
         } catch (e: Exception) {
-            throw DatabaseException("Failed to execute DDL: ${translated.sql}", e)
+            throw databaseFailure(DatabaseOperation.DDL, e)
         }
     }
 
@@ -101,7 +110,7 @@ class VertxPgDriver(
             val rowSet = client.query(sql).execute().coAwait()
             return rowSet.map { it.getString("table_name") }
         } catch (e: Exception) {
-            throw DatabaseException("Failed to fetch tables", e)
+            throw databaseFailure(DatabaseOperation.METADATA, e)
         }
     }
 
@@ -144,7 +153,7 @@ class VertxPgDriver(
                 )
             }
         } catch (e: Exception) {
-            throw DatabaseException("Failed to fetch columns for table $table", e)
+            throw databaseFailure(DatabaseOperation.METADATA, e)
         }
     }
 
@@ -166,7 +175,7 @@ class VertxPgDriver(
                 .coAwait()
             return rowSet.rowCount()
         } catch (e: Exception) {
-            throw DatabaseException("Failed to execute raw SQL: $sql", e)
+            throw databaseFailure(DatabaseOperation.UPDATE, e)
         }
     }
 
@@ -174,7 +183,7 @@ class VertxPgDriver(
         try {
             client.close().coAwait()
         } catch (e: Exception) {
-            throw DatabaseException("Failed to close database connection", e)
+            throw databaseFailure(DatabaseOperation.CLOSE, e)
         }
     }
 
@@ -189,7 +198,8 @@ class VertxPgDriver(
             user: String,
             password: String,
             maxPoolSize: Int = 5,
-            vertx: Vertx = Vertx.vertx()
+            vertx: Vertx = Vertx.vertx(),
+            diagnosticsProfile: DiagnosticsProfile = DiagnosticsProfile.PRIVATE_PRODUCTION
         ): VertxPgDriver {
             val connectOptions = PgConnectOptions()
                 .setPort(port)
@@ -207,7 +217,7 @@ class VertxPgDriver(
                 .connectingTo(connectOptions)
                 .using(vertx)
                 .build()
-            return VertxPgDriver(pool)
+            return VertxPgDriver(pool, diagnosticsProfile)
         }
 
         /**
@@ -216,12 +226,13 @@ class VertxPgDriver(
         fun create(
             connectionUrl: String,
             maxPoolSize: Int = 5,
-            vertx: Vertx = Vertx.vertx()
+            vertx: Vertx = Vertx.vertx(),
+            diagnosticsProfile: DiagnosticsProfile = DiagnosticsProfile.PRIVATE_PRODUCTION
         ): VertxPgDriver {
             // Parse connection URL: postgresql://user:password@host:port/database
             val regex = Regex("""postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)""")
             val matchResult = regex.matchEntire(connectionUrl)
-                ?: throw DatabaseException("Invalid PostgreSQL connection URL: $connectionUrl")
+                ?: throw DatabaseException("Invalid PostgreSQL connection URL")
 
             val (user, password, host, port, database) = matchResult.destructured
 
@@ -232,10 +243,37 @@ class VertxPgDriver(
                 user = user,
                 password = password,
                 maxPoolSize = maxPoolSize,
-                vertx = vertx
+                vertx = vertx,
+                diagnosticsProfile = diagnosticsProfile
             )
         }
     }
+}
+
+internal fun mapDatabaseFailure(
+    operation: DatabaseOperation,
+    throwable: Throwable,
+    profile: DiagnosticsProfile = DiagnosticsProfile.PRIVATE_PRODUCTION
+): DatabaseOperationException {
+    if (throwable is CancellationException) throw throwable
+    var current: Throwable? = throwable
+    val visited = mutableSetOf<Throwable>()
+    var sqlState: String? = null
+    var depth = 0
+    while (current != null && depth < 8 && visited.add(current)) {
+        val candidate = current
+        if (candidate is CancellationException) throw candidate
+        if (candidate is PgException) {
+            sqlState = candidate.sqlState.takeIf { state ->
+                state.length == 5 && state.all { character -> character.isLetterOrDigit() }
+            }
+            break
+        }
+        current = candidate.cause
+        depth++
+    }
+    val diagnosticCause = throwable.takeIf { profile == DiagnosticsProfile.DEVELOPMENT }
+    return DatabaseOperationException(operation, sqlState, diagnosticCause)
 }
 
 /**

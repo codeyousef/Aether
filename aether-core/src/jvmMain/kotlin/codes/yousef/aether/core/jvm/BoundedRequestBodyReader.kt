@@ -1,4 +1,8 @@
 package codes.yousef.aether.core.jvm
+import codes.yousef.aether.core.pipeline.ApiErrorKind
+import codes.yousef.aether.core.pipeline.RequestDiagnosticsPolicy
+import codes.yousef.aether.core.pipeline.encodeApiError
+import codes.yousef.aether.core.pipeline.selectRequestId
 
 import io.vertx.core.Vertx
 import io.vertx.core.buffer.Buffer
@@ -99,29 +103,50 @@ fun readBoundedRequestBody(
     return result
 }
 
-/** Sends the pre-dispatch body rejection and closes instead of draining an attacker-controlled stream. */
+/** Sends a safe pre-dispatch rejection and closes instead of draining attacker-controlled input. */
 @InternalAetherServerApi
 suspend fun rejectRequestBody(request: HttpServerRequest, result: BoundedRequestBodyResult) {
-    val status = when (result) {
-        BoundedRequestBodyResult.TooLarge -> 413
-        is BoundedRequestBodyResult.Incomplete -> if (result.failure == RequestBodyReadFailure.TIMEOUT) 408 else 400
+    val kind = when (result) {
+        BoundedRequestBodyResult.TooLarge -> ApiErrorKind.PAYLOAD_TOO_LARGE
+        is BoundedRequestBodyResult.Incomplete ->
+            if (result.failure == RequestBodyReadFailure.TIMEOUT) {
+                ApiErrorKind.REQUEST_TIMEOUT
+            } else {
+                ApiErrorKind.BAD_REQUEST
+            }
         is BoundedRequestBodyResult.Complete -> error("A complete request body cannot be rejected")
     }
-    val message = when (status) {
-        413 -> "Request body is too large"
-        408 -> "Request body timed out"
-        else -> "Incomplete request body"
+    respondToRawRequestFailure(request, kind, closeConnection = true)
+}
+
+@InternalAetherServerApi
+suspend fun respondToRawRequestFailure(
+    request: HttpServerRequest,
+    kind: ApiErrorKind = ApiErrorKind.INTERNAL,
+    closeConnection: Boolean = false,
+    diagnostics: RequestDiagnosticsPolicy = RequestDiagnosticsPolicy(),
+    establishedRequestId: String? = null
+) {
+    val response = request.response()
+    if (response.headWritten() || response.ended()) {
+        if (closeConnection) request.connection().close()
+        return
     }
+    val requestId = establishedRequestId
+        ?: selectRequestId(request.getHeader(diagnostics.requestIdHeader), diagnostics)
+    var responseEnded = false
     try {
-        request.response()
-            .setStatusCode(status)
-            .putHeader("Content-Type", "text/plain; charset=utf-8")
+        response
+            .setStatusCode(kind.statusCode)
+            .putHeader("Content-Type", "application/json; charset=utf-8")
             .putHeader("Cache-Control", "no-store")
-            .putHeader("Connection", "close")
-            .end(message)
+            .putHeader(diagnostics.requestIdHeader, requestId)
+            .apply { if (closeConnection) putHeader("Connection", "close") }
+            .end(encodeApiError(kind, requestId))
             .coAwait()
+        responseEnded = true
     } finally {
-        request.connection().close()
+        if (closeConnection && !responseEnded) request.connection().close()
     }
 }
 

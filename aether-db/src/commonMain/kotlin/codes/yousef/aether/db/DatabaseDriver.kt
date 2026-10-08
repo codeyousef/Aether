@@ -101,12 +101,40 @@ interface Row {
 }
 
 /**
- * Exception thrown when database operations fail.
+ * Base exception for database operations. Public messages must not include SQL, parameters or
+ * connection details.
  */
-class DatabaseException(
+open class DatabaseException(
     message: String,
     cause: Throwable? = null
 ) : Exception(message, cause)
+
+enum class DatabaseOperation {
+    QUERY,
+    UPDATE,
+    DDL,
+    METADATA,
+    CLOSE
+}
+
+/** Safe database failure surface: operation type and validated SQLSTATE only. */
+class DatabaseOperationException(
+    val operation: DatabaseOperation,
+    val sqlState: String? = null,
+    cause: Throwable? = null
+) : DatabaseException(
+    buildString {
+        append("Database ")
+        append(operation.name.lowercase())
+        append(" failed")
+        if (sqlState != null) {
+            append(" (SQLSTATE ")
+            append(sqlState)
+            append(')')
+        }
+    },
+    cause
+)
 
 /**
  * Global database driver instance.
