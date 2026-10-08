@@ -136,8 +136,18 @@ data class UploadConfig(
     /**
      * Whether to delete temporary files automatically.
      */
-    val autoDeleteTempFiles: Boolean = true
-)
+    val autoDeleteTempFiles: Boolean = true,
+
+    /** Maximum total form and file parts accepted by either parser. */
+    val maxParts: Int = 1_000
+) {
+    init {
+        require(maxFileSize > 0) { "Maximum file size must be positive" }
+        require(maxRequestSize > 0) { "Maximum request size must be positive" }
+        require(maxFiles >= 0) { "Maximum file count must not be negative" }
+        require(maxParts > 0) { "Maximum part count must be positive" }
+    }
+}
 
 /**
  * Exception thrown when file upload validation fails.
@@ -154,6 +164,7 @@ class UploadException(
 enum class UploadErrorCode {
     FILE_TOO_LARGE,
     REQUEST_TOO_LARGE,
+    TOO_MANY_PARTS,
     TOO_MANY_FILES,
     INVALID_CONTENT_TYPE,
     INVALID_EXTENSION,

@@ -1,9 +1,11 @@
 package codes.yousef.aether.web
 
 import codes.yousef.aether.core.AetherDispatcher
+import codes.yousef.aether.core.RequestBodyStreamFailure
 import codes.yousef.aether.core.pipeline.LoggerFactory
 import codes.yousef.aether.core.pipeline.Pipeline
 import codes.yousef.aether.core.pipeline.ApiErrorKind
+import codes.yousef.aether.core.pipeline.ApiErrorPolicy
 import codes.yousef.aether.core.pipeline.encodeApiError
 import codes.yousef.aether.core.pipeline.establishRequestDiagnostics
 import codes.yousef.aether.core.pipeline.respondWithApiError
@@ -11,9 +13,12 @@ import codes.yousef.aether.core.pipeline.selectRequestId
 import codes.yousef.aether.core.websocket.VertxWebSocketServer
 import codes.yousef.aether.core.websocket.WebSocketConfig
 import codes.yousef.aether.core.jvm.createVertxExchangeWithBody
+import codes.yousef.aether.core.jvm.VertxRequestBodySource
+import codes.yousef.aether.core.jvm.createVertxExchangeWithStream
 import codes.yousef.aether.core.jvm.BoundedRequestBodyResult
 import codes.yousef.aether.core.jvm.InternalAetherServerApi
 import codes.yousef.aether.core.jvm.readBoundedRequestBody
+import codes.yousef.aether.core.jvm.RequestBodyReadFailure
 import codes.yousef.aether.core.jvm.rejectRequestBody
 import codes.yousef.aether.core.jvm.respondToRawRequestFailure
 import io.vertx.core.Vertx
@@ -23,12 +28,17 @@ import io.vertx.core.net.PemKeyCertOptions
 import io.vertx.core.net.SelfSignedCertificate
 import io.vertx.kotlin.coroutines.coAwait
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.job
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.runBlocking
 
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Configuration for an Aether server with Router support.
  */
@@ -42,10 +52,18 @@ data class AetherServerConfig(
     val maxInitialLineLength: Int = 4096,
     val webSocket: WebSocketConfig = WebSocketConfig(),
     val ssl: SslConfig? = null,
-    /** Hard decoded-byte limit applied before router or middleware dispatch. */
+    /** Hard decoded-byte limit for either buffered or streaming request bodies. */
     val maxRequestBodySize: Int = 16 * 1024 * 1024,
-    /** Maximum time between request dispatch and receipt of the complete body. */
-    val requestBodyTimeoutMillis: Long = 30_000
+    /** Maximum time allowed for a complete buffered or streaming body. */
+    val requestBodyTimeoutMillis: Long = 30_000,
+    /** Opt in to demand-driven request bodies for dedicated streaming endpoints. */
+    val streamRequestBodies: Boolean = false,
+    /** Maximum decoded chunks retained per streaming request. */
+    val streamBufferChunks: Int = 2,
+    /** Time allowed for active HTTP and WebSocket children to drain during stop. */
+    val shutdownGraceMillis: Long = 5_000,
+    /** Vert.x response queue bound before application writes suspend. */
+    val responseWriteQueueBytes: Int = 64 * 1024
 ) {
     init {
         require(port in 0..65_535) { "Port must be between 0 and 65535" }
@@ -56,6 +74,9 @@ data class AetherServerConfig(
             "Maximum request body size must be between 1 byte and 1 GiB"
         }
         require(requestBodyTimeoutMillis > 0) { "Request body timeout must be positive" }
+        require(streamBufferChunks in 1..64) { "Stream buffer chunks must be between 1 and 64" }
+        require(shutdownGraceMillis >= 0) { "Shutdown grace period must not be negative" }
+        require(responseWriteQueueBytes > 0) { "Response write queue size must be positive" }
     }
 }
 
@@ -118,6 +139,9 @@ class AetherServer(
                 logger.error("Uncaught Aether server task failure", error)
             }
     )
+    private val stopping = AtomicBoolean(false)
+    private val closed = AtomicBoolean(false)
+    private val stopped = CompletableDeferred<Unit>()
     private val webSocketServer = VertxWebSocketServer(vertx, config.webSocket)
 
     init {
@@ -157,6 +181,11 @@ class AetherServer(
 
         server = vertx.createHttpServer(options)
             .webSocketHandler { ws ->
+                if (stopping.get()) {
+                    @Suppress("DEPRECATION")
+                    ws.reject(503)
+                    return@webSocketHandler
+                }
                 // Handle WebSocket upgrade requests
                 scope.launch {
                     try {
@@ -208,58 +237,82 @@ class AetherServer(
                 }
             }
             .requestHandler { vertxRequest ->
-                // Install body callbacks synchronously on the event loop before launching work.
-                val bodyDeferred = readBoundedRequestBody(
-                    vertx = vertx,
-                    request = vertxRequest,
-                    maximumBytes = config.maxRequestBodySize,
-                    timeoutMillis = config.requestBodyTimeoutMillis
-                )
+                if (stopping.get()) {
+                    vertxRequest.connection().close()
+                    return@requestHandler
+                }
+                vertxRequest.response().setWriteQueueMaxSize(config.responseWriteQueueBytes)
 
-                // Resilience: a failed launch here previously died silently when
-                // stdout/stderr were broken (client gone → pipe reader gone → JVM
-                // uncaught-exception prints vanish with EPIPE), leaving accepted
-                // connections unanswered. Surface failures on stderr AND track
-                // them in-process so a wedged dispatcher is diagnosable.
+                // Install every transport callback synchronously before dispatching the child.
+                val bodySource = if (config.streamRequestBodies) {
+                    VertxRequestBodySource(
+                        vertx = vertx,
+                        request = vertxRequest,
+                        maximumBytes = config.maxRequestBodySize.toLong(),
+                        maximumChunkBytes = config.maxChunkSize,
+                        timeoutMillis = config.requestBodyTimeoutMillis,
+                        bufferedChunks = config.streamBufferChunks
+                    )
+                } else {
+                    null
+                }
+                val bodyDeferred = if (bodySource == null) {
+                    readBoundedRequestBody(
+                        vertx = vertx,
+                        request = vertxRequest,
+                        maximumBytes = config.maxRequestBodySize,
+                        timeoutMillis = config.requestBodyTimeoutMillis
+                    )
+                } else {
+                    null
+                }
+
                 try {
                     scope.launch {
                         var requestId: String? = null
+                        bodySource?.onDisconnect {
+                            coroutineContext.job.cancel(CancellationException("Request connection closed"))
+                        }
                         try {
-                            val bodyResult = bodyDeferred.await()
-                            if (bodyResult !is BoundedRequestBodyResult.Complete) {
-                                rejectRequestBody(vertxRequest, bodyResult)
-                                return@launch
+                            val exchange = if (bodySource != null) {
+                                bodySource.preflightFailure?.let { failure ->
+                                    rejectRequestBody(vertxRequest, failure.toBoundedResult())
+                                    return@launch
+                                }
+                                createVertxExchangeWithStream(vertxRequest, bodySource)
+                            } else {
+                                val bodyResult = bodyDeferred!!.await()
+                                if (bodyResult !is BoundedRequestBodyResult.Complete) {
+                                    rejectRequestBody(vertxRequest, bodyResult)
+                                    return@launch
+                                }
+                                createVertxExchangeWithBody(vertxRequest, bodyResult.bytes)
                             }
-                            val exchange = createVertxExchangeWithBody(vertxRequest, bodyResult.bytes)
                             requestId = establishRequestDiagnostics(exchange)
-
-                            // Execute through pipeline with router as the final handler.
                             pipeline.execute(exchange) {
                                 val handled = router.handle(exchange)
-                                if (!handled) {
-                                    respondWithApiError(exchange, ApiErrorKind.NOT_FOUND)
-                                }
+                                if (!handled) respondWithApiError(exchange, ApiErrorKind.NOT_FOUND)
                             }
-
-                            if (!vertxRequest.response().ended()) {
-                                exchange.response.end()
-                            }
+                            if (!vertxRequest.response().ended()) exchange.response.end()
                         } catch (cancellation: CancellationException) {
                             throw cancellation
-                        } catch (e: Exception) {
+                        } catch (error: Exception) {
+                            val kind = ApiErrorPolicy().classify(error)
                             logger.error(
-                                "request_id=${requestId ?: "unavailable"} category=${ApiErrorKind.INTERNAL.code} " +
+                                "request_id=${requestId ?: "unavailable"} category=${kind.code} " +
                                     "server_request_failure"
                             )
                             try {
                                 respondToRawRequestFailure(
                                     request = vertxRequest,
-                                    kind = ApiErrorKind.INTERNAL,
+                                    kind = kind,
                                     establishedRequestId = requestId
                                 )
                             } catch (_: Exception) {
                                 logger.error("request_id=${requestId ?: "unavailable"} error_response_failed")
                             }
+                        } finally {
+                            bodySource?.cancel()
                         }
                     }
                 } catch (fatal: Throwable) {
@@ -313,8 +366,10 @@ class AetherServer(
                         handler.onClose(session, message.code, message.reason)
                 }
             }
-        } catch (e: Exception) {
-            handler.onError(session, e)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            handler.onError(session, error)
         }
     }
 
@@ -322,15 +377,37 @@ class AetherServer(
      * Stop the server.
      */
     suspend fun stop() {
-        server?.close()?.coAwait()
-        logger.info("Aether server stopped")
+        if (!stopping.compareAndSet(false, true)) {
+            stopped.await()
+            return
+        }
+        try {
+            val activeChildren = serverJob.children.toList()
+            val drained = if (config.shutdownGraceMillis == 0L) {
+                activeChildren.isEmpty()
+            } else {
+                withTimeoutOrNull(config.shutdownGraceMillis) {
+                    activeChildren.joinAll()
+                    true
+                } ?: false
+            }
+            if (!drained) {
+                activeChildren.forEach { it.cancel() }
+                activeChildren.joinAll()
+            }
+            serverJob.cancel()
+            server?.close()?.coAwait()
+            logger.info("Aether server stopped")
+        } finally {
+            stopped.complete(Unit)
+        }
     }
 
     /**
-     * Close the server and clean up resources.
+     * Close the server and clean up resources. Repeated calls are safe.
      */
     suspend fun close() {
-        serverJob.cancel()
+        if (!closed.compareAndSet(false, true)) return
         stop()
         vertx.close().coAwait()
         logger.info("Aether server closed")
@@ -464,4 +541,16 @@ class AetherServerBuilder {
         val r = router ?: throw IllegalStateException("Router must be configured")
         return AetherServer(config, r, pipeline)
     }
+}
+
+@OptIn(InternalAetherServerApi::class)
+private fun RequestBodyStreamFailure.toBoundedResult(): BoundedRequestBodyResult = when (this) {
+    RequestBodyStreamFailure.TOTAL_LIMIT_EXCEEDED,
+    RequestBodyStreamFailure.CHUNK_LIMIT_EXCEEDED -> BoundedRequestBodyResult.TooLarge
+    RequestBodyStreamFailure.DEADLINE_EXCEEDED ->
+        BoundedRequestBodyResult.Incomplete(RequestBodyReadFailure.TIMEOUT)
+    RequestBodyStreamFailure.CONNECTION_CLOSED,
+    RequestBodyStreamFailure.TRANSPORT_FAILURE,
+    RequestBodyStreamFailure.ALREADY_CONSUMED ->
+        BoundedRequestBodyResult.Incomplete(RequestBodyReadFailure.TRANSPORT)
 }

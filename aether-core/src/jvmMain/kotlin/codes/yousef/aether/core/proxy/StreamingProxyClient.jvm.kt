@@ -5,12 +5,19 @@ import io.vertx.core.buffer.Buffer
 import io.vertx.core.http.*
 import io.vertx.kotlin.coroutines.coAwait
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.URI
 import java.util.concurrent.TimeoutException
 import javax.net.ssl.SSLException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Duration
 
 /**
@@ -21,11 +28,15 @@ actual class StreamingProxyClient actual constructor(
     private val config: ProxyConfig
 ) {
     private val vertx: Vertx = Vertx.vertx()
+    private val closed = AtomicBoolean(false)
     
     private val httpClient: HttpClient = vertx.createHttpClient(
         HttpClientOptions().apply {
+            protocolVersion = HttpVersion.HTTP_1_1
+            isHttp2ClearTextUpgrade = false
             connectTimeout = config.connectTimeout.inWholeMilliseconds.toInt()
             idleTimeout = config.idleTimeout.inWholeSeconds.toInt()
+            maxChunkSize = config.streamBufferSize
             maxPoolSize = 100
             maxWaitQueueSize = 1000
             isKeepAlive = true
@@ -38,8 +49,10 @@ actual class StreamingProxyClient actual constructor(
     
     private val httpsClient: HttpClient = vertx.createHttpClient(
         HttpClientOptions().apply {
+            protocolVersion = HttpVersion.HTTP_1_1
             connectTimeout = config.connectTimeout.inWholeMilliseconds.toInt()
             idleTimeout = config.idleTimeout.inWholeSeconds.toInt()
+            maxChunkSize = config.streamBufferSize
             maxPoolSize = 100
             maxWaitQueueSize = 1000
             isKeepAlive = true
@@ -87,7 +100,7 @@ actual class StreamingProxyClient actual constructor(
         } catch (e: ProxyException) {
             throw e
         } catch (e: CancellationException) {
-            throw ProxyCancelledException(request.url, cause = e)
+            throw e
         } catch (e: Exception) {
             // Check if the exception message indicates a timeout (Vert.x NoStackTraceTimeoutException)
             if (e::class.simpleName?.contains("Timeout", ignoreCase = true) == true ||
@@ -120,31 +133,42 @@ actual class StreamingProxyClient actual constructor(
             clientRequest.putHeader(name, value)
         }
         
-        // Create channel to receive response body BEFORE we send the request
-        val channel = kotlinx.coroutines.channels.Channel<ByteArray>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        // One HTTP chunk per demand unit keeps retention proportional to the configured window.
+        val channel = Channel<ByteArray>(config.streamBufferChunks)
         var responseRef: HttpClientResponse? = null
         var requestError: Throwable? = null
-        val responseDeferred = kotlinx.coroutines.CompletableDeferred<HttpClientResponse>()
+        val responseDeferred = CompletableDeferred<HttpClientResponse>()
+        val queuedResponseBytes = AtomicLong(0)
+        val responseHighWaterBytes = AtomicLong(0)
+        val metrics = object : StreamingBufferMetrics {
+            override val highWaterBytes: Long
+                get() = responseHighWaterBytes.get()
+        }
 
         // Set up response handler on the request BEFORE sending
         clientRequest.response { ar ->
             if (ar.succeeded()) {
                 val resp = ar.result()
                 responseRef = resp
-                responseDeferred.complete(resp)
-
-                // Set up body handlers immediately
+                resp.pause()
                 resp.handler { buffer ->
-                    channel.trySend(buffer.bytes)
+                    val bytes = buffer.bytes
+                    val queued = queuedResponseBytes.addAndGet(bytes.size.toLong())
+                    if (channel.trySend(bytes).isFailure) {
+                        queuedResponseBytes.addAndGet(-bytes.size.toLong())
+                        clientRequest.reset(0, IllegalStateException("Bounded response channel overflow"))
+                    } else {
+                        responseHighWaterBytes.accumulateAndGet(queued, ::maxOf)
+                    }
                 }
-                
                 resp.exceptionHandler { throwable ->
                     channel.close(throwable)
                 }
-                
                 resp.endHandler {
                     channel.close()
                 }
+                responseDeferred.complete(resp)
+                resp.fetch(config.streamBufferChunks.toLong())
             } else {
                 requestError = ar.cause()
                 responseDeferred.completeExceptionally(ar.cause())
@@ -152,32 +176,54 @@ actual class StreamingProxyClient actual constructor(
             }
         }
         
-        // Now send the request
-        if (request.bodyFlow != null) {
-            // Set content-length if known, otherwise use chunked
-            if (request.bodySize != null && request.bodySize >= 0) {
-                clientRequest.putHeader("Content-Length", request.bodySize.toString())
+        // Now send the request. Every accepted chunk is bounded before entering Vert.x.
+        try {
+            if (request.bodyFlow != null) {
+                if (request.bodySize != null) {
+                    if (request.bodySize < 0 || request.bodySize > config.maxRequestBodySize) {
+                        throw ProxyPayloadTooLargeException(config.maxRequestBodySize, request.bodySize)
+                    }
+                    clientRequest.putHeader("Content-Length", request.bodySize.toString())
+                } else {
+                    clientRequest.isChunked = true
+                }
+
+                var sentBytes = 0L
+                request.bodyFlow.collect { chunk ->
+                    if (chunk.size > config.streamBufferSize) {
+                        throw ProxyPayloadTooLargeException(config.streamBufferSize.toLong(), chunk.size.toLong())
+                    }
+                    if (sentBytes > config.maxRequestBodySize - chunk.size) {
+                        throw ProxyPayloadTooLargeException(
+                            config.maxRequestBodySize,
+                            sentBytes + chunk.size
+                        )
+                    }
+                    sentBytes += chunk.size
+                    if (clientRequest.writeQueueFull()) awaitDrain(clientRequest)
+                    clientRequest.write(Buffer.buffer(chunk)).coAwait()
+                }
+                clientRequest.end().coAwait()
             } else {
-                clientRequest.isChunked = true
+                clientRequest.end().coAwait()
             }
-            
-            // Write body chunks
-            request.bodyFlow.collect { chunk ->
-                clientRequest.write(Buffer.buffer(chunk)).coAwait()
+        } catch (failure: Throwable) {
+            withContext(NonCancellable) {
+                clientRequest.connection().close().coAwait()
             }
-            
-            // End request
-            clientRequest.end().coAwait()
-        } else {
-            // No body - just end the request
-            clientRequest.end().coAwait()
+            throw failure
         }
         
         // Wait for response headers
         try {
             responseDeferred.await()
+        } catch (cancellation: CancellationException) {
+            withContext(NonCancellable) {
+                clientRequest.connection().close().coAwait()
+            }
+            throw cancellation
         } catch (_: Exception) {
-            // Error will be handled by requestError check below
+            // Transport error classification uses the callback's retained failure below.
         }
 
         // Check if there was an error
@@ -204,10 +250,19 @@ actual class StreamingProxyClient actual constructor(
         // Determine content length
         val contentLength = response.getHeader("Content-Length")?.toLongOrNull() ?: -1L
         
-        // Create flow from channel
-        val bodyFlow: Flow<ByteArray> = kotlinx.coroutines.flow.flow {
-            for (chunk in channel) {
-                emit(chunk)
+        val bodyFlow: Flow<ByteArray> = flow {
+            var fullyConsumed = false
+            try {
+                for (chunk in channel) {
+                    queuedResponseBytes.addAndGet(-chunk.size.toLong())
+                    emit(chunk)
+                    response.fetch(1)
+                }
+                fullyConsumed = true
+            } finally {
+                if (!fullyConsumed) withContext(NonCancellable) {
+                    response.request().connection().close().coAwait()
+                }
             }
         }
         
@@ -216,7 +271,8 @@ actual class StreamingProxyClient actual constructor(
             statusMessage = response.statusMessage(),
             headers = responseHeaders,
             bodyFlow = bodyFlow,
-            contentLength = contentLength
+            contentLength = contentLength,
+            metrics = metrics
         )
     }
     
@@ -224,8 +280,15 @@ actual class StreamingProxyClient actual constructor(
      * Close the client and release resources.
      */
     actual fun close() {
+        if (!closed.compareAndSet(false, true)) return
         httpClient.close()
         httpsClient.close()
         vertx.close()
+    }
+
+    private suspend fun awaitDrain(request: HttpClientRequest) {
+        val drained = CompletableDeferred<Unit>()
+        request.drainHandler { drained.complete(Unit) }
+        if (request.writeQueueFull()) drained.await()
     }
 }

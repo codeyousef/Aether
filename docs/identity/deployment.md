@@ -114,6 +114,18 @@ reject invalid or incomplete framing before pipeline/router dispatch, close reje
 instead of draining unbounded input, and remain available for later requests. Keep the smaller
 OAuth form and SCIM limits enabled inside their dispatchers as defense in depth.
 
+For services that accept large ciphertext blobs, enable `streamRequestBodies`, keep
+`streamBufferChunks` small, and consume `openBodyStream()` or `streamMultipart()` exactly once.
+Stream directly into the object store's multipart writer and encrypt before each destination write;
+do not call `bodyBytes()` or retain `onPartData` ranges on those routes. Roll out this mode behind a
+separate listener first, verify `highWaterBytes` against the configured window, then shift traffic.
+The default buffered mode remains available for rollback and for bounded JSON/form endpoints.
+
+During rolling replacement, start and health-check the replacement listener before calling
+`stop()` on the old server. Route new traffic to the replacement; the old listener rejects new
+requests and WebSocket upgrades while its owned children drain for `shutdownGraceMillis`, then
+cancels stragglers and closes resources once.
+
 ## Runtime profiles
 
 ### JVM

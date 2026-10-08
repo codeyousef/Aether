@@ -2,6 +2,10 @@ package codes.yousef.aether.core.pipeline
 
 import codes.yousef.aether.core.Attributes
 import codes.yousef.aether.core.Exchange
+import codes.yousef.aether.core.RequestBodyStreamException
+import codes.yousef.aether.core.upload.UploadErrorCode
+import codes.yousef.aether.core.upload.UploadException
+import codes.yousef.aether.core.RequestBodyStreamFailure
 import kotlinx.coroutines.CancellationException
 import kotlin.random.Random
 
@@ -89,6 +93,28 @@ data class ApiErrorPolicy(
             if (candidate is CancellationException) throw candidate
             if (candidate is Error) throw candidate
             if (candidate is ApiException) return candidate.kind
+            if (candidate is RequestBodyStreamException) {
+                return when (candidate.failure) {
+                    RequestBodyStreamFailure.TOTAL_LIMIT_EXCEEDED,
+                    RequestBodyStreamFailure.CHUNK_LIMIT_EXCEEDED -> ApiErrorKind.PAYLOAD_TOO_LARGE
+                    RequestBodyStreamFailure.DEADLINE_EXCEEDED -> ApiErrorKind.REQUEST_TIMEOUT
+                    RequestBodyStreamFailure.CONNECTION_CLOSED,
+                    RequestBodyStreamFailure.TRANSPORT_FAILURE,
+                    RequestBodyStreamFailure.ALREADY_CONSUMED -> ApiErrorKind.BAD_REQUEST
+                }
+            }
+            if (candidate is UploadException) {
+                return when (candidate.errorCode) {
+                    UploadErrorCode.FILE_TOO_LARGE,
+                    UploadErrorCode.REQUEST_TOO_LARGE,
+                    UploadErrorCode.TOO_MANY_PARTS,
+                    UploadErrorCode.TOO_MANY_FILES -> ApiErrorKind.PAYLOAD_TOO_LARGE
+                    UploadErrorCode.INVALID_CONTENT_TYPE,
+                    UploadErrorCode.INVALID_EXTENSION -> ApiErrorKind.UNSUPPORTED_FORMAT
+                    UploadErrorCode.PARSE_ERROR -> ApiErrorKind.BAD_REQUEST
+                    UploadErrorCode.IO_ERROR -> ApiErrorKind.INTERNAL
+                }
+            }
             current = candidate.cause
         }
         return ApiErrorKind.INTERNAL

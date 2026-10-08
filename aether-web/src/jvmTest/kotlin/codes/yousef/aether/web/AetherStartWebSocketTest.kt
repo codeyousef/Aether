@@ -137,6 +137,60 @@ class AetherStartWebSocketTest {
 
     @Test
     @Timeout(15)
+    fun `rolling replacement keeps established WebSocket until bounded drain completes`() = runBlocking {
+        val router = router {
+            ws("/ws/echo") {
+                onText { session, message -> session.sendText("echo:$message") }
+            }
+        }
+        val old = AetherServer.create(
+            AetherServerConfig(host = "127.0.0.1", port = 0, shutdownGraceMillis = 2_000),
+            router,
+            Pipeline()
+        )
+        val replacement = AetherServer.create(
+            AetherServerConfig(host = "127.0.0.1", port = 0, shutdownGraceMillis = 2_000),
+            router,
+            Pipeline()
+        )
+        var oldSocket: WebSocket? = null
+        var replacementSocket: WebSocket? = null
+        try {
+            old.start()
+            val oldListener = TestWebSocketListener()
+            oldSocket = httpClient.newWebSocketBuilder()
+                .buildAsync(URI.create("ws://127.0.0.1:${old.actualPort}/ws/echo"), oldListener)
+                .get(5, TimeUnit.SECONDS)
+            assertTrue(oldListener.awaitOpen())
+
+            replacement.start()
+            val stopping = async { old.stop() }
+            delay(100)
+
+            oldSocket.sendText("during-drain", true).get(2, TimeUnit.SECONDS)
+            assertTrue(oldListener.awaitMessages(1))
+            assertEquals("echo:during-drain", oldListener.messages.single())
+
+            val replacementListener = TestWebSocketListener()
+            replacementSocket = httpClient.newWebSocketBuilder()
+                .buildAsync(URI.create("ws://127.0.0.1:${replacement.actualPort}/ws/echo"), replacementListener)
+                .get(5, TimeUnit.SECONDS)
+            replacementSocket.sendText("new", true).get(2, TimeUnit.SECONDS)
+            assertTrue(replacementListener.awaitMessages(1))
+            assertEquals("echo:new", replacementListener.messages.single())
+
+            oldSocket.sendClose(WebSocket.NORMAL_CLOSURE, "handover").get(2, TimeUnit.SECONDS)
+            withTimeout(2_000) { stopping.await() }
+        } finally {
+            oldSocket?.abort()
+            replacementSocket?.abort()
+            old.close()
+            replacement.close()
+        }
+    }
+
+    @Test
+    @Timeout(15)
     fun `test WebSocket connection and echo`() {
         val testPort = 20080
         var serverJob: Job? = null

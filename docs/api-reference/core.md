@@ -41,6 +41,55 @@ Sends a redirect response.
 *   Status code: `302 Found` (default) or `301 Moved Permanently`.
 *   Sets the `Location` header.
 
+### Bounded request and response streaming (JVM)
+
+Set `streamRequestBodies = true` on `VertxServerConfig` or `AetherServerConfig` to opt into the
+single-consumer `Request.openBodyStream()` capability. The default remains the compatible bounded
+`bodyBytes()` path. Server limits always take precedence over route limits:
+
+```kotlin
+val stream = exchange.request.openBodyStream(
+    RequestBodyStreamLimits(
+        maximumTotalBytes = 64L * 1024 * 1024,
+        maximumChunkBytes = 64 * 1024,
+        deadline = 30.seconds
+    )
+) ?: error("Enable streamRequestBodies")
+
+stream.consume { ciphertextChunk ->
+    objectStoreMultipartPart(ciphertextChunk) // consume before returning
+}
+exchange.response.write("accepted")
+```
+
+Each body can be opened once. Oversize chunks or totals, deadlines, disconnects, and repeated
+consumption produce typed `RequestBodyStreamException` failures. The adapter pauses the Vert.x
+source until downstream demand is available; `highWaterBytes` reports the largest retained body
+window. Cancellation closes only that request connection. Calling `bodyBytes()` on a streaming
+request uses the same bounded source and should remain limited to ordinary JSON/form payloads.
+
+`Response.write(ByteArray)` is incremental and awaits every Vert.x write. The adapter also waits
+for a full `responseWriteQueueBytes` queue to drain before accepting another chunk, so a slow
+reader applies backpressure. A response must still end exactly once.
+
+For large `multipart/form-data`, use `Exchange.streamMultipart(...)` with a
+`StreamingMultipartSink`. It recognizes boundaries split across transport chunks, bounds headers,
+file count, file size, total bytes, chunk size, and deadline, and reports transport high-water in
+`StreamingMultipartResult`. Sink calls are sequential. `onPartData` reuses its transfer buffer, so
+upload or encrypt each range before returning; copy only when the destination API requires
+retention. This supports direct ciphertext object-store multipart writes without materializing the
+plaintext file in framework memory.
+
+`StreamingProxyClient` similarly bounds request chunks and response demand with
+`ProxyConfig.streamBufferSize` and `streamBufferChunks`. `ProxyResult.metrics.highWaterBytes`
+reports retained response bytes. Stopping collection closes the upstream connection; closing the
+client is idempotent.
+
+Both JVM servers reject new work during `stop()`, drain owned request and WebSocket children for
+`shutdownGraceMillis`, then cancel remaining children and close transport resources once. Use the
+bounded grace period for rolling replacement; existing WebSockets remain active during the drain,
+while the replacement listener receives new connections.
+
 ### Error Helpers
 
 *   `notFound(message: String = "Not Found")`: Sends a 404 response.

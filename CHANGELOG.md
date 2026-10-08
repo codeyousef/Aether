@@ -21,6 +21,11 @@
   streams are never followed by an error payload, cancellation/fatal errors propagate, private
   production disables SQL toolbar capture, and PostgreSQL failures expose only operation type and
   validated SQLSTATE.
+- JVM servers now offer opt-in, single-consumer request streams with bounded chunk/total/deadline
+  limits, transport backpressure, disconnect cancellation, retained-memory high-water metrics, and
+  bounded idempotent shutdown. Incremental multipart sinks and the streaming proxy can transfer
+  large encrypted blobs without framework-wide materialization; response writes suspend on
+  downstream pressure, and ordinary buffered request behavior remains the default.
 
 ## [0.6.0.1] - 2026-09-05
 

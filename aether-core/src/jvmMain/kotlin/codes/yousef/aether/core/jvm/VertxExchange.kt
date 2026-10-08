@@ -1,3 +1,5 @@
+@file:OptIn(InternalAetherServerApi::class)
+
 package codes.yousef.aether.core.jvm
 
 import codes.yousef.aether.core.*
@@ -9,10 +11,17 @@ import kotlinx.coroutines.CompletableDeferred
 /**
  * Vert.x implementation of Request.
  */
+@OptIn(InternalAetherServerApi::class)
 private class VertxRequest(
     private val vertxRequest: HttpServerRequest,
-    private val bodyDeferred: CompletableDeferred<ByteArray>
+    private val bufferedBody: ByteArray? = null,
+    private val streamingBody: VertxRequestBodySource? = null
 ) : Request {
+    init {
+        require((bufferedBody == null) != (streamingBody == null)) {
+            "Exactly one request body source is required"
+        }
+    }
     override val method: HttpMethod = parseMethod(vertxRequest.method().name())
 
     override val uri: String = vertxRequest.uri()
@@ -40,7 +49,10 @@ private class VertxRequest(
         peerAddress = vertxRequest.remoteAddress()?.hostAddress()
     )
 
-    override suspend fun bodyBytes(): ByteArray = bodyDeferred.await()
+    override suspend fun bodyBytes(): ByteArray = bufferedBody ?: streamingBody!!.readAll()
+
+    override fun openBodyStream(limits: RequestBodyStreamLimits): RequestBodyStream? =
+        streamingBody?.open(limits)
 
     private fun parseMethod(name: String): HttpMethod {
         return try {
@@ -103,6 +115,11 @@ private class VertxResponse(
 
     override suspend fun write(data: ByteArray) {
         writeHeaders()
+        if (vertxResponse.writeQueueFull()) {
+            val drained = CompletableDeferred<Unit>()
+            vertxResponse.drainHandler { drained.complete(Unit) }
+            if (vertxResponse.writeQueueFull()) drained.await()
+        }
         vertxResponse.write(io.vertx.core.buffer.Buffer.buffer(data)).coAwait()
     }
 
@@ -126,10 +143,19 @@ class VertxExchange(
  * This is the preferred method when body has been read synchronously in the request handler.
  */
 fun createVertxExchangeWithBody(vertxRequest: HttpServerRequest, bodyBytes: ByteArray): VertxExchange {
-    val bodyDeferred = CompletableDeferred<ByteArray>()
-    bodyDeferred.complete(bodyBytes)
+    val request = VertxRequest(vertxRequest, bufferedBody = bodyBytes)
+    val response = VertxResponse(vertxRequest.response())
 
-    val request = VertxRequest(vertxRequest, bodyDeferred)
+    return VertxExchange(request, response)
+}
+
+/** Create an Exchange backed by a demand-driven, single-consumer request body. */
+@InternalAetherServerApi
+fun createVertxExchangeWithStream(
+    vertxRequest: HttpServerRequest,
+    bodySource: VertxRequestBodySource
+): VertxExchange {
+    val request = VertxRequest(vertxRequest, streamingBody = bodySource)
     val response = VertxResponse(vertxRequest.response())
 
     return VertxExchange(request, response)

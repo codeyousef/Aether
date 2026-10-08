@@ -26,8 +26,8 @@ data class ProxyConfig(
     val idleTimeout: Duration = 30.seconds,
     
     /**
-     * Maximum request body size in bytes. Set to -1 for unlimited.
-     * Default 10MB.
+     * Maximum request body size in bytes. Large object transfers should use direct object-store
+     * multipart APIs rather than proxy buffering.
      */
     val maxRequestBodySize: Long = 10 * 1024 * 1024,
     
@@ -46,7 +46,9 @@ data class ProxyConfig(
      * Larger buffers improve throughput but increase memory usage.
      */
     val streamBufferSize: Int = 16 * 1024,
-    
+
+    /** Maximum response chunks retained while a downstream consumer is slow. */
+    val streamBufferChunks: Int = 2,
     /**
      * Circuit breaker configuration. Set to null to disable circuit breaker.
      */
@@ -84,6 +86,16 @@ data class ProxyConfig(
      */
     val additionalResponseHeaders: Map<String, String> = emptyMap()
 ) {
+    init {
+        require(maxRequestBodySize > 0) { "Maximum proxy request body size must be positive" }
+        require(streamBufferSize in 1..16 * 1024 * 1024) {
+            "Proxy stream buffer size must be between 1 byte and 16 MiB"
+        }
+        require(streamBufferChunks in 1..64) {
+            "Proxy stream buffer chunks must be between 1 and 64"
+        }
+    }
+
     companion object {
         /**
          * Hop-by-hop headers that should not be forwarded.

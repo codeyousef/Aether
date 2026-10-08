@@ -150,7 +150,7 @@ suspend fun respondToRawRequestFailure(
     }
 }
 
-private fun parseDeclaredContentLength(request: HttpServerRequest): Long? {
+internal fun parseDeclaredContentLength(request: HttpServerRequest): Long? {
     if (request.getHeader("Transfer-Encoding") != null && request.getHeader("Content-Length") != null) return null
     val values = request.headers().getAll("Content-Length")
         .flatMap { header -> header.split(',') }

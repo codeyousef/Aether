@@ -8,6 +8,8 @@ import codes.yousef.aether.core.Headers
 import codes.yousef.aether.core.HttpMethod
 import codes.yousef.aether.core.Request
 import codes.yousef.aether.core.Response
+import codes.yousef.aether.core.upload.UploadErrorCode
+import codes.yousef.aether.core.upload.UploadException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -160,6 +162,23 @@ class RequestDiagnosticsTest {
 
         assertEquals("true", exchange.response.headers.build()["X-Security-Finalized"])
         assertEquals(403, exchange.response.statusCode)
+    }
+
+    @Test
+    fun `multipart failures map to bounded public categories`() {
+        val policy = ApiErrorPolicy()
+        assertEquals(
+            ApiErrorKind.PAYLOAD_TOO_LARGE,
+            policy.classify(UploadException("private size", UploadErrorCode.FILE_TOO_LARGE))
+        )
+        assertEquals(
+            ApiErrorKind.UNSUPPORTED_FORMAT,
+            policy.classify(UploadException("private type", UploadErrorCode.INVALID_CONTENT_TYPE))
+        )
+        assertEquals(
+            ApiErrorKind.BAD_REQUEST,
+            policy.classify(UploadException("private parser", UploadErrorCode.PARSE_ERROR))
+        )
     }
 
     @Test

@@ -50,6 +50,17 @@ data class StreamingProxyRequest(
     val timeout: Duration?
 )
 
+/** Observable retained-memory high-water for a streaming result. */
+interface StreamingBufferMetrics {
+    val highWaterBytes: Long
+
+    companion object {
+        val Empty: StreamingBufferMetrics = object : StreamingBufferMetrics {
+            override val highWaterBytes: Long = 0
+        }
+    }
+}
+
 /**
  * Result of a streaming proxy operation.
  */
@@ -65,9 +76,12 @@ data class ProxyResult(
     
     /** Flow of response body chunks for streaming */
     val bodyFlow: Flow<ByteArray>,
-    
-    /** Content-Length if known, -1 for chunked/streaming responses */
-    val contentLength: Long
+
+    /** Content-Length if known, -1 for chunked/streaming responses. */
+    val contentLength: Long,
+
+    /** Largest response payload retained between this transport and its consumer. */
+    val metrics: StreamingBufferMetrics = StreamingBufferMetrics.Empty
 ) {
     /**
      * Get the Content-Type header.

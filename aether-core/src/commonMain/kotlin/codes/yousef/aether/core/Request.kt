@@ -28,6 +28,16 @@ interface Request {
     suspend fun bodyBytes(): ByteArray
 
     /**
+     * Open the optional bounded streaming body capability.
+     *
+     * Returns `null` when the active server adapter is using the compatibility buffered-body
+     * path. A returned stream is single-consumer; callers must consume or cancel it.
+     */
+    fun openBodyStream(
+        limits: RequestBodyStreamLimits = RequestBodyStreamLimits()
+    ): RequestBodyStream? = null
+
+    /**
      * Read the request body as text (UTF-8).
      */
     suspend fun bodyText(): String = bodyBytes().decodeToString()

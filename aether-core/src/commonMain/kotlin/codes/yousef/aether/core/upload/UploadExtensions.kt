@@ -39,6 +39,13 @@ suspend fun Exchange.parseMultipart(config: UploadConfig = UploadConfig()): Mult
     val parser = MultipartParser(config)
     val multipartData = parser.parse(contentType, body)
 
+    if (multipartData.size > config.maxParts) {
+        throw UploadException(
+            "Too many parts: ${multipartData.size} exceeds maximum ${config.maxParts}",
+            UploadErrorCode.TOO_MANY_PARTS
+        )
+    }
+
     // Validate file count
     if (multipartData.files().size > config.maxFiles) {
         throw UploadException(
