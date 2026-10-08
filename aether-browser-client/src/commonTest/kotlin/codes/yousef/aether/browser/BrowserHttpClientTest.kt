@@ -1,5 +1,6 @@
 package codes.yousef.aether.browser
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
@@ -70,13 +71,45 @@ class BrowserHttpClientTest {
             "//example.test/api",
             "api/value",
             "/api/value#fragment",
-            "/api\\value"
+            "/api\\value",
+            "/api/\u0000value",
+            "/api/\u001fvalue"
         ).forEach { path ->
             assertFailsWith<IllegalArgumentException>(path) {
                 client.execute(BrowserHttpMethod.GET, path)
             }
         }
         assertTrue(transport.requests.isEmpty())
+    }
+
+    @Test
+    fun `all unsafe methods receive authoritative CSRF while HEAD and OPTIONS stay bodyless`() = runTest {
+        val transport = RecordingTransport {
+            BrowserHttpResponse(204, "No Content", mapOf("etag" to "\"v1\""), "")
+        }
+        val client = client(
+            transport,
+            BrowserHttpClientConfig(csrfProvider = BrowserCsrfProvider.fixed("trusted"))
+        )
+
+        listOf(
+            BrowserHttpMethod.POST,
+            BrowserHttpMethod.PUT,
+            BrowserHttpMethod.PATCH,
+            BrowserHttpMethod.DELETE
+        ).forEach { method ->
+            client.execute(method, "/api/value", body = if (method.allowsRequestBody) "{}" else null)
+            assertEquals("trusted", transport.requests.last().headers.valueIgnoringCase("X-CSRF-Token"))
+        }
+        val head = client.head("/api/value", mapOf("If-Match" to "\"v1\""))
+        client.options("/api/value")
+        assertEquals(204, head.statusCode)
+        assertEquals("\"v1\"", head.headers.valueIgnoringCase("ETag"))
+        assertNull(transport.requests.takeLast(2)[0].headers.valueIgnoringCase("X-CSRF-Token"))
+        assertNull(transport.requests.takeLast(2)[1].headers.valueIgnoringCase("X-CSRF-Token"))
+        assertFailsWith<IllegalArgumentException> {
+            client.execute(BrowserHttpMethod.HEAD, "/api/value", body = "{}")
+        }
     }
 
     @Test
@@ -226,6 +259,34 @@ class BrowserHttpClientTest {
             client.execute(BrowserHttpMethod.GET, "/api/value")
         }
         assertTrue(transport.requests.isEmpty())
+    }
+
+    @Test
+    fun `conflict throttle and unavailable errors preserve status and canonical envelope`() = runTest {
+        listOf(409, 429, 503).forEach { status ->
+            val transport = RecordingTransport {
+                BrowserHttpResponse(
+                    status,
+                    "Failure",
+                    mapOf("Retry-After" to "7"),
+                    """{"error":{"code":"status_$status","message":"failed"}}"""
+                )
+            }
+            val failure = assertFailsWith<BrowserHttpResponseException> {
+                client(transport).execute(BrowserHttpMethod.GET, "/api/value")
+            }
+            assertEquals(status, failure.statusCode)
+            assertEquals("status_$status", failure.error.code)
+            assertEquals("7", failure.response.retryAfter)
+        }
+    }
+
+    @Test
+    fun `transport cancellation propagates unchanged`() = runTest {
+        val client = client(RecordingTransport { throw CancellationException("cancelled") })
+        assertFailsWith<CancellationException> {
+            client.execute(BrowserHttpMethod.GET, "/api/value")
+        }
     }
 
     private fun client(

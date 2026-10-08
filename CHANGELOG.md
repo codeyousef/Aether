@@ -55,6 +55,10 @@
   Private work stores only ciphertext references. Transactional idempotency receipts commit
   mutation and outbox rows together; generation-fenced outbox delivery and provider-effect ledgers
   distinguish acknowledged effects from unknown outcomes requiring reconciliation.
+- The browser client now exposes `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, and raw requests
+  through one root-relative same-origin path. All unsafe verbs receive CSRF material; body and
+  response limits use UTF-8 bytes, redirects fail closed by default, cancellation aborts fetch, and
+  raw responses expose status, `ETag`, and `Retry-After` without forcing JSON decoding.
 
 ### Fixed
 

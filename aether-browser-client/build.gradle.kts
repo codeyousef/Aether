@@ -7,20 +7,12 @@ plugins {
 
 kotlin {
     js(IR) {
-        browser {
-            testTask {
-                enabled = false
-            }
-        }
+        browser()
         nodejs()
     }
 
     wasmJs {
-        browser {
-            testTask {
-                enabled = false
-            }
-        }
+        browser()
         nodejs()
     }
 

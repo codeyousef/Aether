@@ -12,9 +12,14 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.serializer
 
 /** HTTP methods exposed by the focused browser client. */
-enum class BrowserHttpMethod {
-    GET,
-    POST
+enum class BrowserHttpMethod(val isUnsafe: Boolean, val allowsRequestBody: Boolean) {
+    GET(false, false),
+    POST(true, true),
+    PUT(true, true),
+    PATCH(true, true),
+    DELETE(true, true),
+    HEAD(false, false),
+    OPTIONS(false, false)
 }
 
 /** Fetch redirect behavior. The default rejects redirects for API requests. */
@@ -109,6 +114,9 @@ data class BrowserHttpResponse(
     val body: String
 ) {
     val isSuccessful: Boolean get() = statusCode in 200..299
+    fun header(name: String): String? = headers.valueIgnoringCase(name)
+    val etag: String? get() = header("ETag")
+    val retryAfter: String? get() = header("Retry-After")
 }
 
 /** Normalized information decoded from a non-success response body. */
@@ -209,6 +217,54 @@ class BrowserHttpClient internal constructor(
         )
     }
 
+    suspend inline fun <reified Request, reified Response> put(
+        path: String,
+        body: Request,
+        headers: Map<String, String> = emptyMap()
+    ): Response = sendJson(BrowserHttpMethod.PUT, path, body, serializer(), serializer(), headers)
+
+    suspend inline fun <reified Request, reified Response> patch(
+        path: String,
+        body: Request,
+        headers: Map<String, String> = emptyMap()
+    ): Response = sendJson(BrowserHttpMethod.PATCH, path, body, serializer(), serializer(), headers)
+
+    suspend inline fun <reified Response> delete(
+        path: String,
+        headers: Map<String, String> = emptyMap()
+    ): Response = delete(path, serializer(), headers)
+
+    suspend fun <Response> delete(
+        path: String,
+        responseDeserializer: DeserializationStrategy<Response>,
+        headers: Map<String, String> = emptyMap()
+    ): Response = decode(execute(BrowserHttpMethod.DELETE, path, headers = headers), responseDeserializer)
+
+    suspend fun head(
+        path: String,
+        headers: Map<String, String> = emptyMap()
+    ): BrowserHttpResponse = execute(BrowserHttpMethod.HEAD, path, headers = headers)
+
+    suspend fun options(
+        path: String,
+        headers: Map<String, String> = emptyMap()
+    ): BrowserHttpResponse = execute(BrowserHttpMethod.OPTIONS, path, headers = headers)
+
+    suspend fun <Request, Response> sendJson(
+        method: BrowserHttpMethod,
+        path: String,
+        body: Request,
+        requestSerializer: SerializationStrategy<Request>,
+        responseDeserializer: DeserializationStrategy<Response>,
+        headers: Map<String, String> = emptyMap()
+    ): Response {
+        require(method.allowsRequestBody) { "$method requests must not include a JSON body" }
+        return decode(
+            execute(method, path, json.encodeToString(requestSerializer, body), headers),
+            responseDeserializer
+        )
+    }
+
     suspend fun execute(
         method: BrowserHttpMethod,
         path: String,
@@ -216,8 +272,8 @@ class BrowserHttpClient internal constructor(
         headers: Map<String, String> = emptyMap()
     ): BrowserHttpResponse {
         requireSameOriginRequestPath(path)
-        if (method == BrowserHttpMethod.GET) {
-            require(body == null) { "GET requests must not include a body" }
+        require(method.allowsRequestBody || body == null) {
+            "$method requests must not include a body"
         }
 
         val requestBytes = body?.encodeToByteArray()?.size ?: 0
@@ -234,7 +290,7 @@ class BrowserHttpClient internal constructor(
         if (body != null && mergedHeaders.keys.none { it.equals("Content-Type", ignoreCase = true) }) {
             putHeader(mergedHeaders, "Content-Type", "application/json")
         }
-        if (method == BrowserHttpMethod.POST) {
+        if (method.isUnsafe) {
             config.csrfProvider.header(metadata)?.let { putHeader(mergedHeaders, it.name, it.value) }
         }
         requireValidHeaders(mergedHeaders)
