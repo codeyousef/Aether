@@ -3,6 +3,10 @@
 # This file is expected to be part of source control.
 com.fasterxml.jackson.core:jackson-core:2.16.1=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 com.fasterxml.jackson:jackson-bom:2.16.1=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.ongres.scram:client:2.1=runtimeClasspath,testRuntimeClasspath
+com.ongres.scram:common:2.1=runtimeClasspath,testRuntimeClasspath
+com.ongres.stringprep:saslprep:1.1=runtimeClasspath,testRuntimeClasspath
+com.ongres.stringprep:stringprep:1.1=runtimeClasspath,testRuntimeClasspath
 com.zaxxer:HikariCP:6.2.1=runtimeClasspath,testRuntimeClasspath
 io.github.java-diff-utils:java-diff-utils:4.12=kotlinInternalAbiValidation
 io.netty:netty-buffer:4.1.115.Final=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath

@@ -1,278 +1,481 @@
 package codes.yousef.aether.db
 
-/**
- * Migration runner for executing database migrations.
- */
+import kotlinx.coroutines.CancellationException
+
+private const val MIGRATION_LOCK_NAME = "aether-db-migrations"
+
+/** Runs reviewed PostgreSQL migrations under one advisory-locked transaction. */
 class MigrationRunner(
-    private val driver: DatabaseDriver
+    private val driver: DatabaseDriver,
+    private val profile: MigrationExecutionProfile = MigrationExecutionProfile.PRODUCTION_STARTUP,
+    stream: String = "application"
 ) {
+    private val stream = stream
+    private val journalTable: String
+    private val resumeTable: String
+
+    init {
+        require(MIGRATION_STREAM.matches(stream)) { "Invalid migration stream" }
+        journalTable = if (stream == "application") "_aether_migrations" else "_aether_migrations_$stream"
+        resumeTable = if (stream == "application") {
+            "_aether_nontransactional_migrations"
+        } else {
+            "_aether_nontransactional_migrations_$stream"
+        }
+    }
     private val migrations = mutableListOf<Migration>()
+    private val registeredSql = mutableMapOf<Long, String>()
+    private val registeredChecksums = mutableMapOf<Long, String>()
 
-    /**
-     * Register a migration.
-     */
     fun register(migration: Migration) {
-        migrations.add(migration)
-        migrations.sortBy { it.version }
+        if (migrations.any { it.version == migration.version }) {
+            throw MigrationException(MigrationFailure.DUPLICATE_VERSION, migration.version)
+        }
+        capture(migration)
     }
 
-    /**
-     * Register multiple migrations.
-     */
     fun registerAll(vararg migrations: Migration) {
-        migrations.forEach { register(it) }
+        val duplicate = (this.migrations + migrations).groupBy(Migration::version)
+            .entries.firstOrNull { it.value.size > 1 }
+        if (duplicate != null) {
+            throw MigrationException(MigrationFailure.DUPLICATE_VERSION, duplicate.key)
+        }
+        migrations.forEach(::capture)
     }
 
-    /**
-     * Run all pending migrations.
-     */
     suspend fun migrate(): MigrationResult {
-        // Ensure migrations table exists
-        createMigrationsTable()
-
-        // Get applied migrations
-        val applied = getAppliedMigrations()
-
-        // Find pending migrations
-        val pending = migrations.filter { it.version !in applied }
-
-        if (pending.isEmpty()) {
-            return MigrationResult(
+        var active: Migration? = null
+        var pendingCount = migrations.size
+        return try {
+            driver.withTransaction { tx ->
+                lockAndInitialize(tx)
+                val applied = readApplied(tx)
+                pendingCount = migrations.count { it.version !in applied }
+                verifyAppliedChecksums(applied)
+                ensureNoPrepared(tx)
+                val pending = migrations.filter { it.version !in applied }
+                pending.forEach { migration ->
+                    active = migration
+                    requireRunnable(migration)
+                    tx.executeDDL(RawQuery(sql(migration)))
+                    recordMigration(tx, migration)
+                }
+                MigrationResult(pending.size, 0, emptyList())
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            val migration = active
+            MigrationResult(
                 applied = 0,
-                pending = 0,
-                errors = emptyList()
+                pending = pendingCount,
+                errors = listOf(
+                    MigrationError(
+                        migration?.version ?: 0,
+                        migration?.description ?: "Migration validation",
+                        failure
+                    )
+                )
             )
         }
-
-        val errors = mutableListOf<MigrationError>()
-        var appliedCount = 0
-
-        for (migration in pending) {
-            try {
-                // Run the migration
-                driver.executeDDL(RawQuery(migration.up()))
-                
-                // Record the migration
-                recordMigration(migration)
-                
-                appliedCount++
-            } catch (e: Exception) {
-                errors.add(MigrationError(migration.version, migration.description, e))
-                break // Stop on first error
-            }
-        }
-
-        return MigrationResult(
-            applied = appliedCount,
-            pending = pending.size - appliedCount,
-            errors = errors
-        )
     }
 
-    /**
-     * Rollback the last migration.
-     */
+    /** Prepares or resumes nontransactional operator work without executing its SQL. */
+    suspend fun prepareNonTransactional(version: Long): NonTransactionalMigrationPlan {
+        requireOperator()
+        val migration = migrations.singleOrNull { it.version == version }
+            ?: throw MigrationException(MigrationFailure.UNKNOWN_VERSION, version)
+        if (migration.transactional) {
+            throw MigrationException(MigrationFailure.TRANSACTIONAL_MIGRATION, version)
+        }
+        if (migration.source != MigrationSource.REVIEWED) {
+            throw MigrationException(MigrationFailure.UNREVIEWED_CANDIDATE, version)
+        }
+        val checksum = checksum(migration)
+        return driver.withTransaction { tx ->
+            lockAndInitialize(tx)
+            ensureNoPrepared(tx, allowedVersion = version)
+            val applied = readApplied(tx)
+            verifyAppliedChecksums(applied)
+            if (version in applied) {
+                throw MigrationException(MigrationFailure.ALREADY_APPLIED, version)
+            }
+            val state = tx.executeQuery(
+                "SELECT checksum FROM $resumeTable WHERE version = $1 FOR UPDATE",
+                listOf(SqlValue.LongValue(version))
+            ).singleOrNull()?.getString("checksum")
+            if (state != null && state != checksum) {
+                throw MigrationException(MigrationFailure.CHECKSUM_DRIFT, version)
+            }
+            if (state == null) {
+                tx.execute(
+                    "INSERT INTO $resumeTable(version, checksum, state) VALUES ($1, $2, 'prepared')",
+                    listOf(SqlValue.LongValue(version), SqlValue.StringValue(checksum))
+                )
+            }
+            tx.execute(
+                """
+                INSERT INTO $FENCE_TABLE(stream, version) VALUES ($1, $2)
+                ON CONFLICT (stream, version) DO NOTHING
+                """.trimIndent(),
+                listOf(SqlValue.StringValue(stream), SqlValue.LongValue(version))
+            )
+            NonTransactionalMigrationPlan(version, checksum, sql(migration))
+        }
+    }
+
+    suspend fun completeNonTransactional(
+        plan: NonTransactionalMigrationPlan,
+        schemaVerified: Boolean
+    ): MigrationResult {
+        requireOperator()
+        if (!schemaVerified) {
+            throw MigrationException(MigrationFailure.SCHEMA_NOT_VERIFIED, plan.version)
+        }
+        val migration = migrations.singleOrNull { it.version == plan.version }
+            ?: throw MigrationException(MigrationFailure.UNKNOWN_VERSION, plan.version)
+        if (
+            migration.transactional ||
+            checksum(migration) != plan.checksum ||
+            plan.sql.encodeToByteArray().sha256Hex() != plan.checksum
+        ) {
+            throw MigrationException(MigrationFailure.CHECKSUM_DRIFT, plan.version)
+        }
+        if (migration.source != MigrationSource.REVIEWED) {
+            throw MigrationException(MigrationFailure.UNREVIEWED_CANDIDATE, plan.version)
+        }
+        return driver.withTransaction { tx ->
+            lockAndInitialize(tx)
+            ensureNoPrepared(tx, allowedVersion = plan.version)
+            val applied = readApplied(tx)
+            verifyAppliedChecksums(applied)
+            if (plan.version in applied) {
+                throw MigrationException(MigrationFailure.ALREADY_APPLIED, plan.version)
+            }
+            val resume = tx.executeQuery(
+                "SELECT checksum FROM $resumeTable WHERE version = $1 AND state = 'prepared' FOR UPDATE",
+                listOf(SqlValue.LongValue(plan.version))
+            ).singleOrNull()?.getString("checksum")
+            if (resume != plan.checksum) {
+                throw MigrationException(MigrationFailure.RESUME_STATE_MISSING, plan.version)
+            }
+            recordMigration(tx, migration)
+            tx.execute(
+                "DELETE FROM $resumeTable WHERE version = $1",
+                listOf(SqlValue.LongValue(plan.version))
+            )
+            tx.execute(
+                "DELETE FROM $FENCE_TABLE WHERE stream = $1 AND version = $2",
+                listOf(SqlValue.StringValue(stream), SqlValue.LongValue(plan.version))
+            )
+            MigrationResult(1, 0, emptyList())
+        }
+    }
+
     suspend fun rollback(): MigrationResult {
-        val applied = getAppliedMigrations().sortedDescending()
-        if (applied.isEmpty()) {
-            return MigrationResult(0, 0, emptyList())
-        }
-
-        val lastVersion = applied.first()
-        val migration = migrations.find { it.version == lastVersion }
-            ?: return MigrationResult(0, 0, listOf(
-                MigrationError(lastVersion, "Unknown", Exception("Migration not found"))
-            ))
-
-        try {
-            val downSql = migration.down()
-            if (downSql != null) {
-                driver.executeDDL(RawQuery(downSql))
+        requireOperator()
+        return try {
+            driver.withTransaction { tx ->
+                lockAndInitialize(tx)
+                ensureNoPrepared(tx)
+                val applied = readApplied(tx)
+                verifyAppliedChecksums(applied)
+                val version = applied.keys.maxOrNull()
+                    ?: return@withTransaction MigrationResult(0, 0, emptyList())
+                val migration = migrations.singleOrNull { it.version == version }
+                    ?: throw MigrationException(MigrationFailure.UNKNOWN_VERSION, version)
+                val downSql = migration.down()
+                    ?: throw MigrationException(MigrationFailure.MISSING_DOWN_SQL, version)
+                tx.executeDDL(RawQuery(downSql))
+                tx.execute(
+                    "DELETE FROM $journalTable WHERE version = $1",
+                    listOf(SqlValue.LongValue(version))
+                )
+                MigrationResult(1, 0, emptyList())
             }
-            
-            removeMigration(migration)
-            
-            return MigrationResult(1, 0, emptyList())
-        } catch (e: Exception) {
-            return MigrationResult(0, 0, listOf(
-                MigrationError(migration.version, migration.description, e)
-            ))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            MigrationResult(0, 0, listOf(MigrationError(0, "Operator rollback", failure)))
         }
     }
 
-    /**
-     * Rollback all migrations.
-     */
     suspend fun reset(): MigrationResult {
-        var totalRolledBack = 0
-        val errors = mutableListOf<MigrationError>()
-
-        while (true) {
-            val result = rollback()
-            if (result.applied == 0) {
-                errors.addAll(result.errors)
-                break
+        requireOperator()
+        return try {
+            driver.withTransaction { tx ->
+                lockAndInitialize(tx)
+                ensureNoPrepared(tx)
+                val applied = readApplied(tx)
+                verifyAppliedChecksums(applied)
+                applied.keys.sortedDescending().forEach { version ->
+                    val migration = migrations.single { it.version == version }
+                    val downSql = migration.down()
+                        ?: throw MigrationException(MigrationFailure.MISSING_DOWN_SQL, version)
+                    tx.executeDDL(RawQuery(downSql))
+                    tx.execute(
+                        "DELETE FROM $journalTable WHERE version = $1",
+                        listOf(SqlValue.LongValue(version))
+                    )
+                }
+                MigrationResult(applied.size, 0, emptyList())
             }
-            totalRolledBack += result.applied
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            MigrationResult(0, 0, listOf(MigrationError(0, "Operator reset", failure)))
+        }
+    }
+
+    suspend fun status(): MigrationStatus = driver.withTransaction { tx ->
+        lockAndInitialize(tx)
+        val applied = readApplied(tx)
+        verifyAppliedChecksums(applied)
+        MigrationStatus(
+            applied = migrations.filter { it.version in applied },
+            pending = migrations.filter { it.version !in applied },
+            currentVersion = applied.keys.maxOrNull()
+        )
+    }
+
+    private fun capture(migration: Migration) {
+        val sql = migration.up()
+        migrations.add(migration)
+        migrations.sortBy(Migration::version)
+        registeredSql[migration.version] = sql
+        registeredChecksums[migration.version] = sql.encodeToByteArray().sha256Hex()
+    }
+
+    private fun requireRunnable(migration: Migration) {
+        if (migration.source != MigrationSource.REVIEWED) {
+            throw MigrationException(MigrationFailure.UNREVIEWED_CANDIDATE, migration.version)
+        }
+        if (!migration.transactional) {
+            throw MigrationException(MigrationFailure.NONTRANSACTIONAL_REQUIRES_OPERATOR, migration.version)
+        }
+        if (migration.compatibility == MigrationCompatibility.CONTRACT && migration.retirementGate.isNullOrBlank()) {
+            throw MigrationException(MigrationFailure.RETIREMENT_GATE_REQUIRED, migration.version)
+        }
+    }
+
+    private fun requireOperator() {
+        if (profile != MigrationExecutionProfile.OPERATOR) {
+            throw MigrationException(MigrationFailure.DESTRUCTIVE_OPERATION_FORBIDDEN)
+        }
+    }
+
+    private suspend fun lockAndInitialize(tx: DatabaseDriver) {
+        tx.executeQuery(
+            "SELECT pg_advisory_xact_lock(hashtext($1))",
+            listOf(SqlValue.StringValue(MIGRATION_LOCK_NAME))
+        )
+        tx.executeDDL(RawQuery(journalSql()))
+        val journalColumns = tx.getColumns(journalTable).associateBy(ColumnDefinition::name)
+        if ("applied_at" !in journalColumns) {
+            throw MigrationException(MigrationFailure.JOURNAL_UPGRADE_REQUIRED)
+        }
+        if (journalColumns["checksum"]?.nullable != false) {
+            upgradeLegacyJournal(tx, checksumColumnExists = "checksum" in journalColumns)
+        }
+        tx.execute(
+            """
+            INSERT INTO $FENCE_TABLE(stream, version)
+            SELECT $1, version FROM $resumeTable WHERE state = 'prepared'
+            ON CONFLICT (stream, version) DO NOTHING
+            """.trimIndent(),
+            listOf(SqlValue.StringValue(stream))
+        )
+    }
+
+    private suspend fun upgradeLegacyJournal(tx: DatabaseDriver, checksumColumnExists: Boolean) {
+        if (!checksumColumnExists) {
+            tx.executeDDL(RawQuery("ALTER TABLE $journalTable ADD COLUMN checksum CHAR(64)"))
+        }
+        val rows = tx.executeQuery(
+            "SELECT version, checksum FROM $journalTable ORDER BY version",
+            emptyList()
+        )
+        rows.forEach { row ->
+            val version = row.getLong("version")
+                ?: throw MigrationException(MigrationFailure.INVALID_JOURNAL)
+            if (row.getString("checksum") == null) {
+                val migration = migrations.singleOrNull { it.version == version }
+                    ?.takeIf { it.source == MigrationSource.REVIEWED }
+                    ?: throw MigrationException(MigrationFailure.JOURNAL_UPGRADE_REQUIRED, version)
+                tx.execute(
+                    "UPDATE $journalTable SET checksum = $1 WHERE version = $2 AND checksum IS NULL",
+                    listOf(SqlValue.StringValue(checksum(migration)), SqlValue.LongValue(version))
+                )
+            }
+        }
+        tx.executeDDL(RawQuery("ALTER TABLE $journalTable ALTER COLUMN checksum SET NOT NULL"))
+    }
+
+    private suspend fun ensureNoPrepared(tx: DatabaseDriver, allowedVersion: Long? = null) {
+        val pending = tx.executeQuery(
+            "SELECT stream, version FROM $FENCE_TABLE ORDER BY stream, version",
+            emptyList()
+        )
+        val conflicting = pending.firstOrNull { row ->
+            row.getString("stream") != stream || row.getLong("version") != allowedVersion
+        }
+        if (conflicting != null) {
+            throw MigrationException(
+                MigrationFailure.OPERATOR_WORK_PENDING,
+                conflicting.getLong("version")
+            )
+        }
+    }
+
+    private suspend fun readApplied(tx: DatabaseDriver): Map<Long, String> =
+        tx.executeQuery(
+            "SELECT version, checksum FROM $journalTable ORDER BY version",
+            emptyList()
+        ).associate { row ->
+            val version = row.getLong("version")
+                ?: throw MigrationException(MigrationFailure.INVALID_JOURNAL)
+            val checksum = row.getString("checksum")
+                ?: throw MigrationException(MigrationFailure.INVALID_JOURNAL, version)
+            version to checksum
         }
 
-        return MigrationResult(totalRolledBack, 0, errors)
+    private fun verifyAppliedChecksums(applied: Map<Long, String>) {
+        val registered = migrations.associateBy(Migration::version)
+        applied.forEach { (version, recorded) ->
+            val migration = registered[version]
+                ?: throw MigrationException(MigrationFailure.UNKNOWN_APPLIED_VERSION, version)
+            if (recorded != checksum(migration)) {
+                throw MigrationException(MigrationFailure.CHECKSUM_DRIFT, version)
+            }
+        }
     }
 
-    /**
-     * Get the current migration status.
-     */
-    suspend fun status(): MigrationStatus {
-        createMigrationsTable()
-        
-        val applied = getAppliedMigrations()
-        val pending = migrations.filter { it.version !in applied }
-
-        return MigrationStatus(
-            applied = migrations.filter { it.version in applied },
-            pending = pending,
-            currentVersion = applied.maxOrNull()
-        )
-    }
-
-    private suspend fun createMigrationsTable() {
-        val createTable = """
-            CREATE TABLE IF NOT EXISTS _aether_migrations (
-                version BIGINT PRIMARY KEY,
-                description VARCHAR(255) NOT NULL,
-                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """.trimIndent()
-        
-        driver.executeDDL(RawQuery(createTable))
-    }
-
-    private suspend fun getAppliedMigrations(): Set<Long> {
-        val query = SelectQuery(
-            columns = listOf(Expression.ColumnRef(column = "version")),
-            from = "_aether_migrations"
-        )
-        
-        val rows = driver.executeQuery(query)
-        return rows.mapNotNull { it.getLong("version") }.toSet()
-    }
-
-    private suspend fun recordMigration(migration: Migration) {
-        val insert = InsertQuery(
-            table = "_aether_migrations",
-            columns = listOf("version", "description"),
-            values = listOf(
-                Expression.Literal(SqlValue.LongValue(migration.version)),
-                Expression.Literal(SqlValue.StringValue(migration.description))
+    private suspend fun recordMigration(tx: DatabaseDriver, migration: Migration) {
+        tx.execute(
+            "INSERT INTO $journalTable(version, description, checksum) VALUES ($1, $2, $3)",
+            listOf(
+                SqlValue.LongValue(migration.version),
+                SqlValue.StringValue(migration.description),
+                SqlValue.StringValue(checksum(migration))
             )
         )
-        
-        driver.executeUpdate(insert)
     }
 
-    private suspend fun removeMigration(migration: Migration) {
-        val delete = DeleteQuery(
-            table = "_aether_migrations",
-            where = WhereClause.Condition(
-                left = Expression.ColumnRef(column = "version"),
-                operator = ComparisonOperator.EQUALS,
-                right = Expression.Literal(SqlValue.LongValue(migration.version))
-            )
+    private fun sql(migration: Migration): String = registeredSql.getValue(migration.version)
+    private fun checksum(migration: Migration): String = registeredChecksums.getValue(migration.version)
+
+    private fun journalSql(): String = """
+        CREATE TABLE IF NOT EXISTS $journalTable (
+            version BIGINT PRIMARY KEY,
+            description VARCHAR(255) NOT NULL,
+            checksum CHAR(64) NOT NULL,
+            applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS $resumeTable (
+            version BIGINT PRIMARY KEY,
+            checksum CHAR(64) NOT NULL,
+            state VARCHAR(32) NOT NULL,
+            prepared_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS $FENCE_TABLE (
+            stream VARCHAR(32) NOT NULL,
+            version BIGINT NOT NULL,
+            prepared_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(stream, version)
         )
-        
-        driver.executeUpdate(delete)
+    """.trimIndent()
+
+    private companion object {
+        val MIGRATION_STREAM = Regex("[a-z][a-z0-9_]{0,26}")
+        const val FENCE_TABLE = "_aether_migration_fence"
     }
 }
 
-/**
- * Represents a database migration.
- */
+enum class MigrationExecutionProfile { PRODUCTION_STARTUP, OPERATOR }
+enum class MigrationSource { REVIEWED, GENERATED_CANDIDATE }
+enum class MigrationCompatibility { EXPAND, CONTRACT }
+
+enum class MigrationFailure {
+    DUPLICATE_VERSION,
+    CHECKSUM_DRIFT,
+    INVALID_JOURNAL,
+    UNKNOWN_APPLIED_VERSION,
+    JOURNAL_UPGRADE_REQUIRED,
+    UNREVIEWED_CANDIDATE,
+    NONTRANSACTIONAL_REQUIRES_OPERATOR,
+    DESTRUCTIVE_OPERATION_FORBIDDEN,
+    MISSING_DOWN_SQL,
+    OPERATOR_WORK_PENDING,
+    UNKNOWN_VERSION,
+    TRANSACTIONAL_MIGRATION,
+    ALREADY_APPLIED,
+    SCHEMA_NOT_VERIFIED,
+    RESUME_STATE_MISSING,
+    RETIREMENT_GATE_REQUIRED
+}
+
+class MigrationException(
+    val failure: MigrationFailure,
+    val version: Long? = null
+) : DatabaseException(buildString {
+    append("Migration failed (")
+    append(failure.name)
+    if (version != null) append("; version ").append(version)
+    append(')')
+})
+
+data class NonTransactionalMigrationPlan(val version: Long, val checksum: String, val sql: String)
+
 interface Migration {
-    /**
-     * Migration version (timestamp recommended).
-     */
     val version: Long
-
-    /**
-     * Human-readable description.
-     */
     val description: String
-
-    /**
-     * SQL to apply the migration.
-     */
+    val source: MigrationSource get() = MigrationSource.REVIEWED
+    val transactional: Boolean get() = true
+    val compatibility: MigrationCompatibility get() = MigrationCompatibility.EXPAND
+    val retirementGate: String? get() = null
     fun up(): String
-
-    /**
-     * SQL to rollback the migration (optional).
-     */
     fun down(): String? = null
+    val checksum: String get() = up().encodeToByteArray().sha256Hex()
 }
 
-/**
- * Simple migration implementation.
- */
 data class SimpleMigration(
     override val version: Long,
     override val description: String,
     private val upSql: String,
-    private val downSql: String? = null
+    private val downSql: String? = null,
+    override val source: MigrationSource = MigrationSource.REVIEWED,
+    override val transactional: Boolean = true,
+    override val compatibility: MigrationCompatibility = MigrationCompatibility.EXPAND,
+    override val retirementGate: String? = null
 ) : Migration {
     override fun up(): String = upSql
     override fun down(): String? = downSql
 }
 
-/**
- * Result of a migration operation.
- */
-data class MigrationResult(
-    val applied: Int,
-    val pending: Int,
-    val errors: List<MigrationError>
-) {
+data class MigrationResult(val applied: Int, val pending: Int, val errors: List<MigrationError>) {
     val success: Boolean get() = errors.isEmpty()
 }
 
-/**
- * Error during migration.
- */
-data class MigrationError(
-    val version: Long,
-    val description: String,
-    val exception: Exception
-)
+data class MigrationError(val version: Long, val description: String, val exception: Exception)
 
-/**
- * Current migration status.
- */
 data class MigrationStatus(
     val applied: List<Migration>,
     val pending: List<Migration>,
     val currentVersion: Long?
 )
 
-/**
- * Raw SQL query for DDL operations.
- */
 @kotlinx.serialization.Serializable
 data class RawQuery(val sql: String) : QueryAST()
 
-/**
- * DSL for creating migrations.
- */
-fun migration(version: Long, description: String, block: MigrationBuilder.() -> Unit): Migration {
-    return MigrationBuilder(version, description).apply(block).build()
-}
+fun migration(version: Long, description: String, block: MigrationBuilder.() -> Unit): Migration =
+    MigrationBuilder(version, description).apply(block).build()
 
-/**
- * Builder for migrations.
- */
-class MigrationBuilder(
-    private val version: Long,
-    private val description: String
-) {
+class MigrationBuilder(private val version: Long, private val description: String) {
     private var upSql: String = ""
     private var downSql: String? = null
+    private var transactional: Boolean = true
+    private var compatibility: MigrationCompatibility = MigrationCompatibility.EXPAND
+    private var retirementGate: String? = null
 
     fun up(sql: String) {
         upSql = sql.trimIndent()
@@ -282,5 +485,22 @@ class MigrationBuilder(
         downSql = sql.trimIndent()
     }
 
-    fun build(): Migration = SimpleMigration(version, description, upSql, downSql)
+    fun nonTransactional() {
+        transactional = false
+    }
+
+    fun contract(retirementGate: String) {
+        compatibility = MigrationCompatibility.CONTRACT
+        this.retirementGate = retirementGate
+    }
+
+    fun build(): Migration = SimpleMigration(
+        version,
+        description,
+        upSql,
+        downSql,
+        transactional = transactional,
+        compatibility = compatibility,
+        retirementGate = retirementGate
+    )
 }

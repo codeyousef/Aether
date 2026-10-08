@@ -4,8 +4,6 @@ import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
 import com.google.devtools.ksp.validate
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.*
 
 /**
  * KSP Symbol Processor for generating database migrations.
@@ -91,12 +89,19 @@ class MigrationProcessor(
             return emptyList()
         }
 
-        // Generate migration
+        if (changes.any(::requiresReviewedDestructiveMigration)) {
+            logger.error(
+                "Destructive schema change detected. KSP will not generate DROP, rename, or type " +
+                    "changes; author and review an explicit operator migration."
+            )
+            return emptyList()
+        }
+
+        // Generate review artifacts without advancing the active baseline.
         generateMigration(newSchema, changes)
+        saveCandidateSchema(newSchema)
 
-        // Save new schema
-        saveSchema(newSchema)
-
+        // Promote the SQL and snapshot together only after review.
         return emptyList()
     }
 
@@ -231,21 +236,21 @@ class MigrationProcessor(
         }
     }
 
-    private fun saveSchema(schema: SchemaSnapshot) {
-        val file = File(schemaFile)
+
+    private fun saveCandidateSchema(schema: SchemaSnapshot) {
+        val file = File("$schemaFile.candidate")
         file.parentFile?.mkdirs()
         file.writeText(SchemaSnapshotSerializer.serialize(schema))
-        logger.info("Schema saved to $schemaFile")
+        logger.info("Candidate schema saved to ${file.path}")
     }
 
     private fun generateMigration(schema: SchemaSnapshot, changes: List<SchemaChange>) {
         val generator = SqlGenerator(dialect)
         val sql = generator.generateMigration(changes)
 
-        // Generate migration filename
-        val timestamp = SimpleDateFormat("yyyyMMddHHmmss").format(Date())
+        // Deterministic candidate name; generation never marks the migration as reviewed.
         val description = generateDescription(changes)
-        val filename = "V${timestamp}__$description.sql"
+        val filename = "V${schema.version.toString().padStart(6, '0')}__${description}.sql.candidate"
 
         // Write migration file
         val dir = File(migrationsDir)
@@ -278,18 +283,31 @@ class MigrationProcessor(
 
     private fun buildMigrationContent(schema: SchemaSnapshot, sql: String): String {
         return """
-            |-- Aether Migration
+            |-- Aether generated migration candidate
             |-- Version: ${schema.version}
-            |-- Generated: ${Date()}
+            |-- Status: UNREVIEWED; production MigrationRunner rejects generated candidates
             |-- Dialect: $dialect
             |
-            |-- Up Migration
+            |-- Expand-only candidate SQL
             |$sql
             |
-            |-- Down Migration (manual review recommended)
-            |-- TODO: Add rollback SQL
+            |-- Rollback SQL must be authored during review when rollback is supported.
         """.trimMargin()
     }
+
+}
+internal fun requiresReviewedDestructiveMigration(change: SchemaChange): Boolean = when (change) {
+    is SchemaChange.DropTable,
+    is SchemaChange.RenameTable,
+    is SchemaChange.DropColumn,
+    is SchemaChange.AlterColumn,
+    is SchemaChange.RenameColumn,
+    is SchemaChange.DropConstraint,
+    is SchemaChange.DropIndex -> true
+    is SchemaChange.CreateTable,
+    is SchemaChange.AddColumn,
+    is SchemaChange.AddConstraint,
+    is SchemaChange.CreateIndex -> false
 }
 
 /**

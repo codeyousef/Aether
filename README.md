@@ -436,34 +436,32 @@ wsServer.start()
 
 ## Database Migrations
 
-Using KSP to generate migrations automatically:
+KSP schema output is an expand-only, unreviewed candidate. Review and check in the exact SQL before
+registering a `Migration`; production startup rejects generated candidates, destructive changes,
+nontransactional operations, rollback, and reset.
 
 ```kotlin
-@AetherModel
-object Users : Model<User>() {
-    override val tableName = "users"
-
-    @PrimaryKey(autoIncrement = true)
-    val id = integer("id")
-
-    @Column(maxLength = 100)
-    @Index(unique = true)
-    val username = varchar("username", maxLength = 100)
-
-    @Column(maxLength = 255)
-    val email = varchar("email", maxLength = 255)
-}
-
-// Generated migration
-val migration = migration("002", "Add users table") {
-    createTable("users") {
-        column("id", "SERIAL", primaryKey = true)
-        column("username", "VARCHAR(100)", nullable = false)
-        column("email", "VARCHAR(255)", nullable = false)
-    }
-    createIndex("idx_users_username", "users", listOf("username"), unique = true)
-}
+val runner = MigrationRunner(driver)
+runner.register(
+    SimpleMigration(
+        version = 2026100801,
+        description = "add users table",
+        upSql = """
+            CREATE TABLE users (
+                id BIGSERIAL PRIMARY KEY,
+                username VARCHAR(100) NOT NULL UNIQUE,
+                email VARCHAR(255) NOT NULL
+            )
+        """.trimIndent()
+    )
+)
+check(runner.migrate().success)
 ```
+
+The PostgreSQL runner serializes concurrent instances, verifies SHA-256 journal checksums, and
+commits DDL with its journal row. See the
+[migration operations guide](docs/api-reference/migrations.md) for expand/contract upgrades,
+nontransactional resume state, backups, rollback restrictions, and forward repair.
 
 ## Production Deployment
 

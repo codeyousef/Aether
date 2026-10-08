@@ -175,6 +175,7 @@ private fun createMigrationFile(migrationsDir: File, name: String) {
     val template = """
         -- Migration: $name
         -- Generated: ${java.time.Instant.now()}
+        -- Status: UNREVIEWED
 
         -- Add your migration SQL here
         -- Example:
@@ -191,7 +192,8 @@ private fun createMigrationFile(migrationsDir: File, name: String) {
     println("Created migration: ${migrationFile.name}")
     println("Location: ${migrationFile.absolutePath}")
     println()
-    println("Edit the migration file to add your schema changes, then run:")
+    println("Review and rehearse the exact SQL, then replace '-- Status: UNREVIEWED' with")
+    println("'-- Status: REVIEWED' before running:")
     println("  aether-cli migrate --apply")
 }
 
@@ -225,9 +227,7 @@ private fun listMigrations(migrationsDir: File) {
  * Applies all pending migrations.
  */
 private fun applyMigrationFiles(migrationsDir: File) {
-    val migrations = migrationsDir.listFiles { _, name -> name.endsWith(".sql") }
-        ?.sortedBy { it.name }
-        ?: emptyList()
+    val migrations = reviewedMigrationFiles(migrationsDir)
 
     if (migrations.isEmpty()) {
         println("No migrations to apply.")
@@ -237,7 +237,6 @@ private fun applyMigrationFiles(migrationsDir: File) {
     println("Applying ${migrations.size} migration(s)...")
     println()
 
-    // Connect to DB
     val dbHost = System.getenv("DB_HOST") ?: "localhost"
     val dbPort = System.getenv("DB_PORT")?.toIntOrNull() ?: 5432
     val dbName = System.getenv("DB_NAME") ?: "aether_example"
@@ -253,71 +252,59 @@ private fun applyMigrationFiles(migrationsDir: File) {
             user = dbUser,
             password = dbPassword
         )
-        DatabaseDriverRegistry.initialize(driver)
-
         try {
-            // Create migrations table
-            driver.execute("""
-                CREATE TABLE IF NOT EXISTS _migrations (
-                    id SERIAL PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL UNIQUE,
-                    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """.trimIndent())
-
-            // Get applied migrations
-            val appliedMigrations = try {
-                val rows = driver.executeQuery(SelectQuery(
-                    columns = listOf(Expression.ColumnRef(column = "name")),
-                    from = "_migrations"
-                ))
-                rows.map { it.getValue("name") as String }.toSet()
-            } catch (e: Exception) {
-                println("Error fetching applied migrations: ${e.message}")
-                emptySet()
+            require("_migrations" !in driver.getTables()) {
+                "Legacy _migrations journal requires reviewed conversion to _aether_migrations before apply"
             }
-
-            var appliedCount = 0
+            val runner = MigrationRunner(driver)
             migrations.forEach { migration ->
-                if (migration.name in appliedMigrations) {
-                    // println("  [SKIP] ${migration.name} (already applied)")
-                } else {
-                    println("  [APPLY] ${migration.name}")
-                    try {
-                        val sql = migration.readText()
-                        // Execute migration SQL
-                        // We split by semicolon to handle multiple statements if driver doesn't support it?
-                        // Vertx driver usually supports multiple statements if enabled, but let's assume single block or use execute.
-                        driver.execute(sql)
-
-                        // Record migration
-                        driver.executeUpdate(InsertQuery(
-                            table = "_migrations",
-                            columns = listOf("name"),
-                            values = listOf(Expression.Literal(SqlValue.StringValue(migration.name)))
-                        ))
-                        println("    -> Success")
-                        appliedCount++
-                    } catch (e: Exception) {
-                        println("    -> FAILED: ${e.message}")
-                        throw e // Stop on error
-                    }
-                }
+                runner.register(
+                    SimpleMigration(
+                        version = migration.version,
+                        description = migration.file.nameWithoutExtension,
+                        upSql = migration.sql
+                    )
+                )
             }
-            
-            if (appliedCount == 0) {
-                println("Database is up to date.")
-            } else {
-                println("Successfully applied $appliedCount migration(s).")
-            }
-
-        } catch (e: Exception) {
-            println("Error applying migrations: ${e.message}")
-            e.printStackTrace()
+            val result = runner.migrate()
+            if (!result.success) throw result.errors.first().exception
+            println(
+                if (result.applied == 0) "Database is up to date."
+                else "Successfully applied ${result.applied} migration(s)."
+            )
         } finally {
             driver.close()
         }
     }
+}
+
+internal fun migrationVersion(filename: String): Long {
+    val match = Regex("""^(?:V)?(\d+)(?:__|_)""").find(filename)
+        ?: error("Migration filename must begin with a numeric version: $filename")
+    return match.groupValues[1].toLong()
+}
+
+internal data class ReviewedMigrationFile(val file: File, val version: Long, val sql: String)
+
+internal fun reviewedMigrationFiles(migrationsDir: File): List<ReviewedMigrationFile> {
+    val allFiles = migrationsDir.listFiles()?.filter(File::isFile) ?: emptyList()
+    val contents = allFiles.associateWith(File::readText)
+    val candidates = contents.filter { (file, sql) ->
+        file.name.endsWith(".candidate") ||
+            file.name.endsWith(".candidate.sql") ||
+            sql.lineSequence().any { it.trim() == "-- Status: UNREVIEWED" }
+    }.keys
+    require(candidates.isEmpty()) {
+        "Unreviewed migration candidates cannot be applied: ${candidates.joinToString { it.name }}"
+    }
+    return contents.filterKeys { it.name.endsWith(".sql") }
+        .map { (file, sql) ->
+            require(sql.lineSequence().any { it.trim() == "-- Status: REVIEWED" }) {
+                "Migration ${file.name} is missing '-- Status: REVIEWED'"
+            }
+            ReviewedMigrationFile(file, migrationVersion(file.name), sql)
+        }
+        .sortedBy(ReviewedMigrationFile::version)
 }
 
 /**

@@ -35,6 +35,11 @@
   UUID, `bytea`, UTC `timestamptz`, and SQL `NULL` values. SQL identifiers are validated, rows
   distinguish missing columns from `NULL`, remote adapters reject unsupported native types, and
   raw-query convenience is deprecated for untrusted values.
+- PostgreSQL migrations now serialize all streams with an advisory transaction lock, atomically
+  commit DDL with exact SHA-256/UTC journal state, upgrade legacy journals from registered reviewed
+  SQL, and isolate module version histories. Startup rejects generated/destructive work and blocks
+  while resumable operator-only nontransactional plans are active; operator reset is all-or-nothing.
+  KSP emits paired expand-only SQL/schema candidates, and the CLI refuses unreviewed artifacts.
 
 ## [0.6.0.1] - 2026-09-05
 

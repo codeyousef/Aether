@@ -34,9 +34,10 @@ class DatabaseTaskStore(
      * Run the migration to create the tasks table.
      */
     suspend fun migrate() {
-        val runner = MigrationRunner(DatabaseDriverRegistry.driver)
+        val runner = MigrationRunner(DatabaseDriverRegistry.driver, stream = "tasks")
         runner.register(TaskTableMigration)
-        runner.migrate()
+        val result = runner.migrate()
+        if (!result.success) throw result.errors.first().exception
     }
 
     override suspend fun save(task: TaskRecord): TaskRecord {

@@ -35,8 +35,10 @@ class SchemaComparator(
     }
     
     private fun buildAddColumnSql(tableName: String, column: ColumnProperty<*, *>): String {
+        val table = identifier(tableName)
+        val columnName = identifier(column.name)
         val sb = StringBuilder()
-        sb.append("ALTER TABLE $tableName ADD COLUMN ${column.name} ${column.type.sqlType}")
+        sb.append("ALTER TABLE $table ADD COLUMN $columnName ${column.type.sqlType}")
         if (!column.nullable) {
             sb.append(" NOT NULL")
         }
@@ -45,5 +47,14 @@ class SchemaComparator(
             // sb.append(" DEFAULT ...") 
         }
         return sb.toString()
+    }
+
+    private fun identifier(value: String): String {
+        require(SQL_IDENTIFIER.matches(value)) { "Invalid schema identifier" }
+        return value
+    }
+
+    private companion object {
+        val SQL_IDENTIFIER = Regex("[A-Za-z_][A-Za-z0-9_]*")
     }
 }
