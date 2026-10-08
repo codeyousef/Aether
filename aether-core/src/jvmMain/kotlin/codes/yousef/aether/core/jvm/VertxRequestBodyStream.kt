@@ -162,6 +162,9 @@ class VertxRequestBodySource(
     private fun fail(failure: RequestBodyStreamFailure) {
         if (completed.compareAndSet(false, true)) {
             request.pause()
+            if (!request.response().headWritten() && !request.response().ended()) {
+                request.response().putHeader("Connection", "close")
+            }
             chunks.close(RequestBodyStreamException(failure))
         }
     }

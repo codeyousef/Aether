@@ -79,6 +79,8 @@
 - The passkey example now replaces its server-rendered shell with one owned reactive WasmJS root,
   preventing duplicate bootstrap, identity, and recovery controls while preserving live state
   updates and explicit browser-readiness signaling.
+- Streaming request-body failures now advertise `Connection: close` before terminating an unread
+  HTTP/1.1 body, so clients reliably receive the canonical rejection instead of an abrupt EOF.
 
 ## [0.6.0.1] - 2026-09-05
 

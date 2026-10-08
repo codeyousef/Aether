@@ -199,6 +199,7 @@ class StreamingRequestBodyServerTest {
                     mapOf("Content-Encoding" to "gzip")
                 )
                 assertEquals(413, rejected.statusCode(), kind.name)
+                assertEquals("close", rejected.headers().firstValue("Connection").orElse(null), kind.name)
                 assertEquals(0, calls.get(), kind.name)
 
                 val healthy = post(harness.port, "/healthy", byteArrayOf(1))

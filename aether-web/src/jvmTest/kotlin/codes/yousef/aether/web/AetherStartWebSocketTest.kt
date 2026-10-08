@@ -249,10 +249,15 @@ class AetherStartWebSocketTest {
     @Test
     @Timeout(15)
     fun `slow WebSocket consumer closes bounded inbound queue without harming HTTP`() {
+        val handlerStarted = CompletableDeferred<Unit>()
+        val releaseHandler = CompletableDeferred<Unit>()
         val router = router {
             get("/api/health") { exchange -> exchange.respond(200, "OK") }
             ws("/ws/slow") {
-                onText { _, _ -> delay(500) }
+                onText { _, _ ->
+                    handlerStarted.complete(Unit)
+                    releaseHandler.await()
+                }
             }
         }
         val server = AetherServer.create(
@@ -275,9 +280,12 @@ class AetherStartWebSocketTest {
             socket = httpClient.newWebSocketBuilder()
                 .buildAsync(URI.create("ws://127.0.0.1:${server.actualPort}/ws/slow"), listener)
                 .get(5, TimeUnit.SECONDS)
-            repeat(32) { index ->
-                socket.sendText("message-$index", true)
+            socket.sendText("blocking-message", true).get(5, TimeUnit.SECONDS)
+            runBlocking {
+                withTimeout(5_000) { handlerStarted.await() }
             }
+            socket.sendText("queued-message", true).get(5, TimeUnit.SECONDS)
+            socket.sendText("overflow-message", true)
             assertTrue(listener.awaitClose(), "Inbound overload must close the socket")
             assertEquals(1013, listener.closeCode)
 
@@ -290,6 +298,7 @@ class AetherStartWebSocketTest {
                 httpClient.send(request, java.net.http.HttpResponse.BodyHandlers.discarding()).statusCode()
             )
         } finally {
+            releaseHandler.complete(Unit)
             socket?.abort()
             runBlocking { server.close() }
         }
