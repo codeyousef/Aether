@@ -1,20 +1,37 @@
 package codes.yousef.aether.db.jvm
 
-import codes.yousef.aether.db.*
+import codes.yousef.aether.core.pipeline.DiagnosticsProfile
 import codes.yousef.aether.core.pipeline.QueryLogContext
 import codes.yousef.aether.core.pipeline.QueryLogEntry
-import codes.yousef.aether.core.pipeline.DiagnosticsProfile
+import codes.yousef.aether.db.*
 import io.vertx.core.Vertx
 import io.vertx.kotlin.coroutines.coAwait
 import io.vertx.pgclient.PgBuilder
-import io.vertx.pgclient.PgException
 import io.vertx.pgclient.PgConnectOptions
+import io.vertx.pgclient.PgException
+import io.vertx.sqlclient.Pool
 import io.vertx.sqlclient.PoolOptions
 import io.vertx.sqlclient.SqlClient
+import io.vertx.sqlclient.SqlConnection
+import io.vertx.sqlclient.Transaction
 import io.vertx.sqlclient.Tuple
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.time.Clock
+import kotlin.time.Duration
 
 /**
  * JVM implementation of DatabaseDriver using Vert.x Reactive PostgreSQL Client.
@@ -23,7 +40,7 @@ import kotlin.time.Clock
 class VertxPgDriver(
     private val client: SqlClient,
     private val diagnosticsProfile: DiagnosticsProfile = DiagnosticsProfile.PRIVATE_PRODUCTION
-) : DatabaseDriver {
+) : TransactionalDatabaseDriver {
 
     override suspend fun executeQuery(query: QueryAST): List<Row> {
         val translated = SqlTranslator.translate(query)
@@ -178,6 +195,84 @@ class VertxPgDriver(
             throw databaseFailure(DatabaseOperation.UPDATE, e)
         }
     }
+    override suspend fun <T> withTransaction(
+        options: TransactionOptions,
+        block: suspend (DatabaseDriver) -> T
+    ): T {
+        val pool = client as? Pool
+            ?: throw DatabaseTransactionException(TransactionFailure.UNSUPPORTED)
+        val connection = try {
+            withTimeout(options.acquireTimeout.timeoutMillis()) {
+                acquireConnection(pool)
+            }
+        } catch (_: TimeoutCancellationException) {
+            throw DatabaseTransactionException(
+                failure = TransactionFailure.ACQUIRE_TIMEOUT,
+                retryable = true
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (failure: Exception) {
+            throw databaseFailure(DatabaseOperation.QUERY, failure)
+        }
+
+        var transaction: Transaction? = null
+        var commitStarted = false
+        var primaryFailure: Throwable? = null
+        try {
+            transaction = withStatementTimeout(options.statementTimeout) {
+                connection.begin().coAwait()
+            }
+            withStatementTimeout(options.statementTimeout) {
+                connection.query(options.isolation.statementSql()).execute().coAwait()
+            }
+
+            val scope = TransactionScope(options.statementTimeout)
+            val boundDriver = TransactionBoundDriver(
+                delegate = VertxPgDriver(connection, diagnosticsProfile),
+                scope = scope
+            )
+            val result = try {
+                withTimeoutOrNull(options.transactionTimeout.timeoutMillis()) {
+                    coroutineScope {
+                        TransactionBlockResult(block(boundDriver))
+                    }
+                }?.value ?: throw DatabaseTransactionException(
+                    failure = TransactionFailure.TRANSACTION_TIMEOUT,
+                    retryable = true
+                )
+            } finally {
+                scope.close()
+            }
+
+            commitStarted = true
+            try {
+                withStatementTimeout(options.statementTimeout) {
+                    transaction.commit().coAwait()
+                }
+            } catch (_: CancellationException) {
+                throw TransactionCommitCancellationException()
+            } catch (failure: Throwable) {
+                throw mapCommitFailure(failure, diagnosticsProfile)
+            }
+            return result
+        } catch (failure: Throwable) {
+            primaryFailure = failure
+            if (!commitStarted) {
+                transaction?.let { activeTransaction ->
+                    rollbackFailure(activeTransaction, options.cleanupTimeout)?.let {
+                        failure.addSuppressed(it)
+                    }
+                }
+            }
+            throw failure
+        } finally {
+            val releaseFailure = releaseFailure(connection, options.cleanupTimeout)
+            if (primaryFailure == null && releaseFailure != null) {
+                throw releaseFailure
+            }
+        }
+    }
 
     override suspend fun close() {
         try {
@@ -249,6 +344,191 @@ class VertxPgDriver(
         }
     }
 }
+private suspend fun acquireConnection(pool: Pool): SqlConnection =
+    suspendCancellableCoroutine { continuation ->
+        pool.connection.onComplete { result ->
+            if (result.succeeded()) {
+                continuation.resume(result.result()) { _, lateConnection, _ ->
+                    lateConnection.close()
+                }
+            } else {
+                continuation.resumeWithException(result.cause())
+            }
+        }
+    }
+
+private data class TransactionBlockResult<T>(val value: T)
+
+private class TransactionScope(
+    private val statementTimeout: Duration
+) {
+    private val active = AtomicBoolean(true)
+    private val mutex = Mutex()
+
+    fun close() {
+        active.set(false)
+    }
+
+    suspend fun <T> run(block: suspend () -> T): T {
+        ensureActive()
+        return mutex.withLock {
+            ensureActive()
+            try {
+                withTimeout(statementTimeout.timeoutMillis()) {
+                    block()
+                }
+            } catch (timeout: TimeoutCancellationException) {
+                if (!coroutineContext.isActive) throw timeout
+                throw DatabaseTransactionException(
+                    failure = TransactionFailure.STATEMENT_TIMEOUT,
+                    retryable = true
+                )
+            } catch (failure: DatabaseOperationException) {
+                throw mapTransactionConflict(failure)
+            }
+        }
+    }
+
+    private fun ensureActive() {
+        if (!active.get()) {
+            throw DatabaseTransactionException(TransactionFailure.SCOPE_CLOSED)
+        }
+    }
+}
+
+private class TransactionBoundDriver(
+    private val delegate: VertxPgDriver,
+    private val scope: TransactionScope
+) : TransactionalDatabaseDriver {
+    override suspend fun executeQuery(query: QueryAST): List<Row> =
+        scope.run { delegate.executeQuery(query) }
+
+    override suspend fun executeQueryRaw(sql: String): List<Row> =
+        scope.run { delegate.executeQueryRaw(sql) }
+
+    override suspend fun executeUpdate(query: QueryAST): Int =
+        scope.run { delegate.executeUpdate(query) }
+
+    override suspend fun executeDDL(query: QueryAST) =
+        scope.run { delegate.executeDDL(query) }
+
+    override suspend fun getTables(): List<String> =
+        scope.run { delegate.getTables() }
+
+    override suspend fun getColumns(table: String): List<ColumnDefinition> =
+        scope.run { delegate.getColumns(table) }
+
+    override suspend fun execute(sql: String, params: List<SqlValue>): Int =
+        scope.run { delegate.execute(sql, params) }
+
+    override suspend fun <T> withTransaction(
+        options: TransactionOptions,
+        block: suspend (DatabaseDriver) -> T
+    ): T {
+        throw DatabaseTransactionException(TransactionFailure.NESTED_TRANSACTION)
+    }
+
+    override suspend fun close() {
+        throw DatabaseTransactionException(TransactionFailure.CONNECTION_CLOSE_FORBIDDEN)
+    }
+}
+
+private fun TransactionIsolation.statementSql(): String = when (this) {
+    TransactionIsolation.READ_COMMITTED ->
+        "SET TRANSACTION ISOLATION LEVEL READ COMMITTED"
+    TransactionIsolation.SERIALIZABLE ->
+        "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"
+}
+
+private fun Duration.timeoutMillis(): Long = inWholeMilliseconds.coerceAtLeast(1)
+
+private suspend fun <T> withStatementTimeout(
+    timeout: Duration,
+    block: suspend () -> T
+): T = try {
+    withTimeout(timeout.timeoutMillis()) {
+        block()
+    }
+} catch (failure: TimeoutCancellationException) {
+    if (!coroutineContext.isActive) throw failure
+    throw DatabaseTransactionException(
+        failure = TransactionFailure.STATEMENT_TIMEOUT,
+        retryable = true
+    )
+}
+
+private suspend fun rollbackFailure(
+    transaction: Transaction,
+    timeout: Duration
+): DatabaseTransactionException? = withContext(NonCancellable) {
+    try {
+        withTimeout(timeout.timeoutMillis()) {
+            transaction.rollback().coAwait()
+        }
+        null
+    } catch (_: Throwable) {
+        DatabaseTransactionException(TransactionFailure.ROLLBACK_FAILED)
+    }
+}
+
+private suspend fun releaseFailure(
+    connection: SqlConnection,
+    timeout: Duration
+): DatabaseTransactionException? = withContext(NonCancellable) {
+    try {
+        withTimeout(timeout.timeoutMillis()) {
+            connection.close().coAwait()
+        }
+        null
+    } catch (_: Throwable) {
+        DatabaseTransactionException(TransactionFailure.RELEASE_FAILED)
+    }
+}
+
+private fun mapCommitFailure(
+    failure: Throwable,
+    profile: DiagnosticsProfile
+): DatabaseTransactionException {
+    val mapped = mapDatabaseFailure(DatabaseOperation.UPDATE, failure, profile)
+    return when (mapped.sqlState) {
+        "40001" -> DatabaseTransactionException(
+            failure = TransactionFailure.SERIALIZATION_CONFLICT,
+            retryable = true,
+            sqlState = mapped.sqlState,
+            cause = mapped.cause
+        )
+        "40P01" -> DatabaseTransactionException(
+            failure = TransactionFailure.DEADLOCK,
+            retryable = true,
+            sqlState = mapped.sqlState,
+            cause = mapped.cause
+        )
+        else -> DatabaseTransactionException(
+            failure = TransactionFailure.COMMIT_OUTCOME_UNKNOWN,
+            sqlState = mapped.sqlState,
+            cause = mapped.cause
+        )
+    }
+}
+
+private fun mapTransactionConflict(
+    failure: DatabaseOperationException
+): Throwable = when (failure.sqlState) {
+    "40001" -> DatabaseTransactionException(
+        failure = TransactionFailure.SERIALIZATION_CONFLICT,
+        retryable = true,
+        sqlState = failure.sqlState,
+        cause = failure.cause
+    )
+    "40P01" -> DatabaseTransactionException(
+        failure = TransactionFailure.DEADLOCK,
+        retryable = true,
+        sqlState = failure.sqlState,
+        cause = failure.cause
+    )
+    else -> failure
+}
+
 
 internal fun mapDatabaseFailure(
     operation: DatabaseOperation,

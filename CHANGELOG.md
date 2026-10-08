@@ -26,6 +26,11 @@
   bounded idempotent shutdown. Incremental multipart sinks and the streaming proxy can transfer
   large encrypted blobs without framework-wide materialization; response writes suspend on
   downstream pressure, and ordinary buffered request behavior remains the default.
+- PostgreSQL now exposes an additive, bounded transaction capability with one connection per
+  callback, explicit read-committed/serializable isolation, rollback and release cleanup,
+  scope/nesting guards, serialized sibling access, typed serialization/deadlock conflicts, and
+  exact-row compare-and-set semantics. Commit acknowledgement loss remains an unknown outcome to be
+  resolved through persisted operation receipts; callbacks are never retried automatically.
 
 ## [0.6.0.1] - 2026-09-05
 

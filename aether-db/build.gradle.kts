@@ -16,6 +16,8 @@ kotlin {
         }
         testRuns["test"].executionTask.configure {
             useJUnitPlatform()
+            // Testcontainers 1.20 defaults to Docker API 1.32; current Docker requires at least 1.40.
+            systemProperty("api.version", System.getProperty("api.version") ?: "1.40")
         }
     }
 
@@ -62,6 +64,8 @@ kotlin {
                 implementation(libs.vertx.sql.client)
                 implementation(libs.vertx.pg.client)
                 implementation(libs.vertx.kotlin.coroutines)
+                // Optional in Vert.x's POM, but required by PostgreSQL's default SCRAM authentication.
+                implementation("com.ongres.scram:client:2.1")
                 implementation(libs.hikaricp)
                 implementation(libs.postgres.driver)
                 implementation(libs.slf4j.api)

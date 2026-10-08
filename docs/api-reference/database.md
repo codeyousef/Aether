@@ -95,6 +95,42 @@ SQLSTATE when PostgreSQL supplied one. SQL text, parameters, connection URLs, pr
 the raw cause are absent. `DiagnosticsProfile.DEVELOPMENT` may retain the cause for a separately
 controlled local diagnostic process; never enable it in private production.
 
+### Transactions
+
+`VertxPgDriver` implements the additive `TransactionalDatabaseDriver` capability. Code that accepts
+a general `DatabaseDriver` can call `withTransaction`; an adapter without the capability throws a
+typed `UNSUPPORTED` failure before entering the block.
+
+```kotlin
+driver.withTransaction(
+    TransactionOptions(isolation = TransactionIsolation.SERIALIZABLE)
+) { tx ->
+    tx.execute(
+        """
+        UPDATE objects
+        SET revision = revision + 1
+        WHERE owner_account_id = ${'$'}1 AND id = ${'$'}2 AND revision = ${'$'}3
+        """.trimIndent(),
+        listOf(ownerId, objectId, expectedRevision)
+    )
+}
+// Publish an outbox wake hint only after withTransaction returns.
+```
+
+The callback receives one connection-bound driver. Calls from sibling coroutines are serialized;
+nested transactions, closing that driver, and using it after the callback returns are rejected.
+Acquire, statement, whole-transaction, rollback, and release work have independent finite bounds.
+Failures or cancellation before commit roll back. Cleanup runs in a short non-cancellable budget,
+then the connection is released. A commit timeout or acknowledgement loss reports
+`COMMIT_OUTCOME_UNKNOWN`; it is not proof of rollback. Resolve it through a persisted idempotency
+receipt rather than rerunning an externally effectful callback.
+
+`READ_COMMITTED` and `SERIALIZABLE` are explicit. PostgreSQL `40001` serialization conflicts and
+`40P01` deadlocks become typed retryable failures, but Aether never retries the callback
+automatically. `executeCompareAndSet` requires exactly one changed row: zero reports the
+enumeration-safe `REVISION_CONFLICT`, while more than one reports `INVALID_ROW_COUNT`. Include both
+tenant and revision predicates in caller-owned SQL.
+
 ### Supabase
 
 Use Supabase as a backend via PostgREST API. Works on all platforms including Wasm.
