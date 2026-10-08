@@ -13,6 +13,9 @@
 
 - Aether's Summon integration and example application now consume Summon `0.8.0`; dependency locks
   and artifact checksums are pinned to the verified release.
+- Both JVM HTTP server entry points now share decoded-byte request-body limits and finite read
+  timeouts. Oversized, malformed, disconnected, and timed-out bodies fail before middleware or
+  route dispatch; rejected connections close without unbounded draining.
 
 ## [0.6.0.1] - 2026-09-05
 

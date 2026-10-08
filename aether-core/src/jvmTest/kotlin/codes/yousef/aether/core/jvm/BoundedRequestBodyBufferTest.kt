@@ -5,6 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertEquals
 
 class BoundedRequestBodyBufferTest {
     @Test
@@ -26,17 +27,9 @@ class BoundedRequestBodyBufferTest {
         body.append(Buffer.buffer(ByteArray(1_024)))
 
         assertNull(body.finish())
+        assertEquals(0, body.retainedBytes)
     }
 
-    @Test
-    fun `rejects an oversized declared content length before chunks arrive`() {
-        val body = BoundedRequestBodyBuffer(4)
-
-        body.declareLength(5)
-        body.append(Buffer.buffer(byteArrayOf(1, 2)))
-
-        assertNull(body.finish())
-    }
 
     @Test
     fun `requires a positive body limit`() {

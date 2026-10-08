@@ -6,13 +6,17 @@ import codes.yousef.aether.core.pipeline.Pipeline
 import codes.yousef.aether.core.websocket.VertxWebSocketServer
 import codes.yousef.aether.core.websocket.WebSocketConfig
 import codes.yousef.aether.core.jvm.createVertxExchangeWithBody
+import codes.yousef.aether.core.jvm.BoundedRequestBodyResult
+import codes.yousef.aether.core.jvm.InternalAetherServerApi
+import codes.yousef.aether.core.jvm.readBoundedRequestBody
+import codes.yousef.aether.core.jvm.rejectRequestBody
 import io.vertx.core.Vertx
 import io.vertx.core.http.HttpServer
 import io.vertx.core.http.HttpServerOptions
 import io.vertx.core.net.PemKeyCertOptions
 import io.vertx.core.net.SelfSignedCertificate
 import io.vertx.kotlin.coroutines.coAwait
-import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -31,8 +35,23 @@ data class AetherServerConfig(
     val maxChunkSize: Int = 8192,
     val maxInitialLineLength: Int = 4096,
     val webSocket: WebSocketConfig = WebSocketConfig(),
-    val ssl: SslConfig? = null
-)
+    val ssl: SslConfig? = null,
+    /** Hard decoded-byte limit applied before router or middleware dispatch. */
+    val maxRequestBodySize: Int = 16 * 1024 * 1024,
+    /** Maximum time between request dispatch and receipt of the complete body. */
+    val requestBodyTimeoutMillis: Long = 30_000
+) {
+    init {
+        require(port in 0..65_535) { "Port must be between 0 and 65535" }
+        require(maxHeaderSize > 0 && maxChunkSize > 0 && maxInitialLineLength > 0) {
+            "HTTP parser limits must be positive"
+        }
+        require(maxRequestBodySize in 1..1_073_741_824) {
+            "Maximum request body size must be between 1 byte and 1 GiB"
+        }
+        require(requestBodyTimeoutMillis > 0) { "Request body timeout must be positive" }
+    }
+}
 
 /**
  * Configuration for SSL/TLS.
@@ -74,6 +93,7 @@ data class SslConfig(
  * )
  * ```
  */
+@OptIn(InternalAetherServerApi::class)
 class AetherServer(
     private val config: AetherServerConfig,
     private val router: Router,
@@ -82,12 +102,11 @@ class AetherServer(
     private val logger = LoggerFactory.getLogger("codes.yousef.aether.web.AetherServer")
     private val vertx: Vertx = Vertx.vertx()
     private var server: HttpServer? = null
-    // A WebSocket session and an HTTP request are independent units of work.
-    // A plain Job here lets an uncaught transport exception from either child
-    // cancel the parent scope, after which every accepted request is launched
-    // already-cancelled and Vert.x leaves the connection unanswered.
+    // HTTP requests and WebSocket sessions are independent children; one transport failure cannot
+    // cancel siblings, while close() still cancels every owned task through this retained job.
+    private val serverJob = SupervisorJob()
     private val scope = CoroutineScope(
-        SupervisorJob() +
+        serverJob +
             AetherDispatcher.dispatcher +
             CoroutineExceptionHandler { _, error ->
                 logger.error("Uncaught Aether server task failure", error)
@@ -174,36 +193,13 @@ class AetherServer(
                 }
             }
             .requestHandler { vertxRequest ->
-                // Handle HTTP requests (same as VertxServer)
-                val bodyDeferred = CompletableDeferred<ByteArray>()
-                val buffer = io.vertx.core.buffer.Buffer.buffer()
-
-                vertxRequest.handler { chunk ->
-                    buffer.appendBuffer(chunk)
-                }
-                vertxRequest.endHandler {
-                    bodyDeferred.complete(buffer.bytes)
-                }
-                vertxRequest.exceptionHandler { e ->
-                    if (!bodyDeferred.isCompleted) {
-                        bodyDeferred.complete(ByteArray(0))
-                    }
-                }
-
-                // Watchdog: the recurring editor-server wedge showed requests whose
-                // endHandler never fired — the coroutine then waits forever and the
-                // connection is silently unanswered. Diagnose the stalled state and
-                // complete the deferred so the error-response path can run.
-                val watchdog = vertx.setTimer(10_000L) { _ ->
-                    if (!bodyDeferred.isCompleted) {
-                        System.err.println(
-                            "[aether] request watchdog fired: path=" + vertxRequest.path() +
-                                " ended=" + vertxRequest.isEnded
-                        )
-                        bodyDeferred.complete(buffer.bytes)
-                    }
-                }
-                bodyDeferred.invokeOnCompletion { vertx.cancelTimer(watchdog) }
+                // Install body callbacks synchronously on the event loop before launching work.
+                val bodyDeferred = readBoundedRequestBody(
+                    vertx = vertx,
+                    request = vertxRequest,
+                    maximumBytes = config.maxRequestBodySize,
+                    timeoutMillis = config.requestBodyTimeoutMillis
+                )
 
                 // Resilience: a failed launch here previously died silently when
                 // stdout/stderr were broken (client gone → pipe reader gone → JVM
@@ -213,31 +209,37 @@ class AetherServer(
                 try {
                     scope.launch {
                         try {
-                        val bodyBytes = bodyDeferred.await()
-                        val exchange = createVertxExchangeWithBody(vertxRequest, bodyBytes)
+                            val bodyResult = bodyDeferred.await()
+                            if (bodyResult !is BoundedRequestBodyResult.Complete) {
+                                rejectRequestBody(vertxRequest, bodyResult)
+                                return@launch
+                            }
+                            val exchange = createVertxExchangeWithBody(vertxRequest, bodyResult.bytes)
 
-                        // Execute through pipeline with router as the final handler
-                        pipeline.execute(exchange) {
-                            val handled = router.handle(exchange)
-                            if (!handled) {
-                                exchange.notFound("Route not found: ${exchange.request.path}")
+                            // Execute through pipeline with router as the final handler.
+                            pipeline.execute(exchange) {
+                                val handled = router.handle(exchange)
+                                if (!handled) {
+                                    exchange.notFound("Route not found: ${exchange.request.path}")
+                                }
+                            }
+
+                            if (!vertxRequest.response().ended()) {
+                                exchange.response.end()
+                            }
+                        } catch (cancellation: CancellationException) {
+                            throw cancellation
+                        } catch (e: Exception) {
+                            logger.error("Error processing request", e)
+                            try {
+                                vertxRequest.response()
+                                    .setStatusCode(500)
+                                    .end("Internal Server Error")
+                                    .coAwait()
+                            } catch (responseError: Exception) {
+                                logger.error("Failed to send error response", responseError)
                             }
                         }
-
-                        if (!vertxRequest.response().ended()) {
-                            exchange.response.end()
-                        }
-                    } catch (e: Exception) {
-                        logger.error("Error processing request", e)
-                        try {
-                            vertxRequest.response()
-                                .setStatusCode(500)
-                                .end("Internal Server Error")
-                                .coAwait()
-                        } catch (responseError: Exception) {
-                            logger.error("Failed to send error response", responseError)
-                        }
-                    }
                     }
                 } catch (t: Throwable) {
                     // Rejected dispatcher / framework-level failure: never leave
@@ -254,8 +256,13 @@ class AetherServer(
 
         val wsRouteCount = router.getWebSocketRoutes().size
         val wsInfo = if (wsRouteCount > 0) " (WebSocket: $wsRouteCount routes)" else ""
-        logger.info("Aether server started on ${config.host}:${config.port}$wsInfo")
+        logger.info("Aether server started on ${config.host}:$actualPort$wsInfo")
     }
+
+    /** The bound port after [start], including the OS-selected port when configured with port `0`. */
+    val actualPort: Int
+        get() = server?.actualPort()?.takeIf { it >= 0 }
+            ?: error("Aether server has not been started")
 
     private suspend fun handleWebSocketSession(
         session: codes.yousef.aether.core.websocket.VertxWebSocketSession,
@@ -295,6 +302,7 @@ class AetherServer(
      * Close the server and clean up resources.
      */
     suspend fun close() {
+        serverJob.cancel()
         stop()
         vertx.close().coAwait()
         logger.info("Aether server closed")

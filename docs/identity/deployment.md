@@ -106,9 +106,13 @@ explicitly implement the readiness contract. A missing capability, failed provid
 unresolved key or mismatched marker is a deployment failure, not a degraded mode.
 
 Reject oversized bodies while streaming, before materializing a request for protocol parsing. On
-the JVM, set `VertxServerConfig.maxRequestBodySize` no higher than the largest installed authority
-endpoint; the bundled example uses 1 MiB, matching `IdentityHttpApiConfig.maximumJsonBodyBytes`.
-Keep the smaller OAuth form and SCIM limits enabled inside their dispatchers as defense in depth.
+the JVM, set `VertxServerConfig.maxRequestBodySize` or `AetherServerConfig.maxRequestBodySize` no
+higher than the largest installed authority endpoint; the bundled example uses 1 MiB, matching
+`IdentityHttpApiConfig.maximumJsonBodyBytes`. Set `requestBodyTimeoutMillis` to a finite value for
+the deployment's slowest legitimate upload. Both JVM entry points apply the limit to decoded bytes,
+reject invalid or incomplete framing before pipeline/router dispatch, close rejected connections
+instead of draining unbounded input, and remain available for later requests. Keep the smaller
+OAuth form and SCIM limits enabled inside their dispatchers as defense in depth.
 
 ## Runtime profiles
 
