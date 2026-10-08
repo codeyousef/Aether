@@ -1,6 +1,9 @@
 package codes.yousef.aether.web
 
 import codes.yousef.aether.core.pipeline.Pipeline
+import codes.yousef.aether.core.websocket.WebSocketConfig
+import codes.yousef.aether.core.websocket.WebSocketUpgradeAuthorization
+import codes.yousef.aether.core.websocket.WebSocketUpgradeAuthorizer
 import kotlinx.coroutines.*
 import org.junit.jupiter.api.*
 import java.net.URI
@@ -14,6 +17,7 @@ import java.util.concurrent.CompletionStage
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.ExecutionException
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -132,6 +136,162 @@ class AetherStartWebSocketTest {
                 Thread.sleep(50)
             }
             return messages.size >= count
+        }
+    }
+
+    @Test
+    @Timeout(15)
+    fun `WebSocket upgrade is authorized before subscription and bearer query credentials are denied`() {
+        val router = router {
+            get("/api/health") { exchange -> exchange.respond(200, "OK") }
+            ws("/ws/account/:account") {
+                onConnect { session -> session.sendText("account:${session.attributes["account"]}") }
+            }
+        }
+        val authorization = WebSocketUpgradeAuthorizer { request ->
+            val requestedAccount = request.path.substringAfterLast('/')
+            val authenticatedAccount = request.headers.entries
+                .firstOrNull { it.key.equals("X-Account", ignoreCase = true) }
+                ?.value
+            if (authenticatedAccount == requestedAccount) {
+                WebSocketUpgradeAuthorization.Allow(mapOf("account" to authenticatedAccount))
+            } else {
+                WebSocketUpgradeAuthorization.Deny()
+            }
+        }
+        val server = AetherServer.create(
+            AetherServerConfig(
+                host = "127.0.0.1",
+                port = 0,
+                webSocket = WebSocketConfig(authorizer = authorization)
+            ),
+            router,
+            Pipeline()
+        )
+        var socket: WebSocket? = null
+        try {
+            runBlocking { server.start() }
+            assertThrows<ExecutionException> {
+                httpClient.newWebSocketBuilder()
+                    .buildAsync(
+                        URI.create("ws://127.0.0.1:${server.actualPort}/ws/account/account-a"),
+                        TestWebSocketListener()
+                    )
+                    .get(5, TimeUnit.SECONDS)
+            }
+            assertThrows<ExecutionException> {
+                httpClient.newWebSocketBuilder()
+                    .header("X-Account", "account-a")
+                    .buildAsync(
+                        URI.create(
+                            "ws://127.0.0.1:${server.actualPort}/ws/account/account-a?access_token=secret"
+                        ),
+                        TestWebSocketListener()
+                    )
+                    .get(5, TimeUnit.SECONDS)
+            }
+
+            val listener = TestWebSocketListener()
+            socket = httpClient.newWebSocketBuilder()
+                .header("X-Account", "account-a")
+                .buildAsync(
+                    URI.create("ws://127.0.0.1:${server.actualPort}/ws/account/account-a"),
+                    listener
+                )
+                .get(5, TimeUnit.SECONDS)
+            assertTrue(listener.awaitMessages(1))
+            assertEquals("account:account-a", listener.messages.single())
+        } finally {
+            socket?.abort()
+            runBlocking { server.close() }
+        }
+    }
+
+    @Test
+    @Timeout(15)
+    fun `WebSocket origin allowlist denies missing or hostile origin before subscription`() {
+        val router = router {
+            get("/api/health") { exchange -> exchange.respond(200, "OK") }
+            ws("/ws/private") {}
+        }
+        val server = AetherServer.create(
+            AetherServerConfig(
+                host = "127.0.0.1",
+                port = 0,
+                webSocket = WebSocketConfig(allowedOrigins = setOf("https://trusted.example"))
+            ),
+            router,
+            Pipeline()
+        )
+        try {
+            runBlocking { server.start() }
+            assertThrows<ExecutionException> {
+                httpClient.newWebSocketBuilder()
+                    .buildAsync(
+                        URI.create("ws://127.0.0.1:${server.actualPort}/ws/private"),
+                        TestWebSocketListener()
+                    )
+                    .get(5, TimeUnit.SECONDS)
+            }
+            val request = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:${server.actualPort}/api/health"))
+                .GET()
+                .build()
+            assertEquals(
+                200,
+                httpClient.send(request, java.net.http.HttpResponse.BodyHandlers.discarding()).statusCode()
+            )
+        } finally {
+            runBlocking { server.close() }
+        }
+    }
+
+    @Test
+    @Timeout(15)
+    fun `slow WebSocket consumer closes bounded inbound queue without harming HTTP`() {
+        val router = router {
+            get("/api/health") { exchange -> exchange.respond(200, "OK") }
+            ws("/ws/slow") {
+                onText { _, _ -> delay(500) }
+            }
+        }
+        val server = AetherServer.create(
+            AetherServerConfig(
+                host = "127.0.0.1",
+                port = 0,
+                webSocket = WebSocketConfig(
+                    maxFrameSize = 1_024,
+                    maxMessageSize = 1_024,
+                    maxPendingMessages = 1
+                )
+            ),
+            router,
+            Pipeline()
+        )
+        var socket: WebSocket? = null
+        try {
+            runBlocking { server.start() }
+            val listener = TestWebSocketListener()
+            socket = httpClient.newWebSocketBuilder()
+                .buildAsync(URI.create("ws://127.0.0.1:${server.actualPort}/ws/slow"), listener)
+                .get(5, TimeUnit.SECONDS)
+            repeat(32) { index ->
+                socket.sendText("message-$index", true)
+            }
+            assertTrue(listener.awaitClose(), "Inbound overload must close the socket")
+            assertEquals(1013, listener.closeCode)
+
+            val request = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:${server.actualPort}/api/health"))
+                .GET()
+                .build()
+            assertEquals(
+                200,
+                httpClient.send(request, java.net.http.HttpResponse.BodyHandlers.discarding()).statusCode()
+            )
+        } finally {
+            socket?.abort()
+            runBlocking { server.close() }
         }
     }
 
@@ -524,7 +684,6 @@ class AetherStartWebSocketTest {
 
     @Test
     @Timeout(15)
-    @Disabled("WebSocket 404 rejection behavior varies by client - server correctly rejects with ws.reject(404)")
     fun `test WebSocket returns 404 for unknown path`() {
         val testPort = 20086
         var serverJob: Job? = null

@@ -163,6 +163,8 @@ class AetherServer(
             .setMaxHeaderSize(config.maxHeaderSize)
             .setMaxChunkSize(config.maxChunkSize)
             .setMaxInitialLineLength(config.maxInitialLineLength)
+            .setMaxWebSocketFrameSize(config.webSocket.maxFrameSize)
+            .setMaxWebSocketMessageSize(config.webSocket.maxMessageSize)
 
         if (config.ssl?.enabled == true) {
             options.isSsl = true
@@ -180,52 +182,24 @@ class AetherServer(
         }
 
         server = vertx.createHttpServer(options)
-            .webSocketHandler { ws ->
-                if (stopping.get()) {
-                    @Suppress("DEPRECATION")
-                    ws.reject(503)
-                    return@webSocketHandler
-                }
-                // Handle WebSocket upgrade requests
+            .webSocketHandshakeHandler { handshake ->
                 scope.launch {
                     try {
-                        val path = ws.path()
-                        val handler = router.findWebSocketHandler(path)
-
-                        if (handler != null) {
-                            // Extract path parameters and set them in the session
-                            val wsRoutes = router.getWebSocketRoutes()
-                            val matchingRoute = wsRoutes.find { route ->
-                                matchWebSocketPathInternal(route.path, path)
-                            }
-                            val pathParams = matchingRoute?.let {
-                                extractWebSocketPathParams(it.path, path)
-                            } ?: emptyMap()
-
-                            // Accept the connection and handle it
-                            @Suppress("DEPRECATION")
-                            ws.accept()
-
-                            val session = codes.yousef.aether.core.websocket.VertxWebSocketSession(ws, scope)
-                            // Store path params in session attributes
-                            session.attributes["_pathParams"] = pathParams
-
-                            handleWebSocketSession(session, handler)
-                        } else {
-                            // No handler found, reject the connection
-                            @Suppress("DEPRECATION")
-                            ws.reject(404)
+                        when {
+                            stopping.get() -> handshake.reject(503).coAwait()
+                            !webSocketServer.handleHandshake(handshake, scope) ->
+                                handshake.reject(404).coAwait()
                         }
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
                     } catch (_: Exception) {
                         logger.error("category=${ApiErrorKind.INTERNAL.code} websocket_upgrade_failure")
-                        try {
-                            @Suppress("DEPRECATION")
-                            ws.reject(500)
-                        } catch (_: Exception) {
-                            // Ignore rejection errors
-                        }
+                        runCatching { handshake.reject(500).coAwait() }
                     }
                 }
+            }
+            .webSocketHandler {
+                // Accepted sockets are initialized from ServerWebSocketHandshake.accept().
             }
             .invalidRequestHandler { invalidRequest ->
                 scope.launch {
@@ -345,33 +319,6 @@ class AetherServer(
         get() = server?.actualPort()?.takeIf { it >= 0 }
             ?: error("Aether server has not been started")
 
-    private suspend fun handleWebSocketSession(
-        session: codes.yousef.aether.core.websocket.VertxWebSocketSession,
-        handler: codes.yousef.aether.core.websocket.WebSocketHandler
-    ) {
-        try {
-            handler.onConnect(session)
-
-            session.incoming().collect { message ->
-                when (message) {
-                    is codes.yousef.aether.core.websocket.WebSocketMessage.Text ->
-                        handler.onText(session, message.content)
-                    is codes.yousef.aether.core.websocket.WebSocketMessage.Binary ->
-                        handler.onBinary(session, message.data)
-                    is codes.yousef.aether.core.websocket.WebSocketMessage.Ping ->
-                        handler.onPing(session, message.data)
-                    is codes.yousef.aether.core.websocket.WebSocketMessage.Pong ->
-                        handler.onPong(session, message.data)
-                    is codes.yousef.aether.core.websocket.WebSocketMessage.Close ->
-                        handler.onClose(session, message.code, message.reason)
-                }
-            }
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (error: Exception) {
-            handler.onError(session, error)
-        }
-    }
 
     /**
      * Stop the server.
@@ -448,34 +395,6 @@ class AetherServer(
     }
 }
 
-/**
- * Internal path matching function for WebSocket routes.
- */
-private fun matchWebSocketPathInternal(pattern: String, path: String): Boolean {
-    val patternParts = pattern.split("/").filter { it.isNotEmpty() }
-    val pathParts = path.split("/").filter { it.isNotEmpty() }
-
-    if (patternParts.size != pathParts.size) {
-        return false
-    }
-
-    for (i in patternParts.indices) {
-        val patternPart = patternParts[i]
-        val pathPart = pathParts[i]
-
-        // Path parameter - matches anything
-        if (patternPart.startsWith(":") ||
-            (patternPart.startsWith("{") && patternPart.endsWith("}"))) {
-            continue
-        }
-
-        if (patternPart != pathPart) {
-            return false
-        }
-    }
-
-    return true
-}
 
 /**
  * DSL function for creating an AetherServer with a Router.

@@ -120,7 +120,7 @@ Identity protocol and middleware tests run on JVM, wasmJs and wasmWasi. Storage 
 against PostgreSQL 16 and the Firestore emulator. The current wasmWasi Node suite verifies guest
 ABI/readiness behavior, while the native C suite verifies the OpenSSL primitives independently.
 The combined component host that binds the Kotlin guest to the WIT crypto world and `wasi:http` is
-not complete, so production wasmWasi identity-authority hosting is not supported in `0.6.0.0`.
+not complete, so production wasmWasi identity-authority hosting is not supported in `0.7.0.0`.
 
 ```text
 ./gradlew verifyExpectedSourceTasks :aether-auth:jvmTest :aether-auth:wasmJsNodeTest :aether-auth:wasmWasiNodeTest

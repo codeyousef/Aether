@@ -64,15 +64,15 @@ kotlin {
             implementation(kotlin("test"))
         }
         jvmMain.dependencies {
-            implementation("codes.yousef.aether:aether-core:0.6.0.1")
-            implementation("codes.yousef.aether:aether-web:0.6.0.1")
+            implementation("codes.yousef.aether:aether-core:0.7.0.0")
+            implementation("codes.yousef.aether:aether-web:0.7.0.0")
         }
         jvmTest.dependencies {
             implementation(kotlin("test-junit5"))
             implementation("org.junit.jupiter:junit-jupiter:5.10.1")
         }
         jsMain.dependencies {
-            implementation("codes.yousef.aether:aether-browser-client:0.6.0.1")
+            implementation("codes.yousef.aether:aether-browser-client:0.7.0.0")
         }
     }
 }

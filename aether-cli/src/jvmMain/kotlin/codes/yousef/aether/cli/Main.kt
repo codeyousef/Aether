@@ -403,10 +403,10 @@ private fun handleStartProject(args: List<String>) {
             sourceSets {
                 val commonMain by getting {
                     dependencies {
-                        implementation("codes.yousef.aether:aether-core:0.6.0.0")
-                        implementation("codes.yousef.aether:aether-db:0.6.0.0")
-                        implementation("codes.yousef.aether:aether-web:0.6.0.0")
-                        implementation("codes.yousef.aether:aether-ui:0.6.0.0")
+                        implementation("codes.yousef.aether:aether-core:0.7.0.0")
+                        implementation("codes.yousef.aether:aether-db:0.7.0.0")
+                        implementation("codes.yousef.aether:aether-web:0.7.0.0")
+                        implementation("codes.yousef.aether:aether-ui:0.7.0.0")
                     }
                 }
                 val jvmMain by getting {

@@ -20,8 +20,8 @@ The `aether-grpc` module enables:
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation("codes.yousef.aether:aether-grpc:0.6.0.0")
-    ksp("codes.yousef.aether:aether-ksp:0.6.0.0")
+    implementation("codes.yousef.aether:aether-grpc:0.7.0.0")
+    ksp("codes.yousef.aether:aether-ksp:0.7.0.0")
 }
 ```
 
@@ -700,7 +700,7 @@ plugins {
 }
 
 dependencies {
-    ksp("codes.yousef.aether:aether-ksp:0.6.0.0")
+    ksp("codes.yousef.aether:aether-ksp:0.7.0.0")
 }
 
 // Optional: Configure output location

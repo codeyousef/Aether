@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.7.0.0] - 2026-10-08
+
 ### Added
 
 - AE-T00 source-consumer qualification builds real Aether JVM and Kotlin/JS applications from
@@ -59,12 +61,19 @@
   through one root-relative same-origin path. All unsafe verbs receive CSRF material; body and
   response limits use UTF-8 bytes, redirects fail closed by default, cancellation aborts fetch, and
   raw responses expose status, `ETag`, and `Retry-After` without forcing JSON decoding.
+- WebSocket upgrades now enforce finite decoded-message queues and UTF-8 message limits, reject
+  missing/hostile configured origins and query bearer credentials before acceptance, and expose an
+  application authorizer for trusted session attributes. Overload uses close code 1013; channels
+  can use coalescing opaque wake subscriptions that revalidate authorization and clean up once.
 
 ### Fixed
 
 - Task registration defaults and per-enqueue `TaskOptions` overrides now take effect, invalid retry
   and worker configurations fail immediately, and the legacy `TaskWorker` enforces its concurrency
   cap globally across queues instead of racing per-queue counters.
+- Route-local proxy authorization replacement now suppresses the inbound credential without
+  deleting the explicitly configured service credential; global security-profile removals remain
+  authoritative.
 
 ## [0.6.0.1] - 2026-09-05
 

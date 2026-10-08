@@ -365,9 +365,10 @@ internal fun buildProxyHeaders(
     // Add/override headers from request config
     headers.putAll(requestConfig.headersToAdd)
 
-    // Removal policies remain authoritative over route-local additions.
+    // Global policy removals remain authoritative. Route-local removals only suppress copied
+    // inbound values, so the same route can deliberately install a replacement value.
     headers.keys.removeAll { name ->
-        excludeHeaders.any { it.equals(name, ignoreCase = true) }
+        config.removeRequestHeaders.any { it.equals(name, ignoreCase = true) }
     }
 
     return headers

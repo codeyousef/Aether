@@ -1,13 +1,18 @@
 package codes.yousef.aether.core
 
 import codes.yousef.aether.core.websocket.VertxWebSocketSession
+import codes.yousef.aether.core.websocket.WebSocketCloseCode
+import codes.yousef.aether.core.websocket.WebSocketConfig
+import codes.yousef.aether.core.websocket.WebSocketMessage
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.vertx.core.Handler
+import io.vertx.core.Future
 import io.vertx.core.MultiMap
 import io.vertx.core.http.ServerWebSocket
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.toList
 import org.junit.jupiter.api.*
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -18,6 +23,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -52,6 +58,7 @@ class AetherStartTest {
         every { socket.exceptionHandler(capture(exceptionHandler)) } returns socket
         every { socket.closeStatusCode() } returns null
         every { socket.closeReason() } returns null
+        every { socket.isClosed } returns true
 
         VertxWebSocketSession(socket, scope)
         exceptionHandler.captured.handle(IOException("connection closed"))
@@ -59,6 +66,84 @@ class AetherStartTest {
 
         assertTrue(ownerJob.isActive, "A socket callback must not cancel the server scope")
         assertTrue(failures.isEmpty(), "A duplicate close callback must not throw")
+    }
+
+    @Test
+    fun `WebSocket inbound queue overload closes with retry code and remains bounded`() = runBlocking {
+        val socket = mockk<ServerWebSocket>()
+        val textHandler = slot<Handler<String>>()
+        val closeHandler = slot<Handler<Void>>()
+        val closeCode = slot<Short>()
+        every { socket.path() } returns "/ws/test"
+        every { socket.query() } returns null
+        every { socket.headers() } returns MultiMap.caseInsensitiveMultiMap()
+        every { socket.textMessageHandler(capture(textHandler)) } returns socket
+        every { socket.binaryMessageHandler(any()) } returns socket
+        every { socket.pongHandler(any()) } returns socket
+        every { socket.closeHandler(capture(closeHandler)) } returns socket
+        every { socket.exceptionHandler(any()) } returns socket
+        every { socket.isClosed } returns false
+        every { socket.close(capture(closeCode), any<String>()) } returns Future.succeededFuture<Void>()
+
+        val session = VertxWebSocketSession(
+            socket,
+            this,
+            WebSocketConfig(maxFrameSize = 8, maxMessageSize = 8, maxPendingMessages = 1)
+        )
+        textHandler.captured.handle("first")
+        textHandler.captured.handle("second")
+
+        assertEquals(WebSocketCloseCode.TRY_AGAIN_LATER, closeCode.captured.toInt())
+        assertEquals(
+            listOf(WebSocketMessage.Close(WebSocketCloseCode.TRY_AGAIN_LATER, "inbound_queue_full")),
+            session.incoming().toList()
+        )
+    }
+
+    @Test
+    fun `WebSocket rejects decoded messages above configured byte limit`() = runBlocking {
+        val socket = mockk<ServerWebSocket>()
+        val textHandler = slot<Handler<String>>()
+        val closeCode = slot<Short>()
+        every { socket.path() } returns "/ws/test"
+        every { socket.query() } returns null
+        every { socket.headers() } returns MultiMap.caseInsensitiveMultiMap()
+        every { socket.textMessageHandler(capture(textHandler)) } returns socket
+        every { socket.binaryMessageHandler(any()) } returns socket
+        every { socket.pongHandler(any()) } returns socket
+        every { socket.closeHandler(any()) } returns socket
+        every { socket.exceptionHandler(any()) } returns socket
+        every { socket.isClosed } returns false
+        every { socket.close(capture(closeCode), any<String>()) } returns Future.succeededFuture<Void>()
+
+        val session = VertxWebSocketSession(
+            socket,
+            this,
+            WebSocketConfig(maxFrameSize = 4, maxMessageSize = 4, maxPendingMessages = 1)
+        )
+        textHandler.captured.handle("ééé")
+
+        assertEquals(WebSocketCloseCode.MESSAGE_TOO_BIG, closeCode.captured.toInt())
+        assertEquals(
+            listOf(WebSocketMessage.Close(WebSocketCloseCode.MESSAGE_TOO_BIG, "message_too_big")),
+            session.incoming().toList()
+        )
+    }
+
+    @Test
+    fun `WebSocket configuration rejects unbounded queues and malformed origins`() {
+        assertFailsWith<IllegalArgumentException> {
+            WebSocketConfig(maxPendingMessages = 0)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            WebSocketConfig(maxFrameSize = 16, maxMessageSize = 8)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            WebSocketConfig(allowedOrigins = setOf("https://trusted.example/path"))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            WebSocketConfig(allowedOrigins = setOf("https://trusted.example:99999"))
+        }
     }
 
     @Test

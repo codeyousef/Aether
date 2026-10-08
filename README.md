@@ -2,7 +2,7 @@
 
 A Django-like Kotlin Multiplatform framework that runs on JVM (Vert.x + Virtual Threads) and Wasm (Cloudflare/Browser).
 
-> **Release status:** `0.6.0.0` was released on 2026-07-16, and the Maven coordinates below use this
+> **Release status:** `0.7.0.0` was released on 2026-10-08, and the Maven coordinates below use this
 > version. Production wasmWasi identity-authority hosting is not supported in this release because
 > the combined component-host integration is not complete; use the JVM authority or another
 > supported trusted server host for production.
@@ -36,9 +36,9 @@ kotlin {
     jvm()
     sourceSets {
         commonMain.dependencies {
-            implementation("codes.yousef.aether:aether-core:0.6.0.0")
-            implementation("codes.yousef.aether:aether-web:0.6.0.0")
-            implementation("codes.yousef.aether:aether-db:0.6.0.0")
+            implementation("codes.yousef.aether:aether-core:0.7.0.0")
+            implementation("codes.yousef.aether:aether-web:0.7.0.0")
+            implementation("codes.yousef.aether:aether-db:0.7.0.0")
         }
     }
 }
@@ -296,7 +296,7 @@ DatabaseDriverRegistry.initialize(driver)
 - Future-proof architecture for emerging web platforms
 
 The generic target is available for experimentation, but production wasmWasi Identity-authority
-hosting is not supported in `0.6.0.0`: the combined Kotlin guest, WIT OpenSSL crypto host, and
+hosting is not supported in `0.7.0.0`: the combined Kotlin guest, WIT OpenSSL crypto host, and
 `wasi:http` integration is not complete. See the
 [identity deployment guide](docs/identity/deployment.md#release-verification).
 

@@ -1,6 +1,6 @@
 # Aether identity WASI crypto host
 
-This non-published native library is versioned with Aether `0.6.0.0` and is the reference host
+This non-published native library is versioned with Aether `0.7.0.0` and is the reference host
 implementation for the SemVer WIT package `aether:identity-crypto@0.6.0`. It uses OpenSSL 3 for
 SHA-256, HMAC-SHA-256,
 constant-time comparison, ES256, RSA-SHA256, key validation, opaque-handle
@@ -18,7 +18,7 @@ Important: this repository currently supplies the hardened native library, WIT
 contract, and guest-side ABI/readiness tests, but not a runnable component that
 binds the Kotlin 2.3.x Preview1 guest to that WIT world. The C test below proves
 the OpenSSL primitives only. It is not the wasmWasi production release gate.
-The `0.6.0.0` artifacts include the experimental wasmWasi target, but production
+The `0.7.0.0` artifacts include the experimental wasmWasi target, but production
 wasmWasi identity-authority hosting is unsupported until a component-model binding
 and combined host/guest runner exercise the real library and `wasi:http` in CI.
 This matches the [Kotlin/Wasm WASI documentation](https://kotlinlang.org/docs/wasm-wasi.html),

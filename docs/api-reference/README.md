@@ -60,12 +60,14 @@ Aether supports multiple Kotlin targets:
 | wasmJs | Cloudflare Workers, browser-based apps |
 | wasmWasi | Edge computing, serverless functions |
 
-The broad wasmWasi target is experimental for the `0.6.0.0` Identity authority. Production
+The broad wasmWasi target is experimental for the `0.7.0.0` Identity authority. Production
 wasmWasi identity-authority hosting is not supported in this release because the combined Kotlin
 guest, WIT OpenSSL crypto, and `wasi:http` host integration is not complete; see
 [Identity deployment](../identity/deployment.md#release-verification).
 
 ### Version History
+
+- **0.7.0.0 (2026-10-08)** — Bounded transport, PostgreSQL, identity, task, browser-client, and WebSocket hardening
 
 - **0.6.0.0 (2026-07-16)** — Breaking passkey-first identity platform and storage-neutral adapters
 - **0.5.0.2** — GrpcHttpHandler, GrpcMiddleware, Pipeline.installGrpc() DSL

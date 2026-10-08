@@ -168,7 +168,7 @@ The current Kotlin 2.3.x build emits a Preview1 core module and does not yet shi
 binding that connects the guest runtime to this WIT world. The native OpenSSL library and the
 guest-side capability tests are independently verified, but that is not equivalent to executing
 the combined production host. Production wasmWasi identity-authority hosting is therefore not
-supported in `0.6.0.0`; a future supported release requires the component-model binding and a
+supported in `0.7.0.0`; a future supported release requires the component-model binding and a
 combined `wasi:http`/crypto integration test. JVM remains the deployable authority target; browser
 wasmJs remains public client/UI code only.
 
@@ -387,7 +387,7 @@ accepted ID can be proven. Do not remove a claim without definitive evidence tha
 Automated verification includes JVM, wasmJs and wasmWasi guest protocol/crypto tests, the native
 OpenSSL host-library tests, PostgreSQL 16 and Firestore conformance/race suites, Summon browser
 tests, federation adversarial suites, and the complete example build. Production wasmWasi
-identity-authority hosting is not supported in `0.6.0.0` because the combined Kotlin guest, WIT
+identity-authority hosting is not supported in `0.7.0.0` because the combined Kotlin guest, WIT
 crypto, and `wasi:http` component-host integration is not complete.
 
 Before a production deployment, perform an independent adversarial review and a manual

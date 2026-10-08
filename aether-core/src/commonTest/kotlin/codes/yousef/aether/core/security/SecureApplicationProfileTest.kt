@@ -364,6 +364,22 @@ class SecureApplicationProfileTest {
         assertEquals("object-1", forwarded["X-Object-Id"])
     }
 
+    @Test
+    fun `route proxy can replace a removed inbound authorization header`() {
+        val exchange = SecurityTestExchange(
+            request = SecurityTestRequest(
+                headers = Headers.of("Authorization" to "Bearer browser-session")
+            )
+        )
+        val requestConfig = proxyRequest {
+            bearerToken("service-api-key")
+        }
+
+        val forwarded = buildProxyHeaders(exchange, ProxyConfig(), requestConfig)
+
+        assertEquals("Bearer service-api-key", forwarded["Authorization"])
+    }
+
     private fun assertPrivateHeaders(response: SecurityTestResponse) {
         val headers = response.headers.build()
         assertEquals("no-store", headers["Cache-Control"])

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(aether_identity_wasi_host VERSION 0.6.0.0 LANGUAGES C)
+project(aether_identity_wasi_host VERSION 0.7.0.0 LANGUAGES C)
 
 find_package(OpenSSL 3.0 REQUIRED COMPONENTS Crypto)
 

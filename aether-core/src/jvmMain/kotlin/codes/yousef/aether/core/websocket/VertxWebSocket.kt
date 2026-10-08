@@ -2,6 +2,7 @@ package codes.yousef.aether.core.websocket
 
 import io.vertx.core.Vertx
 import io.vertx.core.http.ServerWebSocket
+import io.vertx.core.http.ServerWebSocketHandshake
 import io.vertx.kotlin.coroutines.coAwait
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -10,21 +11,25 @@ import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.launch
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * JVM implementation of WebSocketSession using Vert.x.
  */
 class VertxWebSocketSession(
     private val socket: ServerWebSocket,
-    private val scope: CoroutineScope
+    @Suppress("UNUSED_PARAMETER") scope: CoroutineScope,
+    private val config: WebSocketConfig = WebSocketConfig()
 ) : WebSocketSession {
     override val id: String = UUID.randomUUID().toString()
     override val path: String = socket.path()
-    override val queryParameters: Map<String, List<String>> = parseQueryParams(socket.query())
+    override val queryParameters: Map<String, List<String>> = parseWebSocketQuery(socket.query())
     override val headers: Map<String, String> = socket.headers().associate { it.key to it.value }
     override val attributes: MutableMap<String, Any?> = ConcurrentHashMap()
 
-    private val incomingChannel = Channel<WebSocketMessage>(Channel.UNLIMITED)
+    private val incomingChannel = Channel<WebSocketMessage>(config.maxPendingMessages)
+    private val terminated = AtomicBoolean(false)
+    @Volatile
     private var _isOpen = true
 
     override val isOpen: Boolean
@@ -36,37 +41,61 @@ class VertxWebSocketSession(
 
     private fun setupHandlers() {
         socket.textMessageHandler { text ->
-            incomingChannel.trySend(WebSocketMessage.Text(text))
+            enqueue(WebSocketMessage.Text(text), text.encodeToByteArray().size)
         }
 
         socket.binaryMessageHandler { buffer ->
-            incomingChannel.trySend(WebSocketMessage.Binary(buffer.bytes))
+            enqueue(WebSocketMessage.Binary(buffer.bytes), buffer.length())
         }
 
         socket.pongHandler { buffer ->
-            incomingChannel.trySend(WebSocketMessage.Pong(buffer.bytes))
+            enqueue(WebSocketMessage.Pong(buffer.bytes), buffer.length())
         }
 
         socket.closeHandler {
-            _isOpen = false
-            // Vert.x may deliver exceptionHandler and closeHandler for the same
-            // abrupt disconnect. Never launch a suspending send here: if the
-            // exception handler has already closed the channel, send rethrows
-            // the transport exception in a child coroutine and can cancel the
-            // server's parent request scope.
-            incomingChannel.trySend(
+            finish(
                 WebSocketMessage.Close(
-                    socket.closeStatusCode()?.toInt() ?: 1000,
+                    socket.closeStatusCode()?.toInt() ?: WebSocketCloseCode.NORMAL,
                     socket.closeReason() ?: ""
                 )
             )
-            incomingChannel.close()
         }
 
         socket.exceptionHandler { error ->
-            _isOpen = false
-            incomingChannel.close(error)
+            if (finish(error = error) && !socket.isClosed) {
+                socket.close(WebSocketCloseCode.INTERNAL_ERROR.toShort(), "transport_error")
+            }
         }
+    }
+
+    private fun enqueue(message: WebSocketMessage, sizeBytes: Int) {
+        if (sizeBytes > config.maxMessageSize) {
+            overload(WebSocketCloseCode.MESSAGE_TOO_BIG, "message_too_big")
+        } else if (incomingChannel.trySend(message).isFailure) {
+            overload(WebSocketCloseCode.TRY_AGAIN_LATER, "inbound_queue_full")
+        }
+    }
+
+    private fun overload(code: Int, reason: String) {
+        if (finish(WebSocketMessage.Close(code, reason)) && !socket.isClosed) {
+            socket.close(code.toShort(), reason)
+        }
+    }
+
+    private fun finish(close: WebSocketMessage.Close? = null, error: Throwable? = null): Boolean {
+        if (!terminated.compareAndSet(false, true)) return false
+        _isOpen = false
+        if (error != null) {
+            incomingChannel.close(error)
+        } else {
+            val closeMessage = close ?: WebSocketMessage.Close()
+            if (incomingChannel.trySend(closeMessage).isFailure) {
+                incomingChannel.tryReceive()
+                incomingChannel.trySend(closeMessage)
+            }
+            incomingChannel.close()
+        }
+        return true
     }
 
     override suspend fun sendText(text: String) {
@@ -94,30 +123,13 @@ class VertxWebSocketSession(
     }
 
     override suspend fun close(code: Int, reason: String) {
-        if (isOpen) {
-            _isOpen = false
+        if (finish(WebSocketMessage.Close(code, reason)) && !socket.isClosed) {
             socket.close(code.toShort(), reason).coAwait()
         }
     }
 
     override fun incoming(): Flow<WebSocketMessage> = incomingChannel.consumeAsFlow()
 
-    private fun parseQueryParams(query: String?): Map<String, List<String>> {
-        if (query.isNullOrBlank()) return emptyMap()
-        
-        return query.split("&")
-            .mapNotNull { part ->
-                val index = part.indexOf('=')
-                if (index > 0) {
-                    val name = part.substring(0, index)
-                    val value = part.substring(index + 1)
-                    name to value
-                } else {
-                    null
-                }
-            }
-            .groupBy({ it.first }, { it.second })
-    }
 }
 
 /**
@@ -141,46 +153,57 @@ class VertxWebSocketServer(
      * Handle a WebSocket upgrade request.
      * Returns true if the request was handled, false otherwise.
      */
-    @Suppress("DEPRECATION")
-    suspend fun handleUpgrade(
-        socket: ServerWebSocket,
+    suspend fun handleHandshake(
+        handshake: ServerWebSocketHandshake,
         scope: CoroutineScope
     ): Boolean {
-        val path = socket.path()
-        val handler = findHandler(path) ?: return false
+        val path = handshake.path()
+        val route = findRoute(path) ?: return false
 
-        // Check origin if configured
-        if (config.allowedOrigins.isNotEmpty()) {
-            val origin = socket.headers()["Origin"]
-            if (origin != null && origin !in config.allowedOrigins) {
-                socket.reject(403)
-                return true
-            }
+        val origin = handshake.headers()["Origin"]
+        if (config.allowedOrigins.isNotEmpty() && (origin == null || origin !in config.allowedOrigins)) {
+            handshake.reject(403).coAwait()
+            return true
+        }
+        if (containsBearerCredential(handshake.query())) {
+            handshake.reject(400).coAwait()
+            return true
+        }
+        val authorization = config.authorizer.authorize(
+            WebSocketUpgradeRequest(
+                path = path,
+                queryParameters = parseWebSocketQuery(handshake.query()),
+                headers = handshake.headers().associate { it.key to it.value }
+            )
+        )
+        if (authorization is WebSocketUpgradeAuthorization.Deny) {
+            handshake.reject(authorization.statusCode).coAwait()
+            return true
         }
 
-        // Accept the WebSocket connection
-        socket.accept()
-
-        val session = VertxWebSocketSession(socket, scope)
+        val socket = handshake.accept().coAwait()
+        val session = VertxWebSocketSession(socket, scope, config)
+        session.attributes.putAll((authorization as WebSocketUpgradeAuthorization.Allow).attributes)
+        session.attributes["_pathParams"] = extractPathParams(route.key, path)
         sessions[session.id] = session
 
         scope.launch {
             try {
-                handler.onConnect(session)
+                route.value.onConnect(session)
 
                 session.incoming().collect { message ->
                     when (message) {
-                        is WebSocketMessage.Text -> handler.onText(session, message.content)
-                        is WebSocketMessage.Binary -> handler.onBinary(session, message.data)
-                        is WebSocketMessage.Ping -> handler.onPing(session, message.data)
-                        is WebSocketMessage.Pong -> handler.onPong(session, message.data)
+                        is WebSocketMessage.Text -> route.value.onText(session, message.content)
+                        is WebSocketMessage.Binary -> route.value.onBinary(session, message.data)
+                        is WebSocketMessage.Ping -> route.value.onPing(session, message.data)
+                        is WebSocketMessage.Pong -> route.value.onPong(session, message.data)
                         is WebSocketMessage.Close -> {
-                            handler.onClose(session, message.code, message.reason)
+                            route.value.onClose(session, message.code, message.reason)
                         }
                     }
                 }
             } catch (e: Exception) {
-                handler.onError(session, e)
+                route.value.onError(session, e)
             } finally {
                 sessions.remove(session.id)
             }
@@ -189,18 +212,9 @@ class VertxWebSocketServer(
         return true
     }
 
-    private fun findHandler(path: String): WebSocketHandler? {
-        // Exact match first
-        handlers[path]?.let { return it }
-
-        // Pattern matching
-        for ((pattern, handler) in handlers) {
-            if (matchPath(pattern, path)) {
-                return handler
-            }
-        }
-
-        return null
+    private fun findRoute(path: String): Map.Entry<String, WebSocketHandler>? {
+        handlers.entries.firstOrNull { it.key == path }?.let { return it }
+        return handlers.entries.firstOrNull { matchPath(it.key, path) }
     }
 
     private fun matchPath(pattern: String, path: String): Boolean {
@@ -226,6 +240,20 @@ class VertxWebSocketServer(
         }
 
         return true
+    }
+
+    private fun extractPathParams(pattern: String, path: String): Map<String, String> {
+        val patternParts = pattern.split("/").filter(String::isNotEmpty)
+        val pathParts = path.split("/").filter(String::isNotEmpty)
+        return buildMap {
+            patternParts.zip(pathParts).forEach { (patternPart, pathPart) ->
+                when {
+                    patternPart.startsWith(":") -> put(patternPart.drop(1), pathPart)
+                    patternPart.startsWith("{") && patternPart.endsWith("}") ->
+                        put(patternPart.substring(1, patternPart.lastIndex), pathPart)
+                }
+            }
+        }
     }
 
     /**
@@ -266,5 +294,27 @@ class VertxWebSocketServer(
                 }
             }
         }
+    }
+}
+
+private fun parseWebSocketQuery(query: String?): Map<String, List<String>> {
+    if (query.isNullOrBlank()) return emptyMap()
+    return query.split("&")
+        .mapNotNull { part ->
+            val separator = part.indexOf('=')
+            if (separator <= 0) null else part.substring(0, separator) to part.substring(separator + 1)
+        }
+        .groupBy({ it.first }, { it.second })
+}
+
+private fun containsBearerCredential(query: String?): Boolean {
+    val normalized = query?.lowercase(Locale.ROOT) ?: return false
+    return normalized.split('&').any { parameter ->
+        val name = parameter.substringBefore('=')
+        val value = parameter.substringAfter('=', "")
+        name == "access_token" ||
+            name == "authorization" ||
+            value.startsWith("bearer%20") ||
+            value.startsWith("bearer+")
     }
 }

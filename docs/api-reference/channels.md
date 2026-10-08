@@ -1,17 +1,39 @@
-````markdown
 # Channels API
 
 The `aether-channels` module provides a WebSocket pub/sub layer for real-time group messaging.
 
 ## Overview
 
-Channels enable you to organize WebSocket connections into groups and broadcast messages to all members of a group. This is perfect for chat rooms, live notifications, collaborative editing, and real-time dashboards.
+Channels organize `WebSocketSession` instances into groups for broadcasts. Membership and messages
+are process-local when `InMemoryChannelLayer` is used.
 
-## Installation
+## Authorized durable-sync wake hints
+
+Use `AuthorizedWakeHintSubscription` when a WebSocket is only a wake mechanism for durable state:
 
 ```kotlin
-// build.gradle.kts
-implementation("codes.yousef.aether:aether-channels:0.6.0.0")
+val subscription = AuthorizedWakeHintSubscription.open(
+    session = session,
+    group = "account:$accountId",
+    authorizer = WakeHintAuthorizer { currentSession, group ->
+        currentAuthorization(currentSession).canSubscribe(group)
+    },
+    scope = connectionScope
+) ?: return
+
+subscription.notifyChange() // emits only {"type":"changes_available"}
+```
+
+The subscription authorizes before joining and again before every send. Its one-slot queue
+coalesces floods, so hints contain no object payload and cannot grow without bound. Revocation
+detaches group membership and closes the socket with `1008`. Call `close()` from both `onClose` and
+`onError`; cleanup is idempotent and cancels only the subscription's owned child job.
+
+Hints may be dropped, duplicated, or reordered. Clients MUST fetch ordered durable changes from a
+persisted cursor after every hint and reconnect; channel delivery is never the source of truth.
+
+```kotlin
+implementation("codes.yousef.aether:aether-channels:<version>")
 ```
 
 ## Basic Usage
@@ -246,5 +268,3 @@ Channels.configure(channelLayer)
 3. **Handle errors** - Check `SendResult` for failed deliveries
 4. **Keep messages small** - Large payloads slow down broadcasts
 5. **Consider message format** - Use JSON for structured data
-
-````

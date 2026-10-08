@@ -2,7 +2,7 @@
 
 > A Django-like Kotlin Multiplatform framework for JVM (Vert.x + Virtual Threads) and Wasm (Cloudflare/Browser).
 
-> Release status: `0.6.0.0` was released on 2026-07-16. Production wasmWasi identity-authority
+> Release status: `0.7.0.0` was released on 2026-10-08. Production wasmWasi identity-authority
 > hosting is not supported because the combined component-host integration is not complete.
 
 ## Architecture Overview
@@ -79,9 +79,9 @@ kotlin {
     jvm()
     sourceSets {
         commonMain.dependencies {
-            implementation("codes.yousef.aether:aether-core:0.6.0.0")
-            implementation("codes.yousef.aether:aether-web:0.6.0.0")
-            implementation("codes.yousef.aether:aether-db:0.6.0.0")
+            implementation("codes.yousef.aether:aether-core:0.7.0.0")
+            implementation("codes.yousef.aether:aether-web:0.7.0.0")
+            implementation("codes.yousef.aether:aether-db:0.7.0.0")
         }
     }
 }

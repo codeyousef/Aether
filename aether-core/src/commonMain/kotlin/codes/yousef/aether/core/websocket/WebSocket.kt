@@ -214,6 +214,31 @@ class LambdaWebSocketHandler(
     override suspend fun onError(session: WebSocketSession, error: Throwable) = onErrorHandler(session, error)
 }
 
+/** Immutable handshake input for application authorization before a socket is accepted. */
+data class WebSocketUpgradeRequest(
+    val path: String,
+    val queryParameters: Map<String, List<String>>,
+    val headers: Map<String, String>
+)
+
+/** Result of application authentication and grant checks for a WebSocket upgrade. */
+sealed interface WebSocketUpgradeAuthorization {
+    data class Allow(val attributes: Map<String, Any?> = emptyMap()) : WebSocketUpgradeAuthorization
+    data class Deny(val statusCode: Int = 403) : WebSocketUpgradeAuthorization {
+        init {
+            require(statusCode in 400..499) { "WebSocket denial status must be a 4xx status" }
+        }
+    }
+}
+
+fun interface WebSocketUpgradeAuthorizer {
+    suspend fun authorize(request: WebSocketUpgradeRequest): WebSocketUpgradeAuthorization
+
+    companion object {
+        val AllowAll = WebSocketUpgradeAuthorizer { WebSocketUpgradeAuthorization.Allow() }
+    }
+}
+
 /**
  * Configuration for WebSocket server.
  */
@@ -243,11 +268,47 @@ data class WebSocketConfig(
      */
     val allowedOrigins: Set<String> = emptySet(),
 
+
     /**
      * Subprotocols to negotiate.
      */
-    val subprotocols: List<String> = emptyList()
-)
+    val subprotocols: List<String> = emptyList(),
+
+    /**
+     * Maximum decoded messages waiting for the application consumer.
+     */
+    val maxPendingMessages: Int = 64,
+
+    /**
+     * Application authentication and grant check executed before accepting the socket.
+     */
+    val authorizer: WebSocketUpgradeAuthorizer = WebSocketUpgradeAuthorizer.AllowAll
+) {
+    init {
+        require(maxFrameSize in 1..MAXIMUM_WEBSOCKET_MESSAGE_BYTES) {
+            "WebSocket frame limit must be positive and bounded"
+        }
+        require(maxMessageSize in maxFrameSize..MAXIMUM_WEBSOCKET_MESSAGE_BYTES) {
+            "WebSocket message limit must be at least the frame limit and bounded"
+        }
+        require(maxPendingMessages in 1..MAXIMUM_PENDING_WEBSOCKET_MESSAGES) {
+            "WebSocket pending message limit must be 1..$MAXIMUM_PENDING_WEBSOCKET_MESSAGES"
+        }
+        require(pingIntervalMs >= 0) { "WebSocket ping interval must not be negative" }
+        require(pongTimeoutMs > 0) { "WebSocket pong timeout must be positive" }
+        allowedOrigins.forEach { origin ->
+            val match = ORIGIN_PATTERN.matchEntire(origin)
+            require(match != null && (match.groupValues[1].isEmpty() || match.groupValues[1].toInt() in 1..65_535)) {
+                "WebSocket origins must be canonical HTTP(S) origins"
+            }
+        }
+    }
+}
+
+private const val MAXIMUM_WEBSOCKET_MESSAGE_BYTES = 16 * 1024 * 1024
+private const val MAXIMUM_PENDING_WEBSOCKET_MESSAGES = 1_024
+private val ORIGIN_PATTERN =
+    Regex("""https?://(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:]+])(?::([0-9]{1,5}))?""")
 
 /**
  * DSL builder for WebSocket handler.

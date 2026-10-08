@@ -2,6 +2,7 @@ package codes.yousef.aether.channels
 
 import codes.yousef.aether.core.websocket.WebSocketSession
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlin.test.*
@@ -121,6 +122,78 @@ class InMemoryChannelLayerTest {
         assertEquals(1, result.sentTo)
         assertEquals(1, result.failed)
     }
+    @Test
+    fun `authorized wake hints coalesce and revocation detaches exactly once`() = runTest {
+        val session = MockWebSocketSession("account-a")
+        var authorized = true
+        val subscription = assertNotNull(
+            AuthorizedWakeHintSubscription.open(
+                session = session,
+                group = "account:account-a",
+                layer = layer,
+                authorizer = WakeHintAuthorizer { _, group ->
+                    authorized && group == "account:account-a"
+                },
+                scope = this
+            )
+        )
+
+        repeat(100) { assertTrue(subscription.notifyChange()) }
+        advanceUntilIdle()
+        assertEquals(
+            listOf(AuthorizedWakeHintSubscription.OPAQUE_CHANGE_AVAILABLE_HINT),
+            session.sentMessages
+        )
+
+        authorized = false
+        assertTrue(subscription.notifyChange())
+        advanceUntilIdle()
+        assertEquals(1, session.closeCalls)
+        assertEquals(1008, session.closeCode)
+        assertFalse(layer.isInGroup("account:account-a", session))
+
+        subscription.close()
+        subscription.close()
+        assertEquals(1, session.closeCalls)
+    }
+
+    @Test
+    fun `unauthorized wake subscription never joins a channel`() = runTest {
+        val session = MockWebSocketSession("account-b")
+
+        assertNull(
+            AuthorizedWakeHintSubscription.open(
+                session = session,
+                group = "account:account-a",
+                layer = layer,
+                authorizer = WakeHintAuthorizer { _, _ -> false },
+                scope = this
+            )
+        )
+        assertEquals(1, session.closeCalls)
+        assertEquals(1008, session.closeCode)
+        assertEquals(0, layer.groupSize("account:account-a"))
+    }
+    @Test
+    fun `wake sender failure still detaches membership`() = runTest {
+        val session = MockWebSocketSession("account-a").apply { failSend = true }
+        val subscription = assertNotNull(
+            AuthorizedWakeHintSubscription.open(
+                session = session,
+                group = "account:account-a",
+                layer = layer,
+                authorizer = WakeHintAuthorizer { _, _ -> true },
+                scope = this
+            )
+        )
+
+        assertTrue(subscription.notifyChange())
+        advanceUntilIdle()
+        assertFalse(layer.isInGroup("account:account-a", session))
+        assertFalse(subscription.notifyChange())
+    }
+
+
 }
 
 /**
@@ -136,11 +209,17 @@ private class MockWebSocketSession(
     override val attributes: MutableMap<String, Any?> = mutableMapOf()
     
     var lastMessage: String? = null
+    val sentMessages = mutableListOf<String>()
+    var closeCalls: Int = 0
+    var closeCode: Int? = null
+    var failSend: Boolean = false
     var lastBinaryMessage: ByteArray? = null
     
     override suspend fun sendText(text: String) {
+        if (failSend) error("synthetic send failure")
         if (!isOpen) throw IllegalStateException("Session closed")
         lastMessage = text
+        sentMessages += text
     }
     
     override suspend fun sendBinary(data: ByteArray) {
@@ -150,6 +229,9 @@ private class MockWebSocketSession(
     
     override suspend fun sendPing(data: ByteArray) {}
     override suspend fun sendPong(data: ByteArray) {}
-    override suspend fun close(code: Int, reason: String) {}
+    override suspend fun close(code: Int, reason: String) {
+        closeCalls++
+        closeCode = code
+    }
     override fun incoming(): Flow<codes.yousef.aether.core.websocket.WebSocketMessage> = emptyFlow()
 }
