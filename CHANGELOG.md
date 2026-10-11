@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- PostgreSQL migration V013 permits pending challenges to become expired at or after their
+  deadline, while rejecting successful late consumption and early expiry. Terminal state,
+  version and rejection audit remain atomic, with replay and concurrent CAS protections.
+
 - The source-consumer CI fixture resolves Aether and Summon versions from its source pins,
   rejects an Aether source/version mismatch before publication, and accepts Git worktrees.
 
