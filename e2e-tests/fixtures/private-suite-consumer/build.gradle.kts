@@ -1,9 +1,16 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     kotlin("multiplatform") version "2.3.21"
     kotlin("plugin.serialization") version "2.3.21"
 }
+
+val sourcePins = Properties().apply {
+    file("source-pins.properties").inputStream().use { load(it) }
+}
+val aetherVersion = requireNotNull(sourcePins.getProperty("AETHER_VERSION"))
+val summonVersion = requireNotNull(sourcePins.getProperty("SUMMON_VERSION"))
 
 group = "codes.yousef.aether.fixture"
 version = "0.1.0"
@@ -56,7 +63,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation("codes.yousef:summon:0.8.0")
+            implementation("codes.yousef:summon:$summonVersion")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
         }
@@ -64,15 +71,15 @@ kotlin {
             implementation(kotlin("test"))
         }
         jvmMain.dependencies {
-            implementation("codes.yousef.aether:aether-core:0.7.0.0")
-            implementation("codes.yousef.aether:aether-web:0.7.0.0")
+            implementation("codes.yousef.aether:aether-core:$aetherVersion")
+            implementation("codes.yousef.aether:aether-web:$aetherVersion")
         }
         jvmTest.dependencies {
             implementation(kotlin("test-junit5"))
             implementation("org.junit.jupiter:junit-jupiter:5.10.1")
         }
         jsMain.dependencies {
-            implementation("codes.yousef.aether:aether-browser-client:0.7.0.0")
+            implementation("codes.yousef.aether:aether-browser-client:$aetherVersion")
         }
     }
 }

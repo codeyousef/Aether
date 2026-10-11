@@ -7,7 +7,7 @@ pins_file="$fixture_dir/source-pins.properties"
 summon_source="${SUMMON_SOURCE_DIR:-$(cd "$repo_root/../summon" 2>/dev/null && pwd)}"
 consumer_repository="$repo_root/build/ae-t00-m2"
 
-if [[ ! -d "$summon_source/.git" ]]; then
+if [[ ! -e "$summon_source/.git" ]] || ! git -C "$summon_source" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "SUMMON_SOURCE_DIR must identify the pinned Summon checkout" >&2
     exit 2
 fi
@@ -21,6 +21,11 @@ aether_commit="$(git -C "$repo_root" rev-parse HEAD)"
 summon_commit="$(git -C "$summon_source" rev-parse HEAD)"
 aether_version="$(awk -F= '$1 == "AETHER_VERSION" { print $2 }' "$pins_file")"
 summon_version="$(awk -F= '$1 == "SUMMON_VERSION" { print $2 }' "$pins_file")"
+actual_aether_version="$(awk -F= '$1 == "VERSION" { print $2 }' "$repo_root/version.properties")"
+if [[ "$aether_version" != "$actual_aether_version" ]]; then
+    echo "Aether version pin mismatch: expected $aether_version, source is $actual_aether_version" >&2
+    exit 2
+fi
 expected_summon_commit="$(awk -F= '$1 == "SUMMON_COMMIT" { print $2 }' "$pins_file")"
 if [[ "$summon_commit" != "$expected_summon_commit" ]]; then
     echo "Summon source pin mismatch: expected $expected_summon_commit, found $summon_commit" >&2
