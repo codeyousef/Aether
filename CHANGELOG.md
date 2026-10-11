@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Build scripts use injected process execution services so exact source inclusion also
+  configures under Gradle 9, while retaining compatibility with the Gradle 8 wrapper.
+
 ### Added
 
 - Opt-in `DeviceRefreshExpiryPolicy.IDLE` renews device refresh-family expiry on successful
