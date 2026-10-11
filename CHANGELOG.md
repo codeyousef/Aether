@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- The source-consumer CI fixture resolves Aether and Summon versions from its source pins,
+  rejects an Aether source/version mismatch before publication, and accepts Git worktrees.
+
 - Build scripts use injected process execution services so exact source inclusion also
   configures under Gradle 9, while retaining compatibility with the Gradle 8 wrapper.
 

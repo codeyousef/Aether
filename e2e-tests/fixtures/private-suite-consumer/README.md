@@ -2,7 +2,7 @@
 
 This standalone Gradle build qualifies the exact Aether and Summon artifacts selected for AE-T00. It is not included in Aether's main build.
 
-`source-pins.properties` records the required versions and immutable Summon source commit. The runner receives the Aether commit from the checkout under test, verifies both source identities, publishes selected artifacts into an isolated Maven repository, and then compiles:
+`source-pins.properties` records the required versions and immutable Summon source commit. Dependencies use these version pins directly. The runner rejects a mismatch between the Aether pin and root `version.properties` before publishing any artifacts, and accepts ordinary checkouts or Git worktrees. The runner receives the Aether commit from the checkout under test, verifies both source identities, publishes selected artifacts into an isolated Maven repository, and then compiles:
 
 - an Aether JVM server consumer and its tests on JDK 21;
 - a Kotlin/JS browser consumer and its test sources;
