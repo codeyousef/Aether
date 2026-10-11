@@ -7,6 +7,9 @@ A Django-like Kotlin Multiplatform framework that runs on JVM (Vert.x + Virtual 
 > the combined component-host integration is not complete; use the JVM authority or another
 > supported trusted server host for production.
 
+The current source branch targets `0.7.1.0`, with opt-in refresh idle renewal and Gradle 9
+source-consumer compatibility. This version has not been published; see [the changelog](CHANGELOG.md).
+
 ## Architecture
 
 Aether is designed to be a "colorless" framework that abstracts away the differences between JVM and Wasm platforms, enabling developers to write their application logic once and deploy it anywhere.

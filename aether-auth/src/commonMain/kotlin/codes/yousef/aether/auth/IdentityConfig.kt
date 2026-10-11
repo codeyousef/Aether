@@ -235,6 +235,10 @@ data class IdentityKeyConfig(
         (listOf(serviceCredentialPepper) + previousServiceCredentialPeppers).singleOrNull { it.version == version }
 }
 
+/** Absolute expiry remains the compatibility default; IDLE renews the family on refresh. */
+@Serializable
+enum class DeviceRefreshExpiryPolicy { ABSOLUTE, IDLE }
+
 /**
  * Complete identity-server configuration. Environment-derived storage and cookie namespaces make
  * accidental development/production credential sharing observable and invalid at startup.
@@ -259,7 +263,8 @@ data class IdentityConfig(
     val audit: IdentityAuditConfig = IdentityAuditConfig(),
     val bootstrapLifecycle: IdentityBootstrapLifecycle = IdentityBootstrapLifecycle.PENDING,
     /** Single-use secret used only to establish the first platform owner. */
-    val bootstrapSecret: SecretReference? = null
+    val bootstrapSecret: SecretReference? = null,
+    val deviceRefreshExpiryPolicy: DeviceRefreshExpiryPolicy = DeviceRefreshExpiryPolicy.ABSOLUTE
 ) {
     init {
         val publicOrigin = parseOrigin(publicBaseUrl)

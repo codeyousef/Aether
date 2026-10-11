@@ -118,6 +118,8 @@ class PostgresqlMigrationRunner(
             "/db/aether-identity/V010__terminal_webauthn_attempts.sql"
         const val FEDERATION_PROVIDER_LIFECYCLE_MIGRATION_RESOURCE: String =
             "/db/aether-identity/V011__federation_provider_lifecycle.sql"
+        const val DEVICE_REFRESH_IDLE_RENEWAL_MIGRATION_RESOURCE: String =
+            "/db/aether-identity/V012__device_refresh_idle_renewal.sql"
         const val MIGRATION_CHECKSUM_MANIFEST_RESOURCE: String =
             "/db/aether-identity/SHA256SUMS"
         val DEFAULT_MIGRATION_RESOURCES: List<String> = listOf(
@@ -131,7 +133,8 @@ class PostgresqlMigrationRunner(
             DEVICE_MEMBERSHIP_BINDING_MIGRATION_RESOURCE,
             FAIL_CLOSED_ENVIRONMENT_MARKER_MIGRATION_RESOURCE,
             TERMINAL_WEBAUTHN_ATTEMPTS_MIGRATION_RESOURCE,
-            FEDERATION_PROVIDER_LIFECYCLE_MIGRATION_RESOURCE
+            FEDERATION_PROVIDER_LIFECYCLE_MIGRATION_RESOURCE,
+            DEVICE_REFRESH_IDLE_RENEWAL_MIGRATION_RESOURCE
         )
         private const val MODULE_NAME: String = "aether-auth-postgresql"
         private val BOOTSTRAP_SQL = """

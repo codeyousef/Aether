@@ -215,3 +215,19 @@ startup isolation gates described in the deployment guide.
 
 Continue with [Security and threat model](security.md), [Deployment and operations](deployment.md),
 and the [0.6 migration guide](../migrations/0.6-passkey-identity.md).
+
+### Device refresh expiry policy
+
+`IdentityConfig.deviceRefreshExpiryPolicy` defaults to `DeviceRefreshExpiryPolicy.ABSOLUTE`:
+rotation does not extend the family deadline established at issuance. Opt into
+`DeviceRefreshExpiryPolicy.IDLE` to set the family deadline to the successful rotation time plus
+`config.lifetimes.deviceRefreshToken` (30 days by default, at most 90 days). Apply packaged
+PostgreSQL migrations through V012 before enabling idle renewal. Other store adapters must
+implement the optional `RotateDeviceRefreshTokenCommand.replacementFamily` atomically with token
+rotation and audit recording.
+
+Expired families cannot be renewed. Renewal changes only expiry and the family version, retaining
+the approved client, user, organization, membership version and capabilities. Access tokens keep
+their configured short lifetime. Refresh replay still revokes the entire family, including tokens
+issued after renewal. A rejected rotation or failed audit write leaves the family deadline and
+both credentials unchanged. Changing the policy does not restore already expired families.

@@ -1,6 +1,7 @@
 package codes.yousef.aether.auth
 
 import kotlin.time.Instant
+import kotlin.time.Duration.Companion.days
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -580,9 +581,20 @@ data class RotateDeviceRefreshTokenCommand(
     val replacementAccessToken: DeviceAccessToken,
     val replacementRefreshToken: DeviceRefreshToken,
     val rotatedAt: Instant,
-    val auditEvent: AuditEvent
+    val auditEvent: AuditEvent,
+    /** Atomic idle-deadline renewal. Null preserves the existing absolute-expiry behavior. */
+    val replacementFamily: DeviceTokenFamily? = null
 ) {
     init {
+        replacementFamily?.let {
+            require(expectedFamilyVersion < Long.MAX_VALUE && it.version == expectedFamilyVersion + 1) {
+                "Idle renewal requires the next token-family version"
+            }
+            require(it.state == DeviceTokenFamilyState.ACTIVE && it.id == replacementAccessToken.familyId &&
+                it.expiresAt > rotatedAt && it.expiresAt <= rotatedAt + 90.days) {
+                "Idle renewal requires an active matching family with a bounded live deadline"
+            }
+        }
         require(expectedRefreshTokenVersion >= 0 && expectedFamilyVersion >= 0) {
             "Expected device-token versions must not be negative"
         }

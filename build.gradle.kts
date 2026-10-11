@@ -1,3 +1,5 @@
+import javax.inject.Inject
+import org.gradle.process.ExecOperations
 import groovy.json.JsonSlurper
 import java.security.MessageDigest
 import java.util.*
@@ -11,6 +13,11 @@ plugins {
     alias(libs.plugins.kotlin.atomicfu) apply false
     alias(libs.plugins.ksp) apply false
 }
+
+abstract class AetherBuildServices {
+    @get:Inject abstract val execOperations: ExecOperations
+}
+val aetherBuildServices = objects.newInstance<AetherBuildServices>()
 
 val localProperties = Properties().apply {
     val localFile = rootProject.file("local.properties")
@@ -451,7 +458,7 @@ val prepareCentralPortalBundle by tasks.registering {
                 .joinToString("") { byte -> "%02x".format(byte) }
             File(source.parent, "${source.name}.sha1").writeText(sha1)
 
-            exec {
+            aetherBuildServices.execOperations.exec {
                 environment("AETHER_SIGNING_PASSPHRASE", signingPassword)
                 commandLine(
                     "bash",
@@ -515,7 +522,7 @@ val uploadCentralPortalBundle by tasks.registering {
         val responseFile = layout.buildDirectory.file("central-portal-response.txt").get().asFile
         val httpCodeFile = layout.buildDirectory.file("central-portal-httpcode.txt").get().asFile
         val stderrFile = layout.buildDirectory.file("central-portal-curl-stderr.txt").get().asFile
-        val uploadResult = exec {
+        val uploadResult = aetherBuildServices.execOperations.exec {
             isIgnoreExitValue = true
             environment("AETHER_CENTRAL_AUTHORIZATION", authorization)
             commandLine(
@@ -611,7 +618,7 @@ val waitForCentralPortalPublication by tasks.registering {
                     "Timed out waiting for Central deployment $deploymentId; resume this exact deployment ID"
                 )
             }
-            val result = exec {
+            val result = aetherBuildServices.execOperations.exec {
                 isIgnoreExitValue = true
                 environment("AETHER_CENTRAL_AUTHORIZATION", authorization)
                 commandLine(
