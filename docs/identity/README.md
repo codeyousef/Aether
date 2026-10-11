@@ -231,3 +231,5 @@ the approved client, user, organization, membership version and capabilities. Ac
 their configured short lifetime. Refresh replay still revokes the entire family, including tokens
 issued after renewal. A rejected rotation or failed audit write leaves the family deadline and
 both credentials unchanged. Changing the policy does not restore already expired families.
+
+PostgreSQL migration V013 permits an explicit pending-to-expired challenge transition at or after its deadline, retaining the expected-version check and rejection audit in one transaction. Successful consumption and failed attempts still require an unexpired challenge; early expiry is rejected.

@@ -68,13 +68,13 @@ class PostgresqlIdentityStoreIntegrationTest {
                 currentMigrationResult,
                 "Migration failed safely: $currentMigrationResult"
             )
-            assertEquals(12, currentMigration.value.version)
+            assertEquals(13, currentMigration.value.version)
             assertEquals(true, currentMigration.value.applied)
             val secondMigration = assertIs<StoreResult.Success<PostgresqlMigrationReport>>(migrationRunner.migrate())
             assertEquals(false, secondMigration.value.applied)
             assertEquals(currentMigration.value.checksum, secondMigration.value.checksum)
             assertEquals(
-                12L,
+                13L,
                 pool.query(
                     "SELECT COUNT(*) AS count FROM aether_identity.schema_migrations " +
                         "WHERE module = 'aether-auth-postgresql'"
@@ -248,6 +248,8 @@ class PostgresqlIdentityStoreIntegrationTest {
             assertEquals(1, concurrentResults.count { it is StoreResult.Success })
             val raceFailure = assertIs<StoreResult.Failure>(concurrentResults.single { it is StoreResult.Failure })
             assertEquals(IdentityStoreErrorCode.VERSION_CONFLICT, raceFailure.error.code)
+
+            qualifyChallengeExpiry(store)
 
             val firstRegistrationChallenge = IdentityFixtures.challenge(
                 id = IdentityFixtures.challengeId("challenge-register-1"),
@@ -949,7 +951,7 @@ class PostgresqlIdentityStoreIntegrationTest {
             .build()
         try {
             val migrated = PostgresqlMigrationRunner(pool).migrate()
-            assertEquals(12, assertIs<StoreResult.Success<PostgresqlMigrationReport>>(migrated).value.version)
+            assertEquals(13, assertIs<StoreResult.Success<PostgresqlMigrationReport>>(migrated).value.version)
             val config = PostgresqlIdentityConfig(IdentityEnvironment.TEST, "aether_touch_test")
             provisionEnvironment(pool, IdentityEnvironment.TEST, "aether_touch_test")
             val store = PostgresqlIdentityStore(config, VertxPostgresqlRpcTransport(config, pool))
@@ -2210,4 +2212,37 @@ private suspend fun provisionEnvironment(
     client.preparedQuery(
         "SELECT aether_identity.provision_environment(\$1, \$2)"
     ).execute(Tuple.of(environment.wireName, namespace)).coAwait()
+}
+
+private suspend fun qualifyChallengeExpiry(store: PostgresqlIdentityStore) = coroutineScope {
+    val expiryChallenge = IdentityFixtures.challenge(id = IdentityFixtures.challengeId("challenge-expiry-boundary"))
+    assertIs<StoreResult.Success<*>>(store.createChallenge(CreateChallengeCommand(expiryChallenge)))
+    val expiryAudit = IdentityFixtures.webAuthnStoreRejectionAudit(expiryChallenge.id, expiryChallenge.expiresAt)
+        .copy(reasonCode = "webauthn_challenge_expired")
+    val expire = ConsumeChallengeCommand(expiryChallenge.id, expiryChallenge.version,
+        ChallengeState.EXPIRED, expiryChallenge.expiresAt, expiryAudit)
+    assertEquals(IdentityStoreErrorCode.INVALID_TRANSITION,
+        assertIs<StoreResult.Failure>(store.consumeChallenge(expire.copy(consumedAt = IdentityFixtures.instant(299_999)))).error.code)
+    assertEquals(IdentityStoreErrorCode.CHALLENGE_EXPIRED,
+        assertIs<StoreResult.Failure>(store.consumeChallenge(expire.copy(terminalState = ChallengeState.CONSUMED))).error.code)
+    assertEquals(expiryChallenge, assertIs<StoreResult.Success<Challenge?>>(store.findChallenge(expiryChallenge.id)).value)
+    // Audit collision must roll back the state/version transition as well.
+    assertIs<StoreResult.Success<AuditEvent>>(store.appendAuditEvent(expiryAudit))
+    assertIs<StoreResult.Failure>(store.consumeChallenge(expire))
+    assertEquals(expiryChallenge, assertIs<StoreResult.Success<Challenge?>>(store.findChallenge(expiryChallenge.id)).value)
+    val noncolliding = expire.copy(auditEvent = expiryAudit.copy(id = IdentityFixtures.auditEventId("challenge-expiry-race")))
+    val expiryResults = listOf(async(Dispatchers.Default) { store.consumeChallenge(noncolliding) },
+        async(Dispatchers.Default) { store.consumeChallenge(noncolliding) }).awaitAll()
+    assertEquals(1, expiryResults.count { it is StoreResult.Success })
+    assertEquals(IdentityStoreErrorCode.VERSION_CONFLICT,
+        assertIs<StoreResult.Failure>(expiryResults.single { it is StoreResult.Failure }).error.code)
+    val expiredChallenge = assertIs<StoreResult.Success<Challenge>>(expiryResults.single { it is StoreResult.Success }).value
+    assertEquals(ChallengeState.EXPIRED, expiredChallenge.state)
+    assertEquals(1L, expiredChallenge.version)
+    assertEquals(0, expiredChallenge.attemptCount)
+    assertEquals(expiryChallenge.expiresAt, expiredChallenge.consumedAt)
+    assertEquals(expiredChallenge, assertIs<StoreResult.Success<Challenge?>>(store.findChallenge(expiryChallenge.id)).value)
+    assertEquals(IdentityStoreErrorCode.CHALLENGE_NOT_PENDING,
+        assertIs<StoreResult.Failure>(store.consumeChallenge(noncolliding.copy(expectedVersion = 1))).error.code)
+
 }

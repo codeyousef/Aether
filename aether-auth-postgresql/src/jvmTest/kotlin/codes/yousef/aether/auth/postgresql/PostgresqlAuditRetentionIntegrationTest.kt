@@ -43,7 +43,7 @@ class PostgresqlAuditRetentionIntegrationTest {
             val migration = assertIs<StoreResult.Success<PostgresqlMigrationReport>>(
                 PostgresqlMigrationRunner(pool).migrate()
             ).value
-            assertEquals(12, migration.version)
+            assertEquals(13, migration.version)
             val config = PostgresqlIdentityConfig(IdentityEnvironment.TEST, "aether_test")
             pool.preparedQuery(
                 "SELECT aether_identity.provision_environment(\$1, \$2)"
