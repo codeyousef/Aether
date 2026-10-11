@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Opt-in `DeviceRefreshExpiryPolicy.IDLE` renews device refresh-family expiry on successful
+  rotation. The default `ABSOLUTE` policy preserves the original fixed expiry. PostgreSQL
+  migration V012 updates expiry and family version in the token/audit transaction, preserving
+  membership authorization, compare-and-set conflicts and replay revocation.
+
 ## [0.7.0.0] - 2026-10-08
 
 ### Added

@@ -1224,6 +1224,10 @@ class InMemoryIdentityStore(
         requireVersion(previous.version, command.expectedRefreshTokenVersion)
         val family = requirePresent(deviceTokenFamilies, previous.familyId)
         requireVersion(family.version, command.expectedFamilyVersion)
+        val renewedFamily = command.replacementFamily ?: family
+        if (command.replacementFamily != null &&
+            renewedFamily != family.copy(version = family.version + 1, expiresAt = renewedFamily.expiresAt)
+        ) abort(IdentityStoreErrorCode.INVALID_TRANSITION)
         val membership = requirePresent(memberships, family.membershipId)
         val organization = requirePresent(organizations, family.organizationId)
         val user = requirePresent(users, family.userId)
@@ -1240,8 +1244,8 @@ class InMemoryIdentityStore(
             command.replacementRefreshToken.rotationCounter != previous.rotationCounter + 1 ||
             command.replacementAccessToken.createdAt != command.rotatedAt ||
             command.replacementRefreshToken.createdAt != command.rotatedAt ||
-            command.replacementAccessToken.expiresAt > family.expiresAt ||
-            command.replacementRefreshToken.expiresAt > family.expiresAt
+            command.replacementAccessToken.expiresAt > renewedFamily.expiresAt ||
+            command.replacementRefreshToken.expiresAt > renewedFamily.expiresAt
         ) abort(IdentityStoreErrorCode.INVALID_TRANSITION)
         requireAbsent(deviceAccessTokens, command.replacementAccessToken.id)
         requireAbsent(deviceRefreshTokens, command.replacementRefreshToken.id)
@@ -1263,9 +1267,10 @@ class InMemoryIdentityStore(
         deviceRefreshTokens[previous.id] = rotated
         deviceAccessTokens[command.replacementAccessToken.id] = command.replacementAccessToken
         deviceRefreshTokens[command.replacementRefreshToken.id] = command.replacementRefreshToken
+        deviceTokenFamilies[family.id] = renewedFamily
         appendAudit(command.auditEvent)
         DeviceTokenRotationCommit(
-            family,
+            renewedFamily,
             rotated,
             command.replacementAccessToken,
             command.replacementRefreshToken,

@@ -17,6 +17,49 @@ import kotlin.test.assertTrue
 
 class IdentityDeviceAuthorizationServiceTest {
     @Test
+    fun `configuration serialization retains legacy default and explicit idle policy`() {
+        val config = DeviceAuthorizationFixture().config
+        val json = kotlinx.serialization.json.Json
+        val legacy = json.encodeToString(IdentityConfig.serializer(), config)
+        assertFalse(legacy.contains("deviceRefreshExpiryPolicy"))
+        assertEquals(DeviceRefreshExpiryPolicy.ABSOLUTE,
+            json.decodeFromString(IdentityConfig.serializer(), legacy).deviceRefreshExpiryPolicy)
+        val idle = config.copy(deviceRefreshExpiryPolicy = DeviceRefreshExpiryPolicy.IDLE)
+        assertEquals(idle, json.decodeFromString(IdentityConfig.serializer(),
+            json.encodeToString(IdentityConfig.serializer(), idle)))
+    }
+
+    @Test
+    fun `idle refresh renews family and expires exactly at the renewed deadline`() = runTest {
+        val fixture = DeviceAuthorizationFixture()
+        val service = fixture.serviceWith(fixture.store, config = fixture.config.copy(
+            deviceRefreshExpiryPolicy = DeviceRefreshExpiryPolicy.IDLE,
+            lifetimes = fixture.config.lifetimes.copy(deviceRefreshToken = IdentityDuration.days(30))
+        ))
+        val started = fixture.authorize(setOf(Capability.ORGANIZATION_READ))
+        val initial = service.poll(started.deviceCode, DEVICE_CLIENT_ID).expectTokenSuccess()
+        fixture.runtime.deterministicClock.advanceMilliseconds(29L * 86_400_000)
+        val renewed = service.refresh(initial.refreshToken, DEVICE_CLIENT_ID).expectTokenSuccess()
+        assertEquals(1L, fixture.store.snapshot().deviceTokenFamilies.single().version)
+        fixture.runtime.deterministicClock.advanceMilliseconds(2L * 86_400_000)
+        val next = service.refresh(renewed.refreshToken, DEVICE_CLIENT_ID).expectTokenSuccess()
+        assertEquals(2L, fixture.store.snapshot().deviceTokenFamilies.single().version)
+        fixture.runtime.deterministicClock.advanceMilliseconds(30L * 86_400_000)
+        service.refresh(next.refreshToken, DEVICE_CLIENT_ID).expectError(OAuthDeviceErrorCode.INVALID_GRANT)
+    }
+
+    @Test
+    fun `absolute refresh remains the default despite recent refresh activity`() = runTest {
+        val fixture = DeviceAuthorizationFixture()
+        val started = fixture.authorize(setOf(Capability.ORGANIZATION_READ))
+        val initial = fixture.service.poll(started.deviceCode, DEVICE_CLIENT_ID).expectTokenSuccess()
+        fixture.runtime.deterministicClock.advanceMilliseconds(29L * 86_400_000)
+        val renewed = fixture.service.refresh(initial.refreshToken, DEVICE_CLIENT_ID).expectTokenSuccess()
+        fixture.runtime.deterministicClock.advanceMilliseconds(2L * 86_400_000)
+        fixture.service.refresh(renewed.refreshToken, DEVICE_CLIENT_ID).expectError(OAuthDeviceErrorCode.INVALID_GRANT)
+    }
+
+    @Test
     fun `start returns 256-bit device codes and unambiguous 40-bit user codes`() = runTest {
         val fixture = DeviceAuthorizationFixture()
 
@@ -412,8 +455,8 @@ class IdentityDeviceAuthorizationServiceTest {
     }
 
     @Test
-    fun `refresh rotation rejects replay and revokes the entire token family`() = runTest {
-        val fixture = DeviceAuthorizationFixture()
+    fun `idle refresh rotation rejects replay and revokes the entire token family`() = runTest {
+        val fixture = DeviceAuthorizationFixture(DeviceRefreshExpiryPolicy.IDLE)
         val started = fixture.authorize(setOf(Capability.ORGANIZATION_READ))
         val initial = fixture.service.poll(started.deviceCode, DEVICE_CLIENT_ID).expectTokenSuccess()
 
@@ -445,8 +488,8 @@ class IdentityDeviceAuthorizationServiceTest {
     }
 
     @Test
-    fun `concurrent refresh conflict rereads the rotated token and revokes its family`() = runTest {
-        val fixture = DeviceAuthorizationFixture()
+    fun `idle concurrent refresh conflict rereads the rotated token and revokes its family`() = runTest {
+        val fixture = DeviceAuthorizationFixture(DeviceRefreshExpiryPolicy.IDLE)
         val started = fixture.authorize(setOf(Capability.ORGANIZATION_READ))
         val initial = fixture.service.poll(started.deviceCode, DEVICE_CLIENT_ID).expectTokenSuccess()
         fixture.runtime.deterministicClock.advanceMilliseconds(1_000)
@@ -605,7 +648,9 @@ private class CoordinatedRefreshStore(
     }
 }
 
-private class DeviceAuthorizationFixture {
+private class DeviceAuthorizationFixture(
+    expiryPolicy: DeviceRefreshExpiryPolicy = DeviceRefreshExpiryPolicy.ABSOLUTE
+) {
     val user: User = IdentityFixtures.user()
     val organization: Organization = IdentityFixtures.organization()
     val membership: Membership = IdentityFixtures.membership(
@@ -621,7 +666,7 @@ private class DeviceAuthorizationFixture {
         role = OrganizationRole.OWNER
     )
     private val session: IdentitySession = IdentityFixtures.session(userId = user.id)
-    val config: IdentityConfig = deviceAuthorizationConfig()
+    val config: IdentityConfig = deviceAuthorizationConfig().copy(deviceRefreshExpiryPolicy = expiryPolicy)
     val runtime = DeterministicIdentityRuntime(
         deterministicSecrets = DeterministicIdentitySecretResolver(
             mapOf(config.keys.deviceTokenPepper to ByteArray(32) { 0x53 })

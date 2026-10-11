@@ -68,13 +68,13 @@ class PostgresqlIdentityStoreIntegrationTest {
                 currentMigrationResult,
                 "Migration failed safely: $currentMigrationResult"
             )
-            assertEquals(11, currentMigration.value.version)
+            assertEquals(12, currentMigration.value.version)
             assertEquals(true, currentMigration.value.applied)
             val secondMigration = assertIs<StoreResult.Success<PostgresqlMigrationReport>>(migrationRunner.migrate())
             assertEquals(false, secondMigration.value.applied)
             assertEquals(currentMigration.value.checksum, secondMigration.value.checksum)
             assertEquals(
-                11L,
+                12L,
                 pool.query(
                     "SELECT COUNT(*) AS count FROM aether_identity.schema_migrations " +
                         "WHERE module = 'aether-auth-postgresql'"
@@ -949,7 +949,7 @@ class PostgresqlIdentityStoreIntegrationTest {
             .build()
         try {
             val migrated = PostgresqlMigrationRunner(pool).migrate()
-            assertEquals(11, assertIs<StoreResult.Success<PostgresqlMigrationReport>>(migrated).value.version)
+            assertEquals(12, assertIs<StoreResult.Success<PostgresqlMigrationReport>>(migrated).value.version)
             val config = PostgresqlIdentityConfig(IdentityEnvironment.TEST, "aether_touch_test")
             provisionEnvironment(pool, IdentityEnvironment.TEST, "aether_touch_test")
             val store = PostgresqlIdentityStore(config, VertxPostgresqlRpcTransport(config, pool))
@@ -1089,6 +1089,7 @@ class PostgresqlIdentityStoreIntegrationTest {
             ).value
         )
         val rotatedAt = IdentityFixtures.instant(8_000)
+        val renewedFamily = family.copy(version = family.version + 1, expiresAt = IdentityFixtures.instant(2_592_008_000))
         val replacementAccess = DeviceAccessToken(
             id = IdentityFixtures.deviceAccessTokenId("device-access-2"),
             familyId = family.id,
@@ -1104,11 +1105,9 @@ class PostgresqlIdentityStoreIntegrationTest {
             secretDigest = IdentityFixtures.digest("device-refresh-2"),
             rotationCounter = 1,
             createdAt = rotatedAt,
-            expiresAt = family.expiresAt
+            expiresAt = renewedFamily.expiresAt
         )
-        val rotation = assertIs<StoreResult.Success<DeviceTokenRotationCommit>>(
-            store.rotateDeviceRefreshToken(
-                RotateDeviceRefreshTokenCommand(
+        val renewalCommand = RotateDeviceRefreshTokenCommand(
                     refresh.id,
                     refresh.version,
                     family.version,
@@ -1123,10 +1122,41 @@ class PostgresqlIdentityStoreIntegrationTest {
                         organizationId = organization.id,
                         target = AuditTarget(AuditTargetType.DEVICE_GRANT, family.deviceGrantId.value),
                         occurredAt = rotatedAt
-                    )
+                    ),
+                    replacementFamily = renewedFamily
                 )
-            )
+        val alteredOwner = store.rotateDeviceRefreshToken(renewalCommand.copy(
+            replacementFamily = renewedFamily.copy(clientId = "foreign-client")
+        ))
+        assertEquals(IdentityStoreErrorCode.INVALID_TRANSITION,
+            assertIs<StoreResult.Failure>(alteredOwner).error.code)
+        val auditCollision = store.rotateDeviceRefreshToken(renewalCommand.copy(
+            auditEvent = renewalCommand.auditEvent.copy(id = exchangeCommand.auditEvent.id)
+        ))
+        assertIs<StoreResult.Failure>(auditCollision)
+        assertEquals(family, assertIs<StoreResult.Success<DeviceTokenFamily?>>(
+            store.findDeviceTokenFamily(family.id)
+        ).value)
+        assertEquals(refresh, assertIs<StoreResult.Success<DeviceRefreshToken?>>(
+            store.findDeviceRefreshTokenBySelector(refresh.publicSelector)
+        ).value)
+        assertEquals(null, assertIs<StoreResult.Success<DeviceRefreshToken?>>(
+            store.findDeviceRefreshTokenBySelector(replacementRefresh.publicSelector)
+        ).value)
+        val renewals = coroutineScope {
+            listOf(async(Dispatchers.Default) { store.rotateDeviceRefreshToken(renewalCommand) },
+                async(Dispatchers.Default) { store.rotateDeviceRefreshToken(renewalCommand) }).awaitAll()
+        }
+        assertEquals(1, renewals.count { it is StoreResult.Success })
+        assertEquals(IdentityStoreErrorCode.VERSION_CONFLICT,
+            assertIs<StoreResult.Failure>(renewals.single { it is StoreResult.Failure }).error.code)
+        val rotation = assertIs<StoreResult.Success<DeviceTokenRotationCommit>>(
+            renewals.single { it is StoreResult.Success }
         ).value
+        assertEquals(renewedFamily, rotation.family)
+        assertEquals(renewedFamily, assertIs<StoreResult.Success<DeviceTokenFamily?>>(
+            store.findDeviceTokenFamily(family.id)
+        ).value)
         assertEquals(DeviceRefreshTokenState.ROTATED, rotation.previousRefreshToken.state)
         assertEquals(
             DeviceRefreshTokenState.ROTATED,
@@ -1138,7 +1168,7 @@ class PostgresqlIdentityStoreIntegrationTest {
             store.revokeDeviceTokenFamily(
                 RevokeDeviceTokenFamilyCommand(
                     family.id,
-                    family.version,
+                    renewedFamily.version,
                     IdentityFixtures.instant(9_000),
                     "refresh_replay",
                     replayDetected = true,

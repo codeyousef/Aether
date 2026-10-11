@@ -402,7 +402,11 @@ class IdentityDeviceAuthorizationService(
                     return DeviceTokenEndpointResult.Unavailable(authorization.code)
                 }
             }
-            val issued = issueTokenPair(family, stored.rotationCounter + 1, now)
+            val renewedFamily = if (config.deviceRefreshExpiryPolicy == DeviceRefreshExpiryPolicy.IDLE) {
+                if (family.version == Long.MAX_VALUE) return DeviceTokenEndpointResult.Unavailable(IdentityErrorCode.SERVICE_UNAVAILABLE)
+                family.copy(version = family.version + 1, expiresAt = now + config.lifetimes.deviceRefreshToken.seconds.seconds)
+            } else family
+            val issued = issueTokenPair(renewedFamily, stored.rotationCounter + 1, now)
             val audit = tokenAudit(
                 family,
                 AuditAction.DEVICE_TOKEN_REFRESHED,
@@ -419,7 +423,8 @@ class IdentityDeviceAuthorizationService(
                     replacementAccessToken = issued.access,
                     replacementRefreshToken = issued.refresh,
                     rotatedAt = now,
-                    auditEvent = audit
+                    auditEvent = audit,
+                    replacementFamily = renewedFamily.takeIf { it !== family }
                 )
             )) {
                 is StoreResult.Success -> DeviceTokenEndpointResult.Success(issued.response(now, family.capabilities))
