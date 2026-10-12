@@ -140,6 +140,7 @@ data class IdentitySession(
             SessionAuthenticationMethod.INVITATION -> require(
                 assurance == AuthenticationAssurance.RECOVERY
             ) { "Recovery sessions require recovery assurance" }
+            SessionAuthenticationMethod.PASSWORD,
             SessionAuthenticationMethod.OIDC,
             SessionAuthenticationMethod.SAML -> require(
                 assurance == AuthenticationAssurance.SESSION

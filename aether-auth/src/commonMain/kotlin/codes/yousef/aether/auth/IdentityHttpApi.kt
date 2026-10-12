@@ -141,7 +141,8 @@ class IdentityHttpApi(
     private val deviceAuthorization: IdentityDeviceAuthorizationService,
     private val httpConfig: IdentityHttpApiConfig = IdentityHttpApiConfig(),
     private val management: IdentityHttpManagementServices = IdentityHttpManagementServices(),
-    private val recoveryAttemptLimiter: IdentityRecoveryAttemptLimiter? = null
+    private val recoveryAttemptLimiter: IdentityRecoveryAttemptLimiter? = null,
+    private val accountSecurity: IdentityAccountSecurityService? = null
 ) {
     private val auditRedactor = IdentityAuditRedactor(runtime, identityConfig)
     private val trustedProxyResolver = TrustedProxyResolver(
@@ -191,7 +192,7 @@ class IdentityHttpApi(
                 return@middleware
             }
             if (exchange.identityContext.session?.assurance == AuthenticationAssurance.RECOVERY &&
-                route != Route.RegistrationStart && route != Route.RegistrationFinish && route != Route.Logout
+                route != Route.RegistrationStart && route != Route.RegistrationFinish && route != Route.Logout && route != Route.PasswordReplace
             ) {
                 exchange.respondIdentityError(IdentityErrorCode.AUTHENTICATION_REQUIRED, requestId)
                 return@middleware
@@ -207,6 +208,18 @@ class IdentityHttpApi(
 
     private suspend fun dispatch(route: Route, exchange: Exchange, requestId: String) {
         when (route) {
+            Route.PasswordLogin -> passwordLogin(exchange, requestId)
+            Route.PasswordReplace -> passwordReplace(exchange, requestId)
+            Route.EmailRequest -> accountSecurityResult(exchange, requestId) { it.requestEmail(exchange.identityContext) }
+            Route.EmailVerify -> emailVerify(exchange, requestId)
+            Route.EmailStatus -> accountSecurityResult(exchange, requestId) { it.emailStatus(exchange.identityContext) }
+            Route.PasswordDisable -> accountSecurityResult(exchange, requestId) { service ->
+                service.disablePassword(exchange.identityContext).also {
+                    if (it is IdentityOperationResult.Success) exchange.response.setCookie(clearSessionCookie())
+                }
+            }
+            Route.EmailChange -> emailChange(exchange, requestId)
+            Route.EmailRevoke -> accountSecurityResult(exchange, requestId) { it.revokeEmail(exchange.identityContext) }
             Route.Me -> me(exchange, requestId)
             Route.RegistrationStart -> registrationStart(exchange, requestId)
             Route.RegistrationFinish -> registrationFinish(exchange, requestId)
@@ -1321,7 +1334,68 @@ class IdentityHttpApi(
         )
     }
 
+    private suspend fun passwordLogin(exchange: Exchange, requestId: String) {
+        val service = accountSecurity ?: return exchange.respondIdentityError(IdentityErrorCode.NOT_FOUND, requestId)
+        val body = exchange.decodeJson<AccountPasswordLoginRequest>(4096)
+            ?: return exchange.respondIdentityError(IdentityErrorCode.REQUEST_INVALID, requestId)
+        // Login CSRF applies even when no session cookie exists.
+        if (exchange.request.headers.getAll("Origin").singleOrNull() !in identityConfig.relyingParty.allowedOrigins)
+            return exchange.respondIdentityError(IdentityErrorCode.CSRF_INVALID, requestId)
+        when (val result = service.login(body.email, body.password,
+            trustedProxyResolver.resolve(exchange).clientAddress ?: "unknown-peer")) {
+            is IdentityOperationResult.Failure -> exchange.respondIdentityError(result.code, requestId)
+            is IdentityOperationResult.Success -> {
+                val issued = result.value
+                val session = issued.session
+                exchange.response.setCookie(sessionCookie(issued.cookieValue()))
+                exchange.respondJson(200, IdentitySessionCreatedResponse(session.userId, session.id, session.assurance,
+                    session.authenticatedAt, session.idleExpiresAt, session.absoluteExpiresAt, issued.csrfToken()))
+            }
+        }
+    }
+
+    private suspend fun passwordReplace(exchange: Exchange, requestId: String) {
+        val body = exchange.decodeJson<AccountPasswordReplaceRequest>(4096)
+            ?: return exchange.respondIdentityError(IdentityErrorCode.REQUEST_INVALID, requestId)
+        accountSecurityResult(exchange, requestId) { service ->
+            service.replacePassword(exchange.identityContext, body.password).also {
+                if (it is IdentityOperationResult.Success) exchange.response.setCookie(clearSessionCookie())
+            }
+        }
+    }
+
+    private suspend fun emailChange(exchange: Exchange, requestId: String) {
+        val body = exchange.decodeJson<AccountEmailChangeRequest>(4096)
+            ?: return exchange.respondIdentityError(IdentityErrorCode.REQUEST_INVALID, requestId)
+        val address = runCatching { EmailAddress(body.email) }.getOrNull()
+            ?: return exchange.respondIdentityError(IdentityErrorCode.REQUEST_INVALID, requestId)
+        accountSecurityResult(exchange, requestId) { it.changeEmail(exchange.identityContext, address) }
+    }
+
+    private suspend fun emailVerify(exchange: Exchange, requestId: String) {
+        val body = exchange.decodeJson<AccountEmailVerifyRequest>(4096)
+            ?: return exchange.respondIdentityError(IdentityErrorCode.REQUEST_INVALID, requestId)
+        accountSecurityResult(exchange, requestId) { it.verifyEmail(exchange.identityContext, body.code) }
+    }
+
+    private suspend inline fun <reified T> accountSecurityResult(exchange: Exchange, requestId: String,
+        block: (IdentityAccountSecurityService) -> IdentityOperationResult<T>) {
+        val service = accountSecurity ?: return exchange.respondIdentityError(IdentityErrorCode.NOT_FOUND, requestId)
+        when (val result = block(service)) {
+            is IdentityOperationResult.Success -> exchange.respondJson(200, result.value)
+            is IdentityOperationResult.Failure -> exchange.respondIdentityError(result.code, requestId)
+        }
+    }
+
     private fun route(method: HttpMethod, path: String): Route? = when {
+            method == HttpMethod.POST && path == PASSWORD_LOGIN -> Route.PasswordLogin
+            method == HttpMethod.POST && path == PASSWORD_REPLACE -> Route.PasswordReplace
+            method == HttpMethod.POST && path == PASSWORD_DISABLE -> Route.PasswordDisable
+            method == HttpMethod.POST && path == EMAIL_CHANGE -> Route.EmailChange
+            method == HttpMethod.POST && path == EMAIL_REQUEST -> Route.EmailRequest
+            method == HttpMethod.POST && path == EMAIL_VERIFY -> Route.EmailVerify
+            method == HttpMethod.GET && path == EMAIL_STATUS -> Route.EmailStatus
+            method == HttpMethod.POST && path == EMAIL_REVOKE -> Route.EmailRevoke
             method == HttpMethod.GET && path == ME -> Route.Me
             method == HttpMethod.POST && path == REGISTRATION_START -> Route.RegistrationStart
             method == HttpMethod.POST && path == REGISTRATION_FINISH -> Route.RegistrationFinish
@@ -1642,6 +1716,14 @@ class IdentityHttpApi(
     }
 
     private sealed interface Route {
+        data object PasswordDisable : Route
+        data object EmailChange : Route
+        data object PasswordLogin : Route
+        data object PasswordReplace : Route
+        data object EmailRequest : Route
+        data object EmailVerify : Route
+        data object EmailStatus : Route
+        data object EmailRevoke : Route
         data object Me : Route
         data object RegistrationStart : Route
         data object RegistrationFinish : Route
@@ -1702,6 +1784,14 @@ class IdentityHttpApi(
     }
 
     companion object {
+        const val PASSWORD_LOGIN = "/identity/v1/password/login"
+        const val PASSWORD_REPLACE = "/identity/v1/password/replace"
+        const val PASSWORD_DISABLE = "/identity/v1/password/disable"
+        const val EMAIL_REQUEST = "/identity/v1/email/request"
+        const val EMAIL_VERIFY = "/identity/v1/email/verify"
+        const val EMAIL_STATUS = "/identity/v1/email/status"
+        const val EMAIL_REVOKE = "/identity/v1/email/revoke"
+        const val EMAIL_CHANGE = "/identity/v1/email/change"
         const val ME = "/identity/v1/me"
         const val REGISTRATION_START = "/identity/v1/passkeys/registration/start"
         const val REGISTRATION_FINISH = "/identity/v1/passkeys/registration/finish"

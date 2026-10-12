@@ -233,3 +233,8 @@ issued after renewal. A rejected rotation or failed audit write leaves the famil
 both credentials unchanged. Changing the policy does not restore already expired families.
 
 PostgreSQL migration V013 permits an explicit pending-to-expired challenge transition at or after its deadline, retaining the expected-version check and rejection audit in one transaction. Successful consumption and failed attempts still require an unexpired challenge; early expiry is rejected.
+
+## Opt-in account security
+
+See [password and verified-contact lifecycle](account-security.md) for the versioned API, JVM
+provider, authority boundaries and atomic storage migration introduced in 0.8.0.0.

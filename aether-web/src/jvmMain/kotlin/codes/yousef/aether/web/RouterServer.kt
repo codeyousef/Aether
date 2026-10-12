@@ -5,6 +5,7 @@ import codes.yousef.aether.core.RequestBodyStreamFailure
 import codes.yousef.aether.core.pipeline.LoggerFactory
 import codes.yousef.aether.core.pipeline.Pipeline
 import codes.yousef.aether.core.pipeline.ApiErrorKind
+import codes.yousef.aether.core.pipeline.RequestDiagnosticsPolicy
 import codes.yousef.aether.core.pipeline.ApiErrorPolicy
 import codes.yousef.aether.core.pipeline.encodeApiError
 import codes.yousef.aether.core.pipeline.establishRequestDiagnostics
@@ -63,7 +64,9 @@ data class AetherServerConfig(
     /** Time allowed for active HTTP and WebSocket children to drain during stop. */
     val shutdownGraceMillis: Long = 5_000,
     /** Vert.x response queue bound before application writes suspend. */
-    val responseWriteQueueBytes: Int = 64 * 1024
+    val responseWriteQueueBytes: Int = 64 * 1024,
+    /** Applies before body reads, including parser and body failures. */
+    val diagnostics: RequestDiagnosticsPolicy = RequestDiagnosticsPolicy()
 ) {
     init {
         require(port in 0..65_535) { "Port must be between 0 and 65535" }
@@ -206,7 +209,8 @@ class AetherServer(
                     respondToRawRequestFailure(
                         request = invalidRequest,
                         kind = ApiErrorKind.BAD_REQUEST,
-                        closeConnection = true
+                        closeConnection = true,
+                        diagnostics = config.diagnostics
                     )
                 }
             }
@@ -250,19 +254,19 @@ class AetherServer(
                         try {
                             val exchange = if (bodySource != null) {
                                 bodySource.preflightFailure?.let { failure ->
-                                    rejectRequestBody(vertxRequest, failure.toBoundedResult())
+                                    rejectRequestBody(vertxRequest, failure.toBoundedResult(), config.diagnostics)
                                     return@launch
                                 }
                                 createVertxExchangeWithStream(vertxRequest, bodySource)
                             } else {
                                 val bodyResult = bodyDeferred!!.await()
                                 if (bodyResult !is BoundedRequestBodyResult.Complete) {
-                                    rejectRequestBody(vertxRequest, bodyResult)
+                                    rejectRequestBody(vertxRequest, bodyResult, config.diagnostics)
                                     return@launch
                                 }
                                 createVertxExchangeWithBody(vertxRequest, bodyResult.bytes)
                             }
-                            requestId = establishRequestDiagnostics(exchange)
+                            requestId = establishRequestDiagnostics(exchange, config.diagnostics)
                             pipeline.execute(exchange) {
                                 val handled = router.handle(exchange)
                                 if (!handled) respondWithApiError(exchange, ApiErrorKind.NOT_FOUND)
@@ -280,7 +284,8 @@ class AetherServer(
                                 respondToRawRequestFailure(
                                     request = vertxRequest,
                                     kind = kind,
-                                    establishedRequestId = requestId
+                                    diagnostics = config.diagnostics,
+                                establishedRequestId = requestId
                                 )
                             } catch (_: Exception) {
                                 logger.error("request_id=${requestId ?: "unavailable"} error_response_failed")
@@ -291,7 +296,7 @@ class AetherServer(
                     }
                 } catch (fatal: Throwable) {
                     if (fatal is Error) throw fatal
-                    val requestId = selectRequestId(vertxRequest.getHeader("X-Request-Id"))
+                    val requestId = selectRequestId(vertxRequest.getHeader(config.diagnostics.requestIdHeader), config.diagnostics)
                     logger.error(
                         "request_id=$requestId category=${ApiErrorKind.DEPENDENCY_UNAVAILABLE.code} " +
                             "request_launch_failed"
@@ -301,7 +306,7 @@ class AetherServer(
                             .setStatusCode(ApiErrorKind.DEPENDENCY_UNAVAILABLE.statusCode)
                             .putHeader("Content-Type", "application/json; charset=utf-8")
                             .putHeader("Cache-Control", "no-store")
-                            .putHeader("X-Request-Id", requestId)
+                            .putHeader(config.diagnostics.requestIdHeader, requestId)
                             .end(encodeApiError(ApiErrorKind.DEPENDENCY_UNAVAILABLE, requestId))
                     }
                 }

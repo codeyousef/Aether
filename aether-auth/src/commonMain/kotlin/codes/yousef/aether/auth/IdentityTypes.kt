@@ -239,6 +239,7 @@ typealias AssuranceLevel = AuthenticationAssurance
 /** Primary authentication method which established the current session credential. */
 @Serializable
 enum class SessionAuthenticationMethod {
+    @SerialName("password") PASSWORD,
     @SerialName("passkey") PASSKEY,
     @SerialName("recovery_code") RECOVERY_CODE,
     @SerialName("administrative_recovery") ADMINISTRATIVE_RECOVERY,
@@ -327,6 +328,7 @@ enum class AuditOutcome {
 
 @Serializable
 enum class AuditAction {
+    @SerialName("account_security_changed") ACCOUNT_SECURITY_CHANGED,
     @SerialName("identity.bootstrapped") IDENTITY_BOOTSTRAPPED,
     @SerialName("user.created") USER_CREATED,
     @SerialName("user.state_changed") USER_STATE_CHANGED,

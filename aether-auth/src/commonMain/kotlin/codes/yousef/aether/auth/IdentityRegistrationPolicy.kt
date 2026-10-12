@@ -50,6 +50,7 @@ internal fun IdentitySession.passkeyRegistrationSource(): IdentityRegistrationSo
         SessionAuthenticationMethod.RECOVERY_CODE,
         SessionAuthenticationMethod.ADMINISTRATIVE_RECOVERY -> IdentityRegistrationSource.RECOVERY
         SessionAuthenticationMethod.INVITATION -> IdentityRegistrationSource.ADMIN_INVITATION
+        SessionAuthenticationMethod.PASSWORD,
         SessionAuthenticationMethod.PASSKEY,
         SessionAuthenticationMethod.OIDC,
         SessionAuthenticationMethod.SAML -> IdentityRegistrationSource.EXISTING_ACCOUNT

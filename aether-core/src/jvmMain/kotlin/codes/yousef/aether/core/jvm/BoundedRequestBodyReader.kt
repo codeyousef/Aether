@@ -105,7 +105,9 @@ fun readBoundedRequestBody(
 
 /** Sends a safe pre-dispatch rejection and closes instead of draining attacker-controlled input. */
 @InternalAetherServerApi
-suspend fun rejectRequestBody(request: HttpServerRequest, result: BoundedRequestBodyResult) {
+suspend fun rejectRequestBody(request: HttpServerRequest, result: BoundedRequestBodyResult,
+    diagnostics: RequestDiagnosticsPolicy = RequestDiagnosticsPolicy()
+) {
     val kind = when (result) {
         BoundedRequestBodyResult.TooLarge -> ApiErrorKind.PAYLOAD_TOO_LARGE
         is BoundedRequestBodyResult.Incomplete ->
@@ -116,7 +118,7 @@ suspend fun rejectRequestBody(request: HttpServerRequest, result: BoundedRequest
             }
         is BoundedRequestBodyResult.Complete -> error("A complete request body cannot be rejected")
     }
-    respondToRawRequestFailure(request, kind, closeConnection = true)
+    respondToRawRequestFailure(request, kind, closeConnection = true, diagnostics = diagnostics)
 }
 
 @InternalAetherServerApi

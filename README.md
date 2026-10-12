@@ -7,7 +7,8 @@ A Django-like Kotlin Multiplatform framework that runs on JVM (Vert.x + Virtual 
 > the combined component-host integration is not complete; use the JVM authority or another
 > supported trusted server host for production.
 
-The current source branch targets `0.7.2.0`, with atomic PostgreSQL challenge expiry, opt-in refresh idle renewal and Gradle 9
+The current source branch targets `0.8.0.0`, adding [opt-in passwords and contact verification](docs/identity/account-security.md),
+[HTTPS and private request IDs](docs/https-listener.md), atomic PostgreSQL challenge expiry, opt-in refresh idle renewal and Gradle 9
 source-consumer compatibility. This version has not been published; see [the changelog](CHANGELOG.md).
 
 ## Architecture

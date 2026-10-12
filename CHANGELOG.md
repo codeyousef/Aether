@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.8.0.0] - 2026-10-12
+
+### Added
+
+- Opt-in password authentication with a bounded JVM PBKDF2 provider, shared account/network
+  throttling, strong-authority enrollment/reset/disabling, fresh ordinary-assurance sessions, and
+  atomic session/device credential revocation across PostgreSQL, Firestore and the testkit.
+- Independent verified-contact email lifecycle with injectable acknowledged delivery, hashed
+  expiring single-use codes, bounded attempts, contact change/revocation and atomic proof/audit.
+  Recorded delivery is tested; live delivery and production provider qualification remain separate.
+- Typed PEM-backed HTTPS configuration for VertxServer, TLS 1.2/1.3 policy, bounded startup
+  validation, safe failures, restart-based certificate rotation and real transport regressions.
+- Server-generated-only request-ID policy on both JVM listeners, including pre-dispatch failures
+  and Identity middleware, preserving the existing accept-valid-caller default.
+
+### Changed
+
+- PostgreSQL identity migration V014 adds account-security state and password-session constraints
+  without rewriting earlier migrations. Source-consumer release pins target 0.8.0.0.
+
 ## [0.7.2.0] - 2026-10-11
 
 ### Fixed

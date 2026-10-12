@@ -6,8 +6,9 @@ Aether takes security seriously and provides built-in mechanisms to protect your
 
 Use the [passkey-first identity platform](identity/README.md) for people, organizations, CLI device
 authorization, service identities and federation. It uses organization-scoped roles and
-capabilities; password authentication, identity JWT fallback and global groups/permissions are not
-supported. Generic `aether-core` authentication remains separate for unrelated application
+capabilities. Password authentication and independent email proof are explicit
+[opt-in account-security capabilities](identity/account-security.md); identity JWT fallback and
+global groups/permissions are not supported. Generic `aether-core` authentication remains separate for unrelated application
 protocols.
 
 ## CSRF Protection

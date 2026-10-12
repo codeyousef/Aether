@@ -15,6 +15,9 @@ enum class DiagnosticsProfile {
     DEVELOPMENT
 }
 
+/** Caller IDs are correlation hints, never authenticated identity. */
+enum class RequestIdSource { ACCEPT_VALID_CALLER, SERVER_GENERATED_ONLY }
+
 /** Safe, finite request metadata used by recovery and call logging. */
 data class RequestDiagnosticsPolicy(
     val requestIdHeader: String = "X-Request-Id",
@@ -22,7 +25,8 @@ data class RequestDiagnosticsPolicy(
     val maximumRequestIdLength: Int = 64,
     val includeRouteTemplate: Boolean = true,
     val maximumRouteTemplateLength: Int = 256,
-    val unmatchedRouteLabel: String = "<unmatched>"
+    val unmatchedRouteLabel: String = "<unmatched>",
+    val requestIdSource: RequestIdSource = RequestIdSource.ACCEPT_VALID_CALLER
 ) {
     init {
         require(requestIdHeader.isNotBlank()) { "Request ID header must not be blank" }
@@ -132,7 +136,7 @@ fun selectRequestId(
     supplied: String?,
     policy: RequestDiagnosticsPolicy = RequestDiagnosticsPolicy()
 ): String {
-    if (supplied != null && supplied.length in policy.minimumRequestIdLength..policy.maximumRequestIdLength &&
+    if (policy.requestIdSource == RequestIdSource.ACCEPT_VALID_CALLER && supplied != null && supplied.length in policy.minimumRequestIdLength..policy.maximumRequestIdLength &&
         supplied.all(::isRequestIdCharacter)
     ) {
         return supplied

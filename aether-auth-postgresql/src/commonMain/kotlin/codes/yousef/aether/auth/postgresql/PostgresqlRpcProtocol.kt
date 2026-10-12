@@ -13,6 +13,8 @@ enum class PostgresqlRpcOperation(
     val functionName: String = "v1_$wireName"
 ) {
     ASSERT_ENVIRONMENT("assert_environment"),
+    FIND_ACCOUNT_SECURITY("find_account_security"),
+    MUTATE_ACCOUNT_SECURITY("mutate_account_security"),
     FIND_USER("find_user"),
     FIND_USER_BY_EMAIL("find_user_by_email"),
     FIND_CREDENTIAL("find_credential"),
