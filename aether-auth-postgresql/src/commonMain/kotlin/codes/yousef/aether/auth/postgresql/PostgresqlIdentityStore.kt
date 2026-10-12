@@ -49,6 +49,11 @@ class PostgresqlIdentityStore(
         }
     }
 
+    override suspend fun findAccountSecurity(userId: UserId): StoreResult<AccountSecurityState?> =
+        invoke(PostgresqlRpcOperation.FIND_ACCOUNT_SECURITY, UserIdPayload(userId))
+    override suspend fun mutateAccountSecurity(command: MutateAccountSecurityCommand): StoreResult<AccountSecurityState> =
+        invoke(PostgresqlRpcOperation.MUTATE_ACCOUNT_SECURITY, command)
+
     override suspend fun findUser(id: UserId): StoreResult<User?> =
         invoke(PostgresqlRpcOperation.FIND_USER, IdPayload(id.value))
 

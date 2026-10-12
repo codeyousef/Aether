@@ -65,6 +65,47 @@ class InMemoryIdentityStore(
     private val lock = CoroutineSafeLock()
     private var state: State = State.from(seed)
 
+    override suspend fun findAccountSecurity(userId: UserId): StoreResult<AccountSecurityState?> = read { it.accountSecurity[userId] }
+
+    override suspend fun mutateAccountSecurity(command: MutateAccountSecurityCommand): StoreResult<AccountSecurityState> = atomic {
+        val user = requirePresent(users, command.replacement.userId)
+        val previous = accountSecurity[user.id]
+        val actor = command.actorSessionId?.let { sessions[it] }
+        validateAccountSecurityMutation(command, user, previous, actor)?.let { abort(it) }
+        requireAuditAvailable(command.auditEvent)
+        if (command.operation in setOf(AccountSecurityOperation.PASSWORD_REPLACE, AccountSecurityOperation.PASSWORD_DISABLE)) {
+            val now = command.auditEvent.occurredAt
+            users[user.id] = user.copy(version = user.version + 1, sessionEpoch = user.sessionEpoch + 1, updatedAt = now)
+            sessions.values.filter { it.userId == user.id && it.state == SessionState.ACTIVE }.forEach {
+                sessions[it.id] = it.copy(state = SessionState.REVOKED, version = it.version + 1, revokedAt = now,
+                    revocationReasonCode = "password_replaced")
+            }
+        }
+        if (command.operation in setOf(AccountSecurityOperation.PASSWORD_REPLACE, AccountSecurityOperation.PASSWORD_DISABLE)) {
+            val now = command.auditEvent.occurredAt
+            deviceTokenFamilies.values.filter { it.userId == user.id && it.state == DeviceTokenFamilyState.ACTIVE }.forEach { family ->
+                deviceTokenFamilies[family.id] = family.copy(state = DeviceTokenFamilyState.REVOKED, version = family.version + 1,
+                    revokedAt = now, revocationReasonCode = "password_replaced")
+                deviceAccessTokens.values.filter { it.familyId == family.id && it.state == DeviceAccessTokenState.ACTIVE }.forEach {
+                    deviceAccessTokens[it.id] = it.copy(state = DeviceAccessTokenState.REVOKED, version = it.version + 1, revokedAt = now)
+                }
+                deviceRefreshTokens.values.filter { it.familyId == family.id && it.state == DeviceRefreshTokenState.ACTIVE }.forEach {
+                    deviceRefreshTokens[it.id] = it.copy(state = DeviceRefreshTokenState.REVOKED, version = it.version + 1, revokedAt = now)
+                }
+            }
+        }
+        if (command.operation == AccountSecurityOperation.EMAIL_CHANGE) {
+            val renewed = user.copy(primaryEmail = command.replacement.email, version = user.version + 1,
+                updatedAt = command.auditEvent.occurredAt)
+            requireUniqueEmail(renewed)
+            users[user.id] = renewed
+        }
+        command.issuedSession?.let { requireNewSession(it, user); requireStandaloneSession(it); sessions[it.id] = it }
+        accountSecurity[user.id] = command.replacement
+        appendAudit(command.auditEvent)
+        command.replacement
+    }
+
     override suspend fun findUser(id: UserId): StoreResult<User?> = read { it.users[id] }
 
     override suspend fun findUserByEmail(email: EmailAddress): StoreResult<User?> = read { current ->
@@ -1922,7 +1963,8 @@ class InMemoryIdentityStore(
         val scimGroups: MutableMap<String, ScimGroup>,
         val auditEvents: MutableMap<AuditEventId, AuditEvent>,
         val appliedScim: MutableMap<ScimOperationId, AppliedScim>,
-        val appliedScimBatches: MutableMap<ScimOperationId, AppliedScimBatch>
+        val appliedScimBatches: MutableMap<ScimOperationId, AppliedScimBatch>,
+        val accountSecurity: MutableMap<UserId, AccountSecurityState> = mutableMapOf()
     ) {
         fun copyState(): State = State(
             bootstrapReceipt,
@@ -1946,7 +1988,8 @@ class InMemoryIdentityStore(
             scimGroups.toMutableMap(),
             auditEvents.toMutableMap(),
             appliedScim.toMutableMap(),
-            appliedScimBatches.toMutableMap()
+            appliedScimBatches.toMutableMap(),
+            accountSecurity.toMutableMap()
         )
 
         fun snapshot(): InMemoryIdentityStoreSnapshot = InMemoryIdentityStoreSnapshot(

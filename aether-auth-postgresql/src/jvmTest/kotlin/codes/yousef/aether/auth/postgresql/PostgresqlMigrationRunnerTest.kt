@@ -11,8 +11,8 @@ class PostgresqlMigrationRunnerTest {
     fun committedManifestMatchesTheCompletePackagedMigrationBundle() {
         val migrations = assertNotNull(loadPackagedPostgresqlMigrations())
 
-        assertEquals((1..13).toList(), migrations.map(PostgresqlMigration::version))
-        assertEquals(13, migrations.map(PostgresqlMigration::checksum).toSet().size)
+        assertEquals((1..14).toList(), migrations.map(PostgresqlMigration::version))
+        assertEquals(14, migrations.map(PostgresqlMigration::checksum).toSet().size)
         assertEquals(PostgresqlMigrationRunner.DEFAULT_MIGRATION_RESOURCES.toSet(), assertNotNull(
             discoverPackagedMigrationResources()
         ))

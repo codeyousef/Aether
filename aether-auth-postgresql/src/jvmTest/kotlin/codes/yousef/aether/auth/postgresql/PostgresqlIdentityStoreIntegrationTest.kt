@@ -68,13 +68,13 @@ class PostgresqlIdentityStoreIntegrationTest {
                 currentMigrationResult,
                 "Migration failed safely: $currentMigrationResult"
             )
-            assertEquals(13, currentMigration.value.version)
+            assertEquals(14, currentMigration.value.version)
             assertEquals(true, currentMigration.value.applied)
             val secondMigration = assertIs<StoreResult.Success<PostgresqlMigrationReport>>(migrationRunner.migrate())
             assertEquals(false, secondMigration.value.applied)
             assertEquals(currentMigration.value.checksum, secondMigration.value.checksum)
             assertEquals(
-                13L,
+                14L,
                 pool.query(
                     "SELECT COUNT(*) AS count FROM aether_identity.schema_migrations " +
                         "WHERE module = 'aether-auth-postgresql'"
@@ -206,6 +206,9 @@ class PostgresqlIdentityStoreIntegrationTest {
 
             val user = verifyConcurrentBootstrap(store, pool)
             IdentityStoreConformanceSuite(store, "postgresql-real").runAll()
+            codes.yousef.aether.auth.testkit.AccountSecurityConformanceSuite(store,
+                jvmIdentityRuntime(secrets = IdentitySecretResolver { IdentitySecret.fromUtf8("postgres-test-only-key") }),
+                JvmPasswordProvider(), "postgres").runAll()
             verifyFederationJitRaceLeavesNoOrphans(store)
 
             val scimUser = IdentityFixtures.user(IdentityFixtures.userId("user-scim"))
@@ -951,7 +954,7 @@ class PostgresqlIdentityStoreIntegrationTest {
             .build()
         try {
             val migrated = PostgresqlMigrationRunner(pool).migrate()
-            assertEquals(13, assertIs<StoreResult.Success<PostgresqlMigrationReport>>(migrated).value.version)
+            assertEquals(14, assertIs<StoreResult.Success<PostgresqlMigrationReport>>(migrated).value.version)
             val config = PostgresqlIdentityConfig(IdentityEnvironment.TEST, "aether_touch_test")
             provisionEnvironment(pool, IdentityEnvironment.TEST, "aether_touch_test")
             val store = PostgresqlIdentityStore(config, VertxPostgresqlRpcTransport(config, pool))

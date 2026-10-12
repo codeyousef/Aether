@@ -36,6 +36,10 @@ fun interface RestrictedEnrollmentRoutePolicy {
     fun allows(method: HttpMethod, path: String): Boolean
 
     companion object {
+        /** Explicit opt-in for deployments supporting constrained password recovery. */
+        val PASSKEY_OR_PASSWORD_ENROLLMENT: RestrictedEnrollmentRoutePolicy = RestrictedEnrollmentRoutePolicy { method, path ->
+            PASSKEY_ENROLLMENT_ONLY.allows(method, path) || method == HttpMethod.POST && path == IdentityHttpApi.PASSWORD_REPLACE
+        }
         val PASSKEY_ENROLLMENT_ONLY: RestrictedEnrollmentRoutePolicy =
             RestrictedEnrollmentRoutePolicy { method, path ->
                 method == HttpMethod.POST && path in setOf(
@@ -130,6 +134,11 @@ internal fun Exchange.ensureIdentityRequestId(
     headerName: String = DEFAULT_IDENTITY_REQUEST_ID_HEADER
 ): String {
     attributes.get(IdentityRequestIdAttributeKey)?.let { requestId ->
+        response.setHeader(headerName, requestId)
+        return requestId
+    }
+    attributes.get(codes.yousef.aether.core.pipeline.RequestDiagnostics.RequestIdKey)?.let { requestId ->
+        attributes.put(IdentityRequestIdAttributeKey, requestId)
         response.setHeader(headerName, requestId)
         return requestId
     }

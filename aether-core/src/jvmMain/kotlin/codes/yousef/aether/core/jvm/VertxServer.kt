@@ -6,6 +6,7 @@ import codes.yousef.aether.core.RequestBodyStreamFailure
 import codes.yousef.aether.core.pipeline.LoggerFactory
 import codes.yousef.aether.core.pipeline.Pipeline
 import codes.yousef.aether.core.pipeline.ApiErrorKind
+import codes.yousef.aether.core.pipeline.RequestDiagnosticsPolicy
 import codes.yousef.aether.core.pipeline.ApiErrorPolicy
 import codes.yousef.aether.core.pipeline.establishRequestDiagnostics
 import io.vertx.core.Vertx
@@ -45,7 +46,11 @@ data class VertxServerConfig(
     /** Time allowed for active request children to drain during stop. */
     val shutdownGraceMillis: Long = 5_000,
     /** Vert.x response queue bound before application writes suspend. */
-    val responseWriteQueueBytes: Int = 64 * 1024
+    val responseWriteQueueBytes: Int = 64 * 1024,
+    /** Applies before body reads, including parser and body failures. */
+    val diagnostics: RequestDiagnosticsPolicy = RequestDiagnosticsPolicy(),
+    /** Null explicitly selects plaintext; TLS never falls back to plaintext. */
+    val tls: HttpsListenerConfig? = null
 ) {
     init {
         require(port in 0..65_535) { "Port must be between 0 and 65535" }
@@ -91,105 +96,117 @@ class VertxServer(
      * This method blocks until the server is successfully started.
      */
     suspend fun start() {
-        val options = HttpServerOptions()
-            .setHost(config.host)
-            .setPort(config.port)
-            .setCompressionSupported(config.compressionSupported)
-            .setDecompressionSupported(config.decompressionSupported)
-            .setMaxHeaderSize(config.maxHeaderSize)
-            .setMaxChunkSize(config.maxChunkSize)
-            .setMaxInitialLineLength(config.maxInitialLineLength)
+        try {
+            val options = HttpServerOptions()
+                .setHost(config.host)
+                .setPort(config.port)
+                .setCompressionSupported(config.compressionSupported)
+                .setDecompressionSupported(config.decompressionSupported)
+                .setMaxHeaderSize(config.maxHeaderSize)
+                .setMaxChunkSize(config.maxChunkSize)
+                .setMaxInitialLineLength(config.maxInitialLineLength)
 
-        server = vertx.createHttpServer(options)
-            .invalidRequestHandler { invalidRequest ->
-                scope.launch {
-                    respondToRawRequestFailure(
-                        request = invalidRequest,
-                        kind = ApiErrorKind.BAD_REQUEST,
-                        closeConnection = true
-                    )
-                }
-            }
-            .requestHandler { vertxRequest ->
-                if (stopping.get()) {
-                    vertxRequest.connection().close()
-                    return@requestHandler
-                }
-                vertxRequest.response().setWriteQueueMaxSize(config.responseWriteQueueBytes)
+            config.tls?.applyTo(options)
 
-                // Install every transport callback synchronously before dispatching the child.
-                val bodySource = if (config.streamRequestBodies) {
-                    VertxRequestBodySource(
-                        vertx = vertx,
-                        request = vertxRequest,
-                        maximumBytes = config.maxRequestBodySize.toLong(),
-                        maximumChunkBytes = config.maxChunkSize,
-                        timeoutMillis = config.requestBodyTimeoutMillis,
-                        bufferedChunks = config.streamBufferChunks
-                    )
-                } else {
-                    null
-                }
-                val bodyDeferred = if (bodySource == null) {
-                    readBoundedRequestBody(
-                        vertx = vertx,
-                        request = vertxRequest,
-                        maximumBytes = config.maxRequestBodySize,
-                        timeoutMillis = config.requestBodyTimeoutMillis
-                    )
-                } else {
-                    null
-                }
-
-                scope.launch {
-                    var requestId: String? = null
-                    bodySource?.onDisconnect {
-                        coroutineContext.job.cancel(CancellationException("Request connection closed"))
-                    }
-                    try {
-                        val exchange = if (bodySource != null) {
-                            bodySource.preflightFailure?.let { failure ->
-                                rejectRequestBody(vertxRequest, failure.toBoundedResult())
-                                return@launch
-                            }
-                            createVertxExchangeWithStream(vertxRequest, bodySource)
-                        } else {
-                            val bodyResult = bodyDeferred!!.await()
-                            if (bodyResult !is BoundedRequestBodyResult.Complete) {
-                                rejectRequestBody(vertxRequest, bodyResult)
-                                return@launch
-                            }
-                            createVertxExchangeWithBody(vertxRequest, bodyResult.bytes)
-                        }
-                        requestId = establishRequestDiagnostics(exchange)
-                        pipeline.execute(exchange, handler)
-                        if (!vertxRequest.response().ended()) exchange.response.end()
-                    } catch (cancellation: CancellationException) {
-                        throw cancellation
-                    } catch (error: Exception) {
-                        val kind = ApiErrorPolicy().classify(error)
-                        logger.error(
-                            "request_id=${requestId ?: "unavailable"} category=${kind.code} " +
-                                "server_request_failure"
+            server = vertx.createHttpServer(options)
+                .invalidRequestHandler { invalidRequest ->
+                    scope.launch {
+                        respondToRawRequestFailure(
+                            request = invalidRequest,
+                            kind = ApiErrorKind.BAD_REQUEST,
+                            closeConnection = true,
+                            diagnostics = config.diagnostics
                         )
-                        try {
-                            respondToRawRequestFailure(
-                                request = vertxRequest,
-                                kind = kind,
-                                establishedRequestId = requestId
-                            )
-                        } catch (_: Exception) {
-                            logger.error("request_id=${requestId ?: "unavailable"} error_response_failed")
-                        }
-                    } finally {
-                        bodySource?.cancel()
                     }
                 }
-            }
-            .listen()
-            .coAwait()
+                .requestHandler { vertxRequest ->
+                    if (stopping.get()) {
+                        vertxRequest.connection().close()
+                        return@requestHandler
+                    }
+                    vertxRequest.response().setWriteQueueMaxSize(config.responseWriteQueueBytes)
 
-        logger.info("Aether server started on ${config.host}:$actualPort")
+                    // Install every transport callback synchronously before dispatching the child.
+                    val bodySource = if (config.streamRequestBodies) {
+                        VertxRequestBodySource(
+                            vertx = vertx,
+                            request = vertxRequest,
+                            maximumBytes = config.maxRequestBodySize.toLong(),
+                            maximumChunkBytes = config.maxChunkSize,
+                            timeoutMillis = config.requestBodyTimeoutMillis,
+                            bufferedChunks = config.streamBufferChunks
+                        )
+                    } else {
+                        null
+                    }
+                    val bodyDeferred = if (bodySource == null) {
+                        readBoundedRequestBody(
+                            vertx = vertx,
+                            request = vertxRequest,
+                            maximumBytes = config.maxRequestBodySize,
+                            timeoutMillis = config.requestBodyTimeoutMillis
+                        )
+                    } else {
+                        null
+                    }
+
+                    scope.launch {
+                        var requestId: String? = null
+                        bodySource?.onDisconnect {
+                            coroutineContext.job.cancel(CancellationException("Request connection closed"))
+                        }
+                        try {
+                            val exchange = if (bodySource != null) {
+                                bodySource.preflightFailure?.let { failure ->
+                                    rejectRequestBody(vertxRequest, failure.toBoundedResult(), config.diagnostics)
+                                    return@launch
+                                }
+                                createVertxExchangeWithStream(vertxRequest, bodySource)
+                            } else {
+                                val bodyResult = bodyDeferred!!.await()
+                                if (bodyResult !is BoundedRequestBodyResult.Complete) {
+                                    rejectRequestBody(vertxRequest, bodyResult, config.diagnostics)
+                                    return@launch
+                                }
+                                createVertxExchangeWithBody(vertxRequest, bodyResult.bytes)
+                            }
+                            requestId = establishRequestDiagnostics(exchange, config.diagnostics)
+                            pipeline.execute(exchange, handler)
+                            if (!vertxRequest.response().ended()) exchange.response.end()
+                        } catch (cancellation: CancellationException) {
+                            throw cancellation
+                        } catch (error: Exception) {
+                            val kind = ApiErrorPolicy().classify(error)
+                            logger.error(
+                                "request_id=${requestId ?: "unavailable"} category=${kind.code} " +
+                                    "server_request_failure"
+                            )
+                            try {
+                                respondToRawRequestFailure(
+                                    request = vertxRequest,
+                                    kind = kind,
+                                    diagnostics = config.diagnostics,
+                                    establishedRequestId = requestId
+                                )
+                            } catch (_: Exception) {
+                                logger.error("request_id=${requestId ?: "unavailable"} error_response_failed")
+                            }
+                        } finally {
+                            bodySource?.cancel()
+                        }
+                    }
+                }
+                .listen()
+                .coAwait()
+
+            logger.info("Aether server started on ${config.host}:$actualPort")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            if (config.tls == null) throw failure
+            try { close() } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { }
+            throw HttpsListenerException()
+        }
     }
 
     /**

@@ -599,6 +599,58 @@ class FirestoreIdentityStore internal constructor(
         replacement
     }
 
+    override suspend fun findAccountSecurity(userId: UserId): StoreResult<AccountSecurityState?> =
+        readEntity("accountSecurity", userId.value, AccountSecurityState.serializer())
+
+    override suspend fun mutateAccountSecurity(command: MutateAccountSecurityCommand): StoreResult<AccountSecurityState> = atomic {
+        val user = requireEntity(COLLECTION_USERS, command.replacement.userId.value, User.serializer())
+        val previous = get("accountSecurity", user.id, AccountSecurityState.serializer())
+        val actor = command.actorSessionId?.let { get(COLLECTION_SESSIONS, it.value, IdentitySession.serializer()) }
+        validateAccountSecurityMutation(command, user.value, previous?.value, actor?.value)?.let { abort(it) }
+        requireAuditAvailable(command.auditEvent)
+        if (command.operation in setOf(AccountSecurityOperation.PASSWORD_REPLACE, AccountSecurityOperation.PASSWORD_DISABLE)) {
+            val now = command.auditEvent.occurredAt
+            val activeSessions = query(COLLECTION_SESSIONS, IdentitySession.serializer(), FIELD_USER_ID, user.id)
+            val renewed = user.value.copy(version = user.value.version + 1, sessionEpoch = user.value.sessionEpoch + 1, updatedAt = now)
+            update(user, renewed, User.serializer(), userFields(renewed))
+            activeSessions.filter { it.value.state == SessionState.ACTIVE }.forEach { stored ->
+                val revoked = stored.value.copy(state = SessionState.REVOKED, version = stored.value.version + 1,
+                    revokedAt = now, revocationReasonCode = "password_replaced")
+                update(stored, revoked, IdentitySession.serializer(), sessionFields(revoked))
+            }
+        }
+        if (command.operation in setOf(AccountSecurityOperation.PASSWORD_REPLACE, AccountSecurityOperation.PASSWORD_DISABLE)) {
+            val now = command.auditEvent.occurredAt
+            val families = query(COLLECTION_DEVICE_TOKEN_FAMILIES, DeviceTokenFamily.serializer(), FIELD_USER_ID, user.id)
+            for (stored in families.filter { it.value.state == DeviceTokenFamilyState.ACTIVE }) {
+                val access = query(COLLECTION_DEVICE_ACCESS_TOKENS, DeviceAccessToken.serializer(), FIELD_FAMILY_ID, stored.id)
+                val refresh = query(COLLECTION_DEVICE_REFRESH_TOKENS, DeviceRefreshToken.serializer(), FIELD_FAMILY_ID, stored.id)
+                val revoked = stored.value.copy(state = DeviceTokenFamilyState.REVOKED, version = stored.value.version + 1,
+                    revokedAt = now, revocationReasonCode = "password_replaced")
+                update(stored, revoked, DeviceTokenFamily.serializer(), deviceTokenFamilyFields(revoked))
+                access.filter { it.value.state == DeviceAccessTokenState.ACTIVE }.forEach {
+                    val token = it.value.copy(state = DeviceAccessTokenState.REVOKED, version = it.value.version + 1, revokedAt = now)
+                    update(it, token, DeviceAccessToken.serializer(), deviceAccessTokenFields(token))
+                }
+                refresh.filter { it.value.state == DeviceRefreshTokenState.ACTIVE }.forEach {
+                    val token = it.value.copy(state = DeviceRefreshTokenState.REVOKED, version = it.value.version + 1, revokedAt = now)
+                    update(it, token, DeviceRefreshToken.serializer(), deviceRefreshTokenFields(token))
+                }
+            }
+        }
+        if (command.operation == AccountSecurityOperation.EMAIL_CHANGE) {
+            val renewed = user.value.copy(primaryEmail = command.replacement.email, version = user.value.version + 1,
+                updatedAt = command.auditEvent.occurredAt)
+            replaceUserEmailClaim(user.value, renewed)
+            update(user, renewed, User.serializer(), userFields(renewed))
+        }
+        command.issuedSession?.let { requireNewSession(it, user.value); createSessionValue(it) }
+        if (previous == null) create("accountSecurity", user.id, command.replacement, AccountSecurityState.serializer(), emptyMap())
+        else update(previous, command.replacement, AccountSecurityState.serializer(), emptyMap())
+        appendAudit(command.auditEvent)
+        command.replacement
+    }
+
     override suspend fun createSession(command: CreateSessionCommand): StoreResult<IdentitySession> = atomic {
         val user = requireEntity(COLLECTION_USERS, command.session.userId.value, User.serializer())
         requireNewSession(command.session, user.value)

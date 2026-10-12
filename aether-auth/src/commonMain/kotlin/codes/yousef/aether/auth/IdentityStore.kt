@@ -983,6 +983,12 @@ fun AuditEvent.toOrganizationAuditCursor(): OrganizationAuditEventCursor =
  * transactions and version preconditions. Expected races are returned as [StoreResult.Failure].
  */
 interface IdentityStore {
+    /** Optional additive account-security capability. Unsupported adapters fail closed. */
+    suspend fun findAccountSecurity(userId: UserId): StoreResult<AccountSecurityState?> =
+        StoreResult.Failure(IdentityStoreError(IdentityStoreErrorCode.UNAVAILABLE))
+    suspend fun mutateAccountSecurity(command: MutateAccountSecurityCommand): StoreResult<AccountSecurityState> =
+        StoreResult.Failure(IdentityStoreError(IdentityStoreErrorCode.UNAVAILABLE))
+
     suspend fun findUser(id: UserId): StoreResult<User?>
     suspend fun findUserByEmail(email: EmailAddress): StoreResult<User?>
     suspend fun findCredential(id: CredentialId): StoreResult<Credential?>

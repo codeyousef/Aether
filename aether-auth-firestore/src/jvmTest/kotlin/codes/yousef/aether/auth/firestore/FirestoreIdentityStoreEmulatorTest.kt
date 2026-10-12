@@ -80,6 +80,8 @@ class FirestoreIdentityStoreEmulatorTest {
             val conformance = IdentityStoreConformanceSuite(store, "firestore-real").runAll()
             assertTrue(IdentityStoreConformanceCase.FEDERATION_PROVIDER_LIFECYCLE in conformance.cases)
             assertTrue(IdentityStoreConformanceCase.FEDERATION_JIT_ATOMICITY in conformance.cases)
+            codes.yousef.aether.auth.testkit.AccountSecurityConformanceSuite(store, runtime,
+                JvmPasswordProvider(), "firestore").runAll()
             verifyConcurrentChallengeConsumption(store)
             verifyCredentialUniquenessRollback(store, baseline.user)
             val touchedSession = verifySessionIdleRenewal(store, baseline.enrollmentSession)
