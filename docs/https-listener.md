@@ -35,3 +35,10 @@ Both JVM listeners accept `diagnostics` in their server configuration. The defau
 Identity middleware and call logging use internally generated IDs. Valid-looking caller tokens
 and UUIDs are ignored in that profile. No trusted-ingress authentication is inferred. Request IDs
 are diagnostic correlation values, never authentication credentials.
+
+As of 0.8.1.0, HTTPS can opt into HTTP/2/HTTP/1.1 ALPN with `HttpsListenerConfig.http2Enabled=true`
+(or `SslConfig.http2Enabled=true` for the router listener). Keep `maxChunkSize` at least 16,384 bytes
+when enabling HTTP/2, matching its minimum frame size; unsafe bounds fail startup. The default
+remains HTTP/1.1. Plaintext listeners serve
+HTTP/1.1 only, avoiding upstream cleartext upgrade header loss. TLS-only HTTP/2 preserves duplicate
+security-header values; ambiguous cookies are rejected before dispatch.

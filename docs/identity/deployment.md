@@ -190,7 +190,7 @@ ctest --test-dir build/identity-wasi-host --output-on-failure
 
 Use PostgreSQL 16 and a dedicated production database. The adapter owns the fixed
 `aether_identity` schema; application ORM migrations and `aether-db` do not manage it. Apply the
-reviewed `V001__identity_foundation.sql` and subsequent V002 through V011 migrations through
+reviewed `V001__identity_foundation.sql` and subsequent V002 through V015 migrations through
 `PostgresqlMigrationRunner`. V003 adds organization-scoped audit reads, V004 adds bounded audit
 retention, and V005 serializes same-ID device-grant CAS contenders so the loser receives a retryable
 version conflict while different-ID device/user-code collisions remain uniqueness failures. V006
@@ -204,7 +204,7 @@ quarantine, and recovery-enrollment completion in a nested transaction: a determ
 constraint rejection rolls back credential, session, user, and recovery-code effects, then commits
 only a failed challenge and a redacted `webauthn_store_rejected` audit. The reviewed implementation
 functions live in `aether_identity_internal`; PUBLIC has neither schema usage nor function execution.
-Only the four fixed `aether_identity` wrappers are `SECURITY DEFINER`, each with
+The four fixed WebAuthn `aether_identity` wrappers use `SECURITY DEFINER`, each with
 `search_path=pg_catalog` and fully qualified calls. Never add the internal schema to PostgREST's
 exposed schemas or grant an application role direct access to it.
 V011 persists the immutable tenant/provider route and storage-key mapping, and uses a logical
@@ -217,6 +217,35 @@ helper functions remain in
 `aether_identity_internal` with PUBLIC execution revoked. JIT provisioning inserts a new user
 without an email identity key and an exact viewer membership in the same transaction as the replay
 receipt, external link, and audit; failures and races roll back every JIT entity.
+V012 renews idle refresh-token expiry, V013 handles terminal challenge expiry, and V014 adds
+opt-in password/contact security. V015 repairs the runtime privilege boundary for all 18 supported
+RPCs that directly or transitively invoke private federation/WebAuthn helpers. These entry points
+run as `SECURITY DEFINER` with `search_path=pg_catalog`, fully qualified calls, and the original
+strict environment-envelope, version and provenance checks. PUBLIC execution is revoked; existing
+explicit role grants survive the upgrade. The definer must be a dedicated non-superuser schema
+owner (prefer a NOLOGIN owner assumed only by the deployment role), with rights restricted to this
+authority database. The runtime must be a distinct non-owner/non-superuser role. Do not grant it
+membership in the owner role, internal-schema access, environment/migration writes, or the
+provisioner/obsolete federation operation.
+
+Grant supported RPCs explicitly after fresh installation. For example, session creation and touch:
+
+```sql
+GRANT USAGE ON SCHEMA aether_identity TO identity_runtime;
+GRANT EXECUTE ON FUNCTION aether_identity.v1_create_session(JSONB),
+    aether_identity.v1_touch_identity_session(JSONB) TO identity_runtime;
+```
+
+Grant the other installed operations from `PostgresqlRpcOperation` as needed; granting every
+function in the schema also exposes legacy implementation helpers and is unnecessary. Existing
+invoker operations still require their table privileges. The usual runtime may receive CRUD on
+identity data tables and SELECT on the environment marker, while environment/schema-migration DML
+and deployment provisioning remain deployment-only. RPC grants are privileged authority capabilities:
+never grant them to browser/end-user roles or expose the authority database directly to clients.
+Fresh-install and V014-upgrade tests use separate schema-owner/runtime roles over VERIFY_FULL TLS,
+exercise bootstrap, session touch/rotation, federation disable/enable and account-security lifecycles,
+and assert private/helper, deployment-write, foreign-environment and missing-execute denials.
+
 The runner takes a transaction-scoped advisory lock,
 stores each SHA-256 checksum and rejects drift for an already applied version.
 

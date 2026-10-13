@@ -1,10 +1,11 @@
 # Passkey-first identity
 
-Released on 2026-07-16, Aether Identity `0.6.0.0` is a storage-neutral Kotlin Multiplatform identity
-authority. It uses
+Introduced on 2026-07-16, Aether Identity is a storage-neutral Kotlin Multiplatform identity
+authority. The current source version is `0.8.1.0`. Its default uses
 discoverable WebAuthn passkeys for people, organization-bound device grants for the CLI, and
-scoped service credentials for automation. Password authentication, identity JWT fallback,
-legacy identity sessions, and global groups or permissions are not part of this subsystem.
+scoped service credentials for automation. Password authentication and contact verification are
+[explicit opt-in capabilities](account-security.md). Identity JWT fallback, legacy identity sessions,
+and global groups or permissions are not part of this subsystem.
 Production wasmWasi identity-authority hosting is not supported in this release; see the
 [deployment guide](deployment.md#wasmwasi) for the incomplete component-host integration.
 
@@ -238,3 +239,9 @@ PostgreSQL migration V013 permits an explicit pending-to-expired challenge trans
 
 See [password and verified-contact lifecycle](account-security.md) for the versioned API, JVM
 provider, authority boundaries and atomic storage migration introduced in 0.8.0.0.
+
+### Application request authority (0.8.1.0)
+
+Install the canonical identity resolver/middleware, then use
+[IdentityRequestAuthorityGuard](request-authority.md) for application mutations on the original
+Exchange. Resource capability checks remain application-owned.

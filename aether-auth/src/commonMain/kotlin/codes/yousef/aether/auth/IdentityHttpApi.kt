@@ -148,10 +148,7 @@ class IdentityHttpApi(
     private val trustedProxyResolver = TrustedProxyResolver(
         identityConfig.trustedProxy.trustedCidrs
     )
-    private val enforceExternalAuthority = identityConfig.environment == IdentityEnvironment.PRODUCTION ||
-        identityConfig.environment == IdentityEnvironment.STAGING
-    private val publicScheme = identityConfig.publicBaseUrl.substringBefore("://").lowercase()
-    private val publicHost = identityConfig.publicBaseUrl.substringAfter("://").lowercase()
+    private val requestAuthority = IdentityHttpRequestAuthority(runtime, identityConfig, httpConfig)
     private val json: Json = DEFAULT_IDENTITY_JSON
 
     init {
@@ -183,12 +180,8 @@ class IdentityHttpApi(
         exchange.response.setHeader("Cache-Control", "no-store")
 
         try {
-            if (!hasValidRequestAuthority(exchange)) {
-                exchange.respondIdentityError(IdentityErrorCode.REQUEST_INVALID, requestId)
-                return@middleware
-            }
-            if (containsQueryCsrf(exchange) || !validateCsrf(exchange)) {
-                exchange.respondIdentityError(IdentityErrorCode.CSRF_INVALID, requestId)
+            requestAuthority.failure(exchange)?.let { failure ->
+                exchange.respondIdentityError(failure, requestId)
                 return@middleware
             }
             if (exchange.identityContext.session?.assurance == AuthenticationAssurance.RECOVERY &&
@@ -1482,54 +1475,6 @@ class IdentityHttpApi(
         }
     }
 
-    private suspend fun validateCsrf(exchange: Exchange): Boolean {
-        if (exchange.request.method !in PROTECTED_METHODS) return true
-        val hasSessionCookie = exchange.request.cookies.contains(identityConfig.cookie.name)
-        val session = exchange.identityContext.session
-        if (!hasSessionCookie && session == null) return true
-        if (!hasSessionCookie || session == null) return false
-        val origin = exchange.request.headers.getAll("Origin").singleOrNull()
-        val encoded = exchange.request.headers.getAll(httpConfig.csrfHeader).singleOrNull()
-        if (origin !in identityConfig.relyingParty.allowedOrigins || encoded == null ||
-            session.csrfDigest.algorithm != DigestAlgorithm.HMAC_SHA256
-        ) return false
-        val provided = runCatching { Base64Url.decode(encoded, maximumBytes = CSRF_TOKEN_BYTES) }.getOrNull()
-            ?: return false
-        if (provided.size != CSRF_TOKEN_BYTES) {
-            provided.fill(0)
-            return false
-        }
-        return try {
-            val reference = identityConfig.keys.sessionPepper(session.csrfDigest.keyVersion) ?: return false
-            val expected = runCatching {
-                Base64Url.decode(session.csrfDigest.encoded, maximumBytes = 32)
-            }.getOrNull() ?: return false
-            try {
-                if (expected.size != 32) return false
-                val actual = runtime.crypto.hmacSha256(runtime.secrets.resolve(reference), provided)
-                try {
-                    actual.size == 32 && runtime.crypto.constantTimeEquals(expected, actual)
-                } finally {
-                    actual.fill(0)
-                }
-            } finally {
-                expected.fill(0)
-            }
-        } finally {
-            provided.fill(0)
-        }
-    }
-
-    private fun containsQueryCsrf(exchange: Exchange): Boolean {
-        return containsIdentityCsrfQueryToken(exchange.request.query, httpConfig.csrfHeader)
-    }
-
-    private fun hasValidRequestAuthority(exchange: Exchange): Boolean {
-        if (!enforceExternalAuthority) return true
-        val resolved = trustedProxyResolver.resolve(exchange)
-        return resolved.scheme?.lowercase() == publicScheme && resolved.host?.lowercase() == publicHost
-    }
-
     private fun ceremonyBinding(exchange: Exchange): WebAuthnCeremonyBinding {
         val encoded = exchange.request.cookies[httpConfig.ceremonyCookieName]?.value
         return encoded?.let { runCatching { WebAuthnCeremonyBinding.fromEncoded(it) }.getOrNull() }
@@ -1839,7 +1784,6 @@ private val WEB_AUTHN_FINISH_ENVELOPE_JSON = Json {
 }
 
 private val HTTP_TOKEN = Regex("[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}")
-private const val CSRF_TOKEN_BYTES = 32
 private const val MAX_QUERY_LENGTH = 8_192
 private const val MAX_FORM_FIELDS = 32
 private const val MAX_FORM_VALUE_LENGTH = 8_192
@@ -1850,14 +1794,6 @@ private val ORGANIZATION_AUDIT_QUERY_FIELDS = setOf("cursor", "limit")
 private val ORGANIZATION_AUDIT_LIMIT = Regex("[1-9][0-9]{0,2}")
 private const val DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code"
 private const val REFRESH_TOKEN_GRANT_TYPE = "refresh_token"
-private val PROTECTED_METHODS = setOf(
-    HttpMethod.POST,
-    HttpMethod.PUT,
-    HttpMethod.PATCH,
-    HttpMethod.DELETE,
-    HttpMethod.CONNECT
-)
-
 private fun IdentityContext.authenticatedUserId(): UserId? =
     principal?.takeIf { it.kind == IdentityPrincipalKind.USER }?.userId
 

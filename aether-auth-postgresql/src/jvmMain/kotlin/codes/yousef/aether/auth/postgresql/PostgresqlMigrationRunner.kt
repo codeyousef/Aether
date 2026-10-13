@@ -124,6 +124,8 @@ class PostgresqlMigrationRunner(
             "/db/aether-identity/V013__terminal_challenge_expiry.sql"
         const val ACCOUNT_SECURITY_MIGRATION_RESOURCE: String =
             "/db/aether-identity/V014__account_security.sql"
+        const val RUNTIME_RPC_PRIVILEGES_MIGRATION_RESOURCE: String =
+            "/db/aether-identity/V015__runtime_rpc_privileges.sql"
         const val MIGRATION_CHECKSUM_MANIFEST_RESOURCE: String =
             "/db/aether-identity/SHA256SUMS"
         val DEFAULT_MIGRATION_RESOURCES: List<String> = listOf(
@@ -140,7 +142,8 @@ class PostgresqlMigrationRunner(
             FEDERATION_PROVIDER_LIFECYCLE_MIGRATION_RESOURCE,
             DEVICE_REFRESH_IDLE_RENEWAL_MIGRATION_RESOURCE,
             TERMINAL_CHALLENGE_EXPIRY_MIGRATION_RESOURCE,
-            ACCOUNT_SECURITY_MIGRATION_RESOURCE
+            ACCOUNT_SECURITY_MIGRATION_RESOURCE,
+            RUNTIME_RPC_PRIVILEGES_MIGRATION_RESOURCE
         )
         private const val MODULE_NAME: String = "aether-auth-postgresql"
         private val BOOTSTRAP_SQL = """

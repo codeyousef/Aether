@@ -32,8 +32,10 @@ private class VertxRequest(
 
     override val headers: Headers by lazy {
         val builder = Headers.HeadersBuilder()
-        vertxRequest.headers().forEach { entry ->
-            builder.add(entry.key, entry.value)
+        // Read the complete multivalue projection, including repeated identical values.
+        val source = vertxRequest.headers()
+        source.names().forEach { name ->
+            source.getAll(name).forEach { value -> builder.add(name, value) }
         }
         builder.build()
     }

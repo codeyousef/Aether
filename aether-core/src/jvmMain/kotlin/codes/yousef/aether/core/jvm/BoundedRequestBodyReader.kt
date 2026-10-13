@@ -7,6 +7,7 @@ import codes.yousef.aether.core.pipeline.selectRequestId
 import io.vertx.core.Vertx
 import io.vertx.core.buffer.Buffer
 import io.vertx.core.http.HttpServerRequest
+import io.vertx.core.http.HttpVersion
 import io.vertx.kotlin.coroutines.coAwait
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
@@ -143,10 +144,13 @@ suspend fun respondToRawRequestFailure(
             .putHeader("Content-Type", "application/json; charset=utf-8")
             .putHeader("Cache-Control", "no-store")
             .putHeader(diagnostics.requestIdHeader, requestId)
-            .apply { if (closeConnection) putHeader("Connection", "close") }
+            .apply { if (closeConnection && request.version() != HttpVersion.HTTP_2) putHeader("Connection", "close") }
             .end(encodeApiError(kind, requestId))
             .coAwait()
         responseEnded = true
+        // After END_STREAM, NO_ERROR asks an HTTP/2 sender to stop the rejected upload without
+        // discarding the complete response or blocking on its remaining flow-control window.
+        if (closeConnection && request.version() == HttpVersion.HTTP_2) response.reset(0L)
     } finally {
         if (closeConnection && !responseEnded) request.connection().close()
     }
@@ -193,4 +197,17 @@ internal class BoundedRequestBodyBuffer(private val maximumBytes: Int) {
     }
 
     fun finish(): ByteArray? = if (oversized) null else buffer.bytes
+}
+
+/** HTTP/2 may combine Cookie fields before Vert.x exposes them. Reject ambiguous cookie names
+ * as well as repeated HTTP/1 Cookie fields before application dispatch; never select a credential.
+ */
+@InternalAetherServerApi
+fun hasAmbiguousRequestCookies(request: HttpServerRequest): Boolean {
+    val values = request.headers().getAll("Cookie")
+    if (values.size > 1) return true
+    val names = values.flatMap { it.split(';') }.mapNotNull { part ->
+        part.substringBefore('=').trim().takeIf { '=' in part && it.isNotEmpty() }
+    }
+    return names.size != names.toSet().size
 }

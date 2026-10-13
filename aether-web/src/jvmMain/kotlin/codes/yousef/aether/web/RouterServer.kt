@@ -13,6 +13,7 @@ import codes.yousef.aether.core.pipeline.respondWithApiError
 import codes.yousef.aether.core.pipeline.selectRequestId
 import codes.yousef.aether.core.websocket.VertxWebSocketServer
 import codes.yousef.aether.core.websocket.WebSocketConfig
+import codes.yousef.aether.core.jvm.hasAmbiguousRequestCookies
 import codes.yousef.aether.core.jvm.createVertxExchangeWithBody
 import codes.yousef.aether.core.jvm.VertxRequestBodySource
 import codes.yousef.aether.core.jvm.createVertxExchangeWithStream
@@ -90,7 +91,8 @@ data class SslConfig(
     val enabled: Boolean = true,
     val keyPath: String? = null,
     val certPath: String? = null,
-    val selfSigned: Boolean = false
+    val selfSigned: Boolean = false,
+    val http2Enabled: Boolean = false
 )
 
 /**
@@ -159,6 +161,8 @@ class AetherServer(
      */
     suspend fun start() {
         val options = HttpServerOptions()
+            // h2c upgrade in Vert.x 4.5 overwrites duplicate fields before dispatch.
+            .setHttp2ClearTextEnabled(false)
             .setHost(config.host)
             .setPort(config.port)
             .setCompressionSupported(config.compressionSupported)
@@ -171,6 +175,8 @@ class AetherServer(
 
         if (config.ssl?.enabled == true) {
             options.isSsl = true
+            require(!config.ssl.http2Enabled || config.maxChunkSize >= 16_384) { "HTTP/2 requires a chunk bound of at least 16 KiB" }
+            options.isUseAlpn = config.ssl.http2Enabled
             if (config.ssl.selfSigned) {
                 val certificate = SelfSignedCertificate.create()
                 options.keyCertOptions = certificate.keyCertOptions()
@@ -220,6 +226,12 @@ class AetherServer(
                     return@requestHandler
                 }
                 vertxRequest.response().setWriteQueueMaxSize(config.responseWriteQueueBytes)
+
+                if (hasAmbiguousRequestCookies(vertxRequest)) {
+                    scope.launch { respondToRawRequestFailure(vertxRequest, ApiErrorKind.BAD_REQUEST,
+                        closeConnection = true, diagnostics = config.diagnostics) }
+                    return@requestHandler
+                }
 
                 // Install every transport callback synchronously before dispatching the child.
                 val bodySource = if (config.streamRequestBodies) {
