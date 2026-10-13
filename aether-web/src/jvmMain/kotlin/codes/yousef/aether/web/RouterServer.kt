@@ -91,7 +91,8 @@ data class SslConfig(
     val enabled: Boolean = true,
     val keyPath: String? = null,
     val certPath: String? = null,
-    val selfSigned: Boolean = false
+    val selfSigned: Boolean = false,
+    val http2Enabled: Boolean = false
 )
 
 /**
@@ -160,6 +161,8 @@ class AetherServer(
      */
     suspend fun start() {
         val options = HttpServerOptions()
+            // h2c upgrade in Vert.x 4.5 overwrites duplicate fields before dispatch.
+            .setHttp2ClearTextEnabled(false)
             .setHost(config.host)
             .setPort(config.port)
             .setCompressionSupported(config.compressionSupported)
@@ -172,6 +175,8 @@ class AetherServer(
 
         if (config.ssl?.enabled == true) {
             options.isSsl = true
+            require(!config.ssl.http2Enabled || config.maxChunkSize >= 16_384) { "HTTP/2 requires a chunk bound of at least 16 KiB" }
+            options.isUseAlpn = config.ssl.http2Enabled
             if (config.ssl.selfSigned) {
                 val certificate = SelfSignedCertificate.create()
                 options.keyCertOptions = certificate.keyCertOptions()

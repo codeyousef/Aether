@@ -24,12 +24,14 @@ class HttpsListenerException : IllegalStateException("HTTPS listener initializat
 class HttpsListenerConfig(
     private val certificateChainPath: String,
     private val privateKeyPath: String,
-    val minimumProtocol: HttpsMinimumProtocol = HttpsMinimumProtocol.TLS_1_2
+    val minimumProtocol: HttpsMinimumProtocol = HttpsMinimumProtocol.TLS_1_2,
+    val http2Enabled: Boolean = false
 ) {
-    override fun toString(): String = "HttpsListenerConfig(minimumProtocol=$minimumProtocol)"
+    override fun toString(): String = "HttpsListenerConfig(minimumProtocol=$minimumProtocol, http2Enabled=$http2Enabled)"
 
     internal fun applyTo(options: HttpServerOptions) {
         try {
+            require(!http2Enabled || options.maxChunkSize >= 16_384)
             val certificateBytes = readBounded(certificateChainPath)
             val keyBytes = readBounded(privateKeyPath)
             try {
@@ -53,7 +55,7 @@ class HttpsListenerConfig(
                         initVerify(leaf.publicKey); update(probe); verify(signed)
                     })
                 } finally { encoded.fill(0) }
-                options.setSsl(true)
+                options.setSsl(true).setUseAlpn(http2Enabled)
                     .setEnabledSecureTransportProtocols(if (minimumProtocol == HttpsMinimumProtocol.TLS_1_3)
                         setOf("TLSv1.3") else setOf("TLSv1.2", "TLSv1.3"))
                     .setKeyCertOptions(PemKeyCertOptions().setCertValue(Buffer.buffer(certificateBytes))

@@ -52,3 +52,10 @@ names and combines Cookie fields according to its cookie representation. Multipl
 or duplicate cookie names (including combined HTTP/2 cookies) fail with a safe transport 400 before
 dispatch. Ordinary distinct cookie pairs remain usable. Do not infer security-header uniqueness
 from a first-value getter; use `getAll(name).singleOrNull()` for application exact-one policies.
+
+In 0.8.1.0, plaintext listeners use HTTP/1.1; HTTP/2 is opt-in over TLS through ALPN on both
+listeners (`http2Enabled=true` in the TLS configuration and `maxChunkSize >= 16_384`).
+TLS listeners retain HTTP/1.1 by default. The installed Vert.x h2c upgrade handler overwrites duplicate fields while converting
+an upgrade request, before Aether can inspect them. Cleartext HTTP/2 is therefore disabled rather
+than admitting a request with lost security metadata. Negotiating plaintext clients fall back to
+HTTP/1.1; clients using HTTP/2 prior knowledge must use TLS. Existing response/body limits and deadlines apply to both supported protocols.

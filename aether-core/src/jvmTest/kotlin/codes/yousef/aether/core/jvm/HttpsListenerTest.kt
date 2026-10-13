@@ -37,15 +37,15 @@ class HttpsListenerTest {
 
     @Test @Timeout(20)
     fun `trusted HTTPS enforces body bounds and streams incrementally`() = runBlocking {
-        for (streaming in listOf(false, true)) {
-            val server = VertxServer(VertxServerConfig(host = "127.0.0.1", port = 0, tls = tls,
-                streamRequestBodies = streaming, maxRequestBodySize = 64 * 1024, maxChunkSize = 1024,
+        for (http2 in listOf(false, true)) for (streaming in listOf(false, true)) {
+            val server = VertxServer(VertxServerConfig(host = "127.0.0.1", port = 0, tls = HttpsListenerConfig(cert.toString(), key.toString(), http2Enabled = http2),
+                streamRequestBodies = streaming, maxRequestBodySize = 64 * 1024, maxChunkSize = if (http2) 16_384 else 1024,
                 requestBodyTimeoutMillis = 500)) { exchange ->
                 if (streaming) {
-                    val stream = exchange.request.openBodyStream(RequestBodyStreamLimits(maximumChunkBytes = 1024))!!
+                    val stream = exchange.request.openBodyStream(RequestBodyStreamLimits(maximumChunkBytes = if (http2) 16_384 else 1024))!!
                     var total = 0
                     stream.consume { total += it.size }
-                    assertTrue(stream.highWaterBytes <= 2048)
+                    assertTrue(stream.highWaterBytes <= if (http2) 32_768 else 2048)
                     exchange.response.write(total.toString())
                 } else exchange.response.write(exchange.request.bodyBytes().size.toString())
             }
@@ -53,6 +53,7 @@ class HttpsListenerTest {
             try {
                 val body = ByteArray(32 * 1024) { 3 }
                 val response = send(server.actualPort, body)
+                assertEquals(if (http2) HttpClient.Version.HTTP_2 else HttpClient.Version.HTTP_1_1, response.version())
                 assertEquals(200, response.statusCode())
                 assertEquals(body.size.toString(), response.body())
                 assertEquals(413, send(server.actualPort, ByteArray(65 * 1024)).statusCode())
@@ -65,6 +66,15 @@ class HttpsListenerTest {
                 assertEquals(200, send(server.actualPort, byteArrayOf(1)).statusCode())
             } finally { server.close(); server.close() }
         }
+    }
+
+    @Test
+    fun `HTTP2 refuses an undersized transport chunk bound`() = runBlocking {
+        val server = VertxServer(VertxServerConfig(port = 0,
+            tls = HttpsListenerConfig(cert.toString(), key.toString(), http2Enabled = true), maxChunkSize = 1024)) {
+            fail("Unsafe HTTP/2 listener must not dispatch")
+        }
+        try { assertFailsWith<HttpsListenerException> { server.start() } } finally { server.close() }
     }
 
     @Test @Timeout(20)

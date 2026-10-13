@@ -16,7 +16,8 @@
   to runtime roles; prior migration checksums are unchanged.
 - Both JVM listeners preserve repeated identical and case-variant header values. Ambiguous Cookie
   fields/names are rejected before dispatch, including HTTP/2's combined Cookie representation.
-  Identity resolution rejects duplicate and mixed cookie/bearer credentials.
+  Identity resolution rejects duplicate and mixed cookie/bearer credentials. HTTP/2 uses TLS ALPN;
+  plaintext listeners use HTTP/1.1 to prevent upstream h2c upgrade header overwrites.
 - HTTP/2 streaming bodies no longer fetch or pause an already-ended request while draining buffered
   chunks or cleaning up, preventing valid completed streams from becoming server errors.
 

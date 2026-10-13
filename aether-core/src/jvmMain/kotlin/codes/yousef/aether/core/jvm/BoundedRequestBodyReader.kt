@@ -7,6 +7,7 @@ import codes.yousef.aether.core.pipeline.selectRequestId
 import io.vertx.core.Vertx
 import io.vertx.core.buffer.Buffer
 import io.vertx.core.http.HttpServerRequest
+import io.vertx.core.http.HttpVersion
 import io.vertx.kotlin.coroutines.coAwait
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
@@ -143,10 +144,13 @@ suspend fun respondToRawRequestFailure(
             .putHeader("Content-Type", "application/json; charset=utf-8")
             .putHeader("Cache-Control", "no-store")
             .putHeader(diagnostics.requestIdHeader, requestId)
-            .apply { if (closeConnection) putHeader("Connection", "close") }
+            .apply { if (closeConnection && request.version() != HttpVersion.HTTP_2) putHeader("Connection", "close") }
             .end(encodeApiError(kind, requestId))
             .coAwait()
         responseEnded = true
+        // After END_STREAM, NO_ERROR asks an HTTP/2 sender to stop the rejected upload without
+        // discarding the complete response or blocking on its remaining flow-control window.
+        if (closeConnection && request.version() == HttpVersion.HTTP_2) response.reset(0L)
     } finally {
         if (closeConnection && !responseEnded) request.connection().close()
     }

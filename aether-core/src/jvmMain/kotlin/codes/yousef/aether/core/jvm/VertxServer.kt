@@ -98,6 +98,8 @@ class VertxServer(
     suspend fun start() {
         try {
             val options = HttpServerOptions()
+                // h2c upgrade in Vert.x 4.5 overwrites duplicate fields before dispatch.
+                .setHttp2ClearTextEnabled(false)
                 .setHost(config.host)
                 .setPort(config.port)
                 .setCompressionSupported(config.compressionSupported)

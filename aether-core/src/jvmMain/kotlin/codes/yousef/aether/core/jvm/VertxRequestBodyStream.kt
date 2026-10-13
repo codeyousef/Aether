@@ -6,6 +6,7 @@ import codes.yousef.aether.core.RequestBodyStreamFailure
 import codes.yousef.aether.core.RequestBodyStreamLimits
 import io.vertx.core.Vertx
 import io.vertx.core.http.HttpServerRequest
+import io.vertx.core.http.HttpVersion
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
@@ -156,7 +157,9 @@ class VertxRequestBodySource(
         if (!released.compareAndSet(false, true)) return
         if (completed.compareAndSet(false, true)) chunks.cancel()
         pauseIfOpen()
-        if (!endedNormally.get()) request.connection().close()
+        if (!endedNormally.get()) {
+            if (request.version() == HttpVersion.HTTP_2) request.response().reset(0L) else request.connection().close()
+        }
     }
 
     // HTTP/2 rejects demand/pause calls after END_STREAM. A consumer may still be draining
@@ -178,7 +181,7 @@ class VertxRequestBodySource(
     private fun fail(failure: RequestBodyStreamFailure) {
         if (completed.compareAndSet(false, true)) {
             pauseIfOpen()
-            if (!request.response().headWritten() && !request.response().ended()) {
+            if (request.version() != HttpVersion.HTTP_2 && !request.response().headWritten() && !request.response().ended()) {
                 request.response().putHeader("Connection", "close")
             }
             chunks.close(RequestBodyStreamException(failure))
