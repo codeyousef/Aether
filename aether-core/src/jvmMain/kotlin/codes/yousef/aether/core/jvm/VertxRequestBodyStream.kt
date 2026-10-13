@@ -43,7 +43,7 @@ class VertxRequestBodySource(
         require(timeoutMillis > 0) { "Body read timeout must be positive" }
         require(bufferedChunks > 0) { "Buffered body chunks must be positive" }
 
-        request.pause()
+        pauseIfOpen()
         val declaredLength = parseDeclaredContentLength(request)
         preflightFailure = when {
             declaredLength == null -> RequestBodyStreamFailure.TRANSPORT_FAILURE
@@ -108,7 +108,7 @@ class VertxRequestBodySource(
 
             override suspend fun consume(consumer: suspend (ByteArray) -> Unit) {
                 var consumerBytes = 0L
-                request.fetch(bufferedChunks.toLong())
+                fetchIfOpen(bufferedChunks.toLong())
                 val completedInTime = withTimeoutOrNull(limits.deadline) {
                     for (chunk in chunks) {
                         queuedBytes.addAndGet(-chunk.size.toLong())
@@ -122,7 +122,7 @@ class VertxRequestBodySource(
                             throw RequestBodyStreamException(RequestBodyStreamFailure.TOTAL_LIMIT_EXCEEDED)
                         }
                         consumer(chunk)
-                        request.fetch(1)
+                        fetchIfOpen(1)
                     }
                     true
                 } ?: false
@@ -155,13 +155,29 @@ class VertxRequestBodySource(
     fun cancel() {
         if (!released.compareAndSet(false, true)) return
         if (completed.compareAndSet(false, true)) chunks.cancel()
-        request.pause()
+        pauseIfOpen()
         if (!endedNormally.get()) request.connection().close()
+    }
+
+    // HTTP/2 rejects demand/pause calls after END_STREAM. A consumer may still be draining
+    // buffered chunks at that point; completion must not turn a valid body into a server error.
+    private fun fetchIfOpen(amount: Long) {
+        if (request.isEnded) return
+        try { request.fetch(amount) } catch (failure: IllegalStateException) {
+            if (!request.isEnded) throw failure
+        }
+    }
+
+    private fun pauseIfOpen() {
+        if (request.isEnded) return
+        try { request.pause() } catch (failure: IllegalStateException) {
+            if (!request.isEnded) throw failure
+        }
     }
 
     private fun fail(failure: RequestBodyStreamFailure) {
         if (completed.compareAndSet(false, true)) {
-            request.pause()
+            pauseIfOpen()
             if (!request.response().headWritten() && !request.response().ended()) {
                 request.response().putHeader("Connection", "close")
             }

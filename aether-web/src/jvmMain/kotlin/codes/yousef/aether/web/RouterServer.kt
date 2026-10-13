@@ -13,6 +13,7 @@ import codes.yousef.aether.core.pipeline.respondWithApiError
 import codes.yousef.aether.core.pipeline.selectRequestId
 import codes.yousef.aether.core.websocket.VertxWebSocketServer
 import codes.yousef.aether.core.websocket.WebSocketConfig
+import codes.yousef.aether.core.jvm.hasAmbiguousRequestCookies
 import codes.yousef.aether.core.jvm.createVertxExchangeWithBody
 import codes.yousef.aether.core.jvm.VertxRequestBodySource
 import codes.yousef.aether.core.jvm.createVertxExchangeWithStream
@@ -220,6 +221,12 @@ class AetherServer(
                     return@requestHandler
                 }
                 vertxRequest.response().setWriteQueueMaxSize(config.responseWriteQueueBytes)
+
+                if (hasAmbiguousRequestCookies(vertxRequest)) {
+                    scope.launch { respondToRawRequestFailure(vertxRequest, ApiErrorKind.BAD_REQUEST,
+                        closeConnection = true, diagnostics = config.diagnostics) }
+                    return@requestHandler
+                }
 
                 // Install every transport callback synchronously before dispatching the child.
                 val bodySource = if (config.streamRequestBodies) {

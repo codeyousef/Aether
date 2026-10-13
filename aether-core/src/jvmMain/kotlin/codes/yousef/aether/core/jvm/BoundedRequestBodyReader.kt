@@ -194,3 +194,16 @@ internal class BoundedRequestBodyBuffer(private val maximumBytes: Int) {
 
     fun finish(): ByteArray? = if (oversized) null else buffer.bytes
 }
+
+/** HTTP/2 may combine Cookie fields before Vert.x exposes them. Reject ambiguous cookie names
+ * as well as repeated HTTP/1 Cookie fields before application dispatch; never select a credential.
+ */
+@InternalAetherServerApi
+fun hasAmbiguousRequestCookies(request: HttpServerRequest): Boolean {
+    val values = request.headers().getAll("Cookie")
+    if (values.size > 1) return true
+    val names = values.flatMap { it.split(';') }.mapNotNull { part ->
+        part.substringBefore('=').trim().takeIf { '=' in part && it.isNotEmpty() }
+    }
+    return names.size != names.toSet().size
+}

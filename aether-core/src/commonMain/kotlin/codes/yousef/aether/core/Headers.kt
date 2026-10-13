@@ -18,9 +18,8 @@ data class Headers(
     fun getAll(name: String): List<String> {
         val normalizedName = name.lowercase()
         return map.entries
-            .firstOrNull { it.key.lowercase() == normalizedName }
-            ?.value
-            ?: emptyList()
+            .filter { it.key.lowercase() == normalizedName }
+            .flatMap { it.value }
     }
 
     /**

@@ -126,6 +126,12 @@ class VertxServer(
                     }
                     vertxRequest.response().setWriteQueueMaxSize(config.responseWriteQueueBytes)
 
+                    if (hasAmbiguousRequestCookies(vertxRequest)) {
+                        scope.launch { respondToRawRequestFailure(vertxRequest, ApiErrorKind.BAD_REQUEST,
+                            closeConnection = true, diagnostics = config.diagnostics) }
+                        return@requestHandler
+                    }
+
                     // Install every transport callback synchronously before dispatching the child.
                     val bodySource = if (config.streamRequestBodies) {
                         VertxRequestBodySource(

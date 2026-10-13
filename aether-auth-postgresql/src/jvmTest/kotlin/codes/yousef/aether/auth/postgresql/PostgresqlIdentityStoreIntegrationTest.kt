@@ -68,13 +68,13 @@ class PostgresqlIdentityStoreIntegrationTest {
                 currentMigrationResult,
                 "Migration failed safely: $currentMigrationResult"
             )
-            assertEquals(14, currentMigration.value.version)
+            assertEquals(15, currentMigration.value.version)
             assertEquals(true, currentMigration.value.applied)
             val secondMigration = assertIs<StoreResult.Success<PostgresqlMigrationReport>>(migrationRunner.migrate())
             assertEquals(false, secondMigration.value.applied)
             assertEquals(currentMigration.value.checksum, secondMigration.value.checksum)
             assertEquals(
-                14L,
+                15L,
                 pool.query(
                     "SELECT COUNT(*) AS count FROM aether_identity.schema_migrations " +
                         "WHERE module = 'aether-auth-postgresql'"
@@ -954,7 +954,7 @@ class PostgresqlIdentityStoreIntegrationTest {
             .build()
         try {
             val migrated = PostgresqlMigrationRunner(pool).migrate()
-            assertEquals(14, assertIs<StoreResult.Success<PostgresqlMigrationReport>>(migrated).value.version)
+            assertEquals(15, assertIs<StoreResult.Success<PostgresqlMigrationReport>>(migrated).value.version)
             val config = PostgresqlIdentityConfig(IdentityEnvironment.TEST, "aether_touch_test")
             provisionEnvironment(pool, IdentityEnvironment.TEST, "aether_touch_test")
             val store = PostgresqlIdentityStore(config, VertxPostgresqlRpcTransport(config, pool))

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.8.1.0] - 2026-10-13
+
+### Added
+
+- `IdentityRequestAuthorityGuard` protects application callbacks on the original Exchange using
+  the identity API's canonical public authority, trusted-proxy and cookie CSRF checks. Resolved
+  native device/service credentials retain their own authority without cookie CSRF substitution.
+
+### Fixed
+
+- Additive PostgreSQL migration V015 permits the supported identity RPCs to invoke private
+  federation helpers under a dedicated schema owner, with fixed `pg_catalog` search paths and
+  explicit runtime execute grants. Internal helpers and deployment provisioning remain inaccessible
+  to runtime roles; prior migration checksums are unchanged.
+- Both JVM listeners preserve repeated identical and case-variant header values. Ambiguous Cookie
+  fields/names are rejected before dispatch, including HTTP/2's combined Cookie representation.
+  Identity resolution rejects duplicate and mixed cookie/bearer credentials.
+- HTTP/2 streaming bodies no longer fetch or pause an already-ended request while draining buffered
+  chunks or cleaning up, preventing valid completed streams from becoming server errors.
+
+
 ## [0.8.0.0] - 2026-10-12
 
 ### Added

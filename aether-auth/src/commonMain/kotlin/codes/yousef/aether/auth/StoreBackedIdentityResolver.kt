@@ -12,6 +12,7 @@ class StoreBackedIdentityContextResolver(
     private val organizationSelector: (Exchange) -> OrganizationId? = { null }
 ) : IdentityContextResolver {
     override suspend fun resolve(exchange: Exchange): IdentityResolutionResult {
+        if (hasAmbiguousIdentityCredentials(exchange, config)) return IdentityResolutionResult.Rejected(IdentityErrorCode.INVALID_CREDENTIALS)
         val cookie = exchange.request.cookies[config.cookie.name] ?: return IdentityResolutionResult.Anonymous
         val token = parseSessionToken(cookie.value) ?: return IdentityResolutionResult.Rejected(
             IdentityErrorCode.INVALID_CREDENTIALS

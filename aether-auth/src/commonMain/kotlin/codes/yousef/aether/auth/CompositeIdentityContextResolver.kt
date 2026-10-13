@@ -19,6 +19,7 @@ class CompositeIdentityContextResolver(
     private val serviceAuthenticator: IdentityBearerAuthenticator? = null
 ) : IdentityContextResolver {
     override suspend fun resolve(exchange: Exchange): IdentityResolutionResult {
+        if (hasAmbiguousIdentityCredentials(exchange, config)) return IdentityResolutionResult.Rejected(IdentityErrorCode.INVALID_CREDENTIALS)
         val hasSessionCookie = exchange.request.cookies.contains(config.cookie.name)
         val authorization = exchange.request.headers.entries()
             .filter { (name, _) -> name.equals(AUTHORIZATION_HEADER, ignoreCase = true) }
